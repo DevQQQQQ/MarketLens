@@ -113,10 +113,10 @@ export class StatusBar implements vscode.Disposable {
 
   /**
    * 老板键：按下后立即隐藏状态栏所有市场信息；再次按下恢复。
-   * 绑定快捷键 Ctrl+Alt+M (mac: Cmd+Alt+M) 通过 package.json keybindings 实现。
+   * @param forceState 可选强制设置状态（true 为隐藏，false 为显示）
    */
-  toggleBossKey(): void {
-    this.bossKeyActive = !this.bossKeyActive;
+  toggleBossKey(forceState?: boolean): boolean {
+    this.bossKeyActive = forceState !== undefined ? forceState : !this.bossKeyActive;
     if (this.bossKeyActive) {
       this.barItem.text = "";
       this.barItem.hide();
@@ -124,6 +124,11 @@ export class StatusBar implements vscode.Disposable {
       this.barItem.show();
       this.render();
     }
+    return this.bossKeyActive;
+  }
+
+  isBossKeyActive(): boolean {
+    return this.bossKeyActive;
   }
 
   // ── 轮播 ────────────────────────────────────────────────────────

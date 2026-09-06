@@ -1,5 +1,6 @@
 // src/services/network.ts
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
+import * as http from "http";
 
 export interface CryptoNetworkOptions {
   mode: "proxy" | "direct";
@@ -7,18 +8,9 @@ export interface CryptoNetworkOptions {
 }
 
 /**
- * 本机常见代理软件默认端口大全（自动探测列表）
- * 覆盖：
- * - 10808 / 10809: v2rayN 经典 SOCKS / HTTP 端口
- * - 7890: Clash / Clash for Windows / Clash Verge / ClashX 默认混合端口
- * - 7897: Mihomo Party / 新版 Clash 默认端口
- * - 2080: NekoBox / sing-box 默认端口
- * - 1080: Shadowsocks (原版) 经典端口
- * - 6152: Surge (Mac) 默认 HTTP 端口
- * - 8889: Qv2ray 默认 HTTP 端口
- * - 16100 / 20171: 部分公司内网 / OpenClash 常用定制端口
+ * 主流代理客户端端口探测池
  */
-const COMMON_PROXY_PORTS = [
+export const COMMON_PROXY_PORTS = [
   10808, // v2rayN (Socks/Mixed)
   10809, // v2rayN (HTTP)
   7890,  // Clash / Clash Verge / ClashX
@@ -28,7 +20,6 @@ const COMMON_PROXY_PORTS = [
   6152,  // Surge
   8889,  // Qv2ray
   16100, // OpenClash / 内网定制
-  20171, // 部分定制代理
 ];
 
 const BASE_HEADERS = {
@@ -38,12 +29,38 @@ const BASE_HEADERS = {
   Accept: "application/json, text/plain, */*",
 };
 
+/** 缓存当前探测到的可用本地代理端口，避免其他用户（如 7890）每次刷新重复卡顿 */
+let cachedWorkingPort: number | undefined = undefined;
+
 /**
- * 解析 proxyUrl，如 "http://127.0.0.1:10808"
+ * 校验并规范化代理地址（防止用户输入为空或残缺导致崩溃）
+ */
+export function validateAndNormalizeProxyUrl(rawUrl: string | undefined): string {
+  if (!rawUrl || !rawUrl.trim()) {
+    return cachedWorkingPort ? `http://127.0.0.1:${cachedWorkingPort}` : "http://127.0.0.1:10808";
+  }
+  let str = rawUrl.trim();
+  if (!/^https?:\/\//i.test(str)) {
+    str = `http://${str}`;
+  }
+  try {
+    const u = new URL(str);
+    if (!u.port) {
+      return "http://127.0.0.1:10808";
+    }
+    return str;
+  } catch {
+    return "http://127.0.0.1:10808";
+  }
+}
+
+/**
+ * 解析 proxyUrl
  */
 function parseProxy(proxyUrlStr: string) {
+  const normalized = validateAndNormalizeProxyUrl(proxyUrlStr);
   try {
-    const url = new URL(proxyUrlStr);
+    const url = new URL(normalized);
     return {
       host: url.hostname || "127.0.0.1",
       port: parseInt(url.port, 10) || 10808,
@@ -55,70 +72,108 @@ function parseProxy(proxyUrlStr: string) {
 }
 
 /**
- * 专门用于 A 股国内接口的直连请求（安全、合规、零延迟）
+ * 快速检测某个本地端口是否开启了 HTTP 代理监听（超时 400ms）
  */
-export async function directGet<T = any>(
-  url: string,
-  config: AxiosRequestConfig = {}
-): Promise<AxiosResponse<T>> {
-  return await axios.get<T>(url, {
-    ...config,
-    timeout: 5000,
-    headers: { ...BASE_HEADERS, ...config.headers },
+function testLocalPort(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        method: "HEAD",
+        path: "http://data-api.binance.vision/api/v3/ping",
+        timeout: 600,
+      },
+      (res) => {
+        resolve(res.statusCode !== undefined && res.statusCode < 500);
+      }
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
   });
 }
 
 /**
- * 专门用于 Binance 和 Alpha (DexScreener) 的请求：
- * - 默认强制走代理，严禁发起任何直连包，避免公司网关/DNS 审计！
- * - 优先走用户配置的 proxyUrl；若不通，自动轮询探测常见客户端端口自适应连通。
- * - 允许在设置中切换为 direct (直连)
+ * 自动探测本机当前活跃的代理端口（供设置界面“一键探测”使用）
  */
-export async function cryptoGet<T = any>(
+export async function detectAvailableProxy(): Promise<string | null> {
+  for (const port of COMMON_PROXY_PORTS) {
+    const ok = await testLocalPort(port);
+    if (ok) {
+      cachedWorkingPort = port;
+      return `http://127.0.0.1:${port}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * 通用网络请求核心方法（支持 direct 直连 与 proxy 强制代理）
+ */
+export async function smartNetworkGet<T = any>(
   url: string,
   options: CryptoNetworkOptions,
   config: AxiosRequestConfig = {}
 ): Promise<AxiosResponse<T>> {
-  const { mode = "proxy", proxyUrl = "http://127.0.0.1:10808" } = options;
+  const { mode = "direct", proxyUrl } = options;
 
   const mergedConfig: AxiosRequestConfig = {
     ...config,
-    timeout: 5000,
+    timeout: config.timeout || 5000,
     headers: { ...BASE_HEADERS, ...config.headers },
   };
 
-  // 1. 直连模式（用户在 settings.json 中明确配置为 direct 时）
+  // 1. 直连模式
   if (mode === "direct") {
     return await axios.get<T>(url, mergedConfig);
   }
 
-  // 2. 代理模式（默认）：强制走代理
-  const targetProxy = parseProxy(proxyUrl);
+  // 2. 强制代理模式（绝不直连）
+  // 优先使用已缓存的有效端口，或用户输入的代理
+  let targetProxy = parseProxy(proxyUrl || "");
+  if (cachedWorkingPort && targetProxy.port === 10808 && cachedWorkingPort !== 10808) {
+    targetProxy = { ...targetProxy, port: cachedWorkingPort };
+  }
 
-  // 第一优先级：尝试用户配置的代理端口
+  // 第一优先级：尝试目标代理端口
   try {
-    return await axios.get<T>(url, {
+    const res = await axios.get<T>(url, {
       ...mergedConfig,
       proxy: targetProxy,
     });
+    cachedWorkingPort = targetProxy.port;
+    return res;
   } catch (err: any) {
-    // 第二优先级：自动轮询常见代理客户端端口进行探测连接
+    // 第二优先级：自动自适应探测其他主流端口
     for (const port of COMMON_PROXY_PORTS) {
       if (port === targetProxy.port) continue;
       try {
-        return await axios.get<T>(url, {
+        const res = await axios.get<T>(url, {
           ...mergedConfig,
-          timeout: 3000, // 备选端口快速探测
+          timeout: 2500, // 快速探测
           proxy: { host: "127.0.0.1", port, protocol: "http" },
         });
+        // 成功！记录并缓存此端口，后续无需重试
+        cachedWorkingPort = port;
+        return res;
       } catch {
-        // 该端口未开启或不通，继续探测下一个备选端口
+        // 继续探测下一个端口
       }
     }
 
-    // 所有已知代理端口均不可达时，报错并阻止直连，保护隐私
+    // 所有代理端口不可达，阻止直连，保护隐私
     throw new Error(
-      `[MarketLens] 代理请求失败 (${url})。已自动尝试所有主流代理端口 (10808, 10809, 7890, 7897, 2080, 1080, 6152 等)，均无法连接。为保护公司网络安全，已阻止直连。请确认本地代理客户端已启动。`
+      `[MarketLens] 代理连接失败。已阻止直连。请确认代理软件已启动。`
     );
   }
+}
+
+// 兼容别名
+export const cryptoGet = smartNetworkGet;
+export async function directGet<T = any>(url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse<T>> {
+  return smartNetworkGet<T>(url, { mode: "direct" }, config);
 }

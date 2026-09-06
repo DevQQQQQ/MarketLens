@@ -1,204 +1,338 @@
 {
-    "name":  "marketlens",
-    "displayName":  "MarketLens",
-    "description":  "在 VS Code 侧边栏中实时追踪 A股、Binance 和 Alpha 行情",
-    "version":  "0.0.1",
-    "publisher":  "your-publisher-id",
-    "engines":  {
-                    "vscode":  "^1.85.0"
-                },
-    "categories":  [
-                       "Other"
-                   ],
-    "activationEvents":  [
-                             "*"
-                         ],
-    "main":  "./dist/extension.js",
-    "contributes":  {
-                        "viewsContainers":  {
-                                                "activitybar":  [
-                                                                    {
-                                                                        "id":  "marketlens-sidebar",
-                                                                        "title":  "MarketLens",
-                                                                        "icon":  "./assets/icon.svg"
-                                                                    }
-                                                                ]
-                                            },
-                        "views":  {
-                                      "marketlens-sidebar":  [
-                                                                 {
-                                                                     "id":  "marketlens.watchlist",
-                                                                     "name":  "自选",
-                                                                     "type":  "tree",
-                                                                     "icon":  "./assets/icon.svg"
-                                                                 }
-                                                             ]
-                                  },
-                        "commands":  [
-                                         {
-                                             "command":  "marketlens.refresh",
-                                             "title":  "MarketLens: 立即刷新全部",
-                                             "icon":  "$(refresh)"
-                                         },
-                                         {
-                                             "command":  "marketlens.refreshGroup",
-                                             "title":  "MarketLens: 刷新当前分类",
-                                             "icon":  "$(refresh)"
-                                         },
-                                         {
-                                             "command":  "marketlens.toggleMask",
-                                             "title":  "MarketLens: 切换伪装模式",
-                                             "icon":  "$(eye)"
-                                         },
-                                         {
-                                             "command":  "marketlens.toggleBossKey",
-                                             "title":  "MarketLens: 老板键（一键隐藏/恢复）",
-                                             "icon":  "$(eye-closed)"
-                                         },
-                                         {
-                                             "command":  "marketlens.addItem",
-                                             "title":  "MarketLens: 添加自选",
-                                             "icon":  "$(add)"
-                                         },
-                                         {
-                                             "command":  "marketlens.removeItem",
-                                             "title":  "MarketLens: 删除",
-                                             "icon":  "$(trash)"
-                                         }
-                                     ],
-                        "keybindings":  [
-                                            {
-                                                "command":  "marketlens.toggleBossKey",
-                                                "key":  "ctrl+alt+m",
-                                                "mac":  "cmd+alt+m",
-                                                "when":  "true"
-                                            }
-                                        ],
-                        "menus":  {
-                                      "view/title":  [
-                                                         {
-                                                             "command":  "marketlens.refresh",
-                                                             "when":  "view == marketlens.watchlist",
-                                                             "group":  "navigation"
-                                                         },
-                                                         {
-                                                             "command":  "marketlens.toggleMask",
-                                                             "when":  "view == marketlens.watchlist",
-                                                             "group":  "navigation"
-                                                         },
-                                                         {
-                                                             "command":  "marketlens.addItem",
-                                                             "when":  "view == marketlens.watchlist",
-                                                             "group":  "navigation"
-                                                         }
-                                                     ],
-                                      "view/item/context":  [
-                                                                {
-                                                                    "command":  "marketlens.refreshGroup",
-                                                                    "when":  "view == marketlens.watchlist \u0026\u0026 viewItem == groupItem",
-                                                                    "group":  "inline"
-                                                                },
-                                                                {
-                                                                    "command":  "marketlens.removeItem",
-                                                                    "when":  "view == marketlens.watchlist \u0026\u0026 viewItem == stockItem",
-                                                                    "group":  "inline"
-                                                                }
-                                                            ]
-                                  },
-                        "configuration":  {
-                                              "title":  "MarketLens",
-                                              "properties":  {
-                                                                 "marketlens.refreshInterval":  {
-                                                                                                    "type":  "number",
-                                                                                                    "default":  5000,
-                                                                                                    "minimum":  1000,
-                                                                                                    "maximum":  60000,
-                                                                                                    "description":  "行情刷新间隔（毫秒）"
-                                                                                                },
-                                                                 "marketlens.maskMode":  {
-                                                                                             "type":  "boolean",
-                                                                                             "default":  false,
-                                                                                             "description":  "伪装模式：将行情数据伪装成 Git / 构建日志，彻底隐蔽"
-                                                                                         },
-                                                                 "marketlens.colorNeutral":  {
-                                                                                                 "type":  "boolean",
-                                                                                                 "default":  false,
-                                                                                                 "description":  "颜色脱敏：关闭红绿配色刺激，使用系统默认字体颜色，防止旁观者察觉"
-                                                                                             },
-                                                                 "marketlens.watchlist":  {
-                                                                                              "type":  "object",
-                                                                                              "description":  "自选列表配置，按分组组织",
-                                                                                              "default":  {
-                                                                                                              "A股":  [
-                                                                                                                         {
-                                                                                                                             "symbol":  "sh600519",
-                                                                                                                             "name":  "贵州茅台",
-                                                                                                                             "type":  "A_SHARE"
-                                                                                                                         },
-                                                                                                                         {
-                                                                                                                             "symbol":  "sz000839",
-                                                                                                                             "name":  "中信国安",
-                                                                                                                             "type":  "A_SHARE"
-                                                                                                                         }
-                                                                                                                     ],
-                                                                                                              "Binance":  [
-                                                                                                                              {
-                                                                                                                                  "symbol":  "BTCUSDT",
-                                                                                                                                  "name":  "BTC/USDT",
-                                                                                                                                  "type":  "CRYPTO"
-                                                                                                                              },
-                                                                                                                              {
-                                                                                                                                  "symbol":  "ETHUSDT",
-                                                                                                                                  "name":  "ETH/USDT",
-                                                                                                                                  "type":  "CRYPTO"
-                                                                                                                              }
-                                                                                                                          ],
-                                                                                                              "Alpha":  [
-                                                                                                                            {
-                                                                                                                                "symbol":  "0x73b84f7e3901f39fc29f3704a03126d317ab4444",
-                                                                                                                                "name":  "PUP",
-                                                                                                                                "type":  "BSC_TOKEN"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                                                          },
-                                                                 "marketlens.cryptoProxyMode":  {
-                                                                                                    "type":  "string",
-                                                                                                    "enum":  [
-                                                                                                                 "proxy",
-                                                                                                                 "direct"
-                                                                                                             ],
-                                                                                                    "enumDescriptions":  [
-                                                                                                                             "强制使用代理（默认），绝对不发起任何直连请求，杜绝公司网络审计检测",
-                                                                                                                             "直连访问，不走代理"
-                                                                                                                         ],
-                                                                                                    "default":  "proxy",
-                                                                                                    "description":  "Binance 与 Alpha 行情网络访问模式：proxy (强制走代理) 或 direct (直连)"
-                                                                                                },
-                                                                 "marketlens.cryptoProxyUrl":  {
-                                                                                                   "type":  "string",
-                                                                                                   "default":  "http://127.0.0.1:10808",
-                                                                                                   "description":  "加密货币与 Alpha 数据请求使用的代理地址（默认 10808，支持自动自适应探测 10808, 10809, 7890, 7897, 2080, 1080 等主流端口）"
-                                                                                               }
-                                                             }
-                                          }
-                    },
-    "scripts":  {
-                    "vscode:prepublish":  "npm run build",
-                    "build":  "node esbuild.js --production",
-                    "dev":  "node esbuild.js --watch",
-                    "lint":  "eslint src --ext ts"
-                },
-    "devDependencies":  {
-                            "@types/node":  "^20.11.0",
-                            "@types/vscode":  "^1.85.0",
-                            "@typescript-eslint/eslint-plugin":  "^6.19.0",
-                            "@typescript-eslint/parser":  "^6.19.0",
-                            "esbuild":  "^0.20.0",
-                            "eslint":  "^8.56.0",
-                            "typescript":  "^5.3.3"
-                        },
-    "dependencies":  {
-                         "axios":  "^1.6.7"
-                     }
+  "name": "marketlens",
+  "displayName": "MarketLens - 极客行情看板与摸鱼神器",
+  "description": "极度隐蔽的 VS Code 行情看板，支持 A 股、Binance、全链 Alpha DEX 代币，自带老板键与代码伪装模式",
+  "version": "1.0.0",
+  "publisher": "DevQQQQQ",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "股票",
+    "A股",
+    "加密货币",
+    "摸鱼",
+    "行情"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "marketlens-container",
+          "title": "MarketLens",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "marketlens-container": [
+        {
+          "id": "marketlens.watchlist",
+          "name": "MarketLens: 自选",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "marketlens.refresh",
+        "title": "立即刷新全部",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "marketlens.refreshGroup",
+        "title": "刷新当前分类",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "marketlens.toggleMask",
+        "title": "切换伪装模式",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "marketlens.toggleBossKey",
+        "title": "老板键（一键隐藏/恢复）",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "marketlens.addItem",
+        "title": "添加自选",
+        "icon": "$(add)"
+      },
+      {
+        "command": "marketlens.removeItem",
+        "title": "删除",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "marketlens.toggleColorNeutral",
+        "title": "切换颜色脱敏模式",
+        "icon": "$(paintcan)"
+      },
+      {
+        "command": "marketlens.openKeybindings",
+        "title": "自定义快捷键",
+        "icon": "$(keyboard)"
+      },
+      {
+        "command": "marketlens.openSettings",
+        "title": "设置",
+        "icon": "$(gear)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "marketlens.toggleBossKey",
+        "key": "ctrl+alt+m",
+        "win": "ctrl+alt+m",
+        "mac": "cmd+alt+m"
+      },
+      {
+        "command": "marketlens.toggleBossKey",
+        "key": "alt+m",
+        "win": "alt+m"
+      },
+      {
+        "command": "marketlens.toggleMask",
+        "key": "ctrl+alt+k",
+        "win": "ctrl+alt+k",
+        "mac": "cmd+alt+k"
+      },
+      {
+        "command": "marketlens.toggleMask",
+        "key": "alt+k",
+        "win": "alt+k"
+      },
+      {
+        "command": "marketlens.toggleColorNeutral",
+        "key": "ctrl+alt+c",
+        "win": "ctrl+alt+c",
+        "mac": "cmd+alt+c"
+      },
+      {
+        "command": "marketlens.toggleColorNeutral",
+        "key": "alt+c",
+        "win": "alt+c"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "marketlens.openSettings",
+          "when": "view == marketlens.watchlist",
+          "group": "navigation@1"
+        },
+        {
+          "command": "marketlens.refresh",
+          "when": "view == marketlens.watchlist",
+          "group": "navigation@2"
+        },
+        {
+          "command": "marketlens.toggleBossKey",
+          "when": "view == marketlens.watchlist",
+          "group": "navigation@3"
+        },
+        {
+          "command": "marketlens.toggleMask",
+          "when": "view == marketlens.watchlist",
+          "group": "navigation@4"
+        },
+        {
+          "command": "marketlens.addItem",
+          "when": "view == marketlens.watchlist",
+          "group": "navigation@5"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "marketlens.refreshGroup",
+          "when": "view == marketlens.watchlist && viewItem == groupItem",
+          "group": "inline"
+        },
+        {
+          "command": "marketlens.removeItem",
+          "when": "view == marketlens.watchlist && viewItem == stockItem",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MarketLens",
+      "properties": {
+        "marketlens.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "order": 1,
+          "description": "【全局】是否开启定时自动刷新（取消勾选则不自动刷新，仅在手动点击刷新按钮时更新）"
+        },
+        "marketlens.refreshInterval": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 300000,
+          "order": 2,
+          "description": "【全局】定时刷新间隔（毫秒），如 5000 表示 5 秒"
+        },
+        "marketlens.maskMode": {
+          "type": "boolean",
+          "default": false,
+          "order": 3,
+          "description": "【全局】伪装模式：将行情数据伪装成 Git / 构建日志，彻底隐蔽"
+        },
+        "marketlens.colorNeutral": {
+          "type": "boolean",
+          "default": false,
+          "order": 4,
+          "description": "【全局】颜色脱敏：关闭红绿配色刺激，使用系统默认字体颜色，防止旁观者察觉"
+        },
+        "marketlens.aShare.enabled": {
+          "type": "boolean",
+          "default": true,
+          "order": 10,
+          "description": "【A股板块】是否启用 A 股市场行情（取消勾选则在自选列表中隐藏 A 股）"
+        },
+        "marketlens.aShare.networkMode": {
+          "type": "string",
+          "enum": [
+            "direct",
+            "proxy"
+          ],
+          "enumDescriptions": [
+            "直连访问（默认，腾讯接口境内推荐直连，零延迟）",
+            "强制走代理"
+          ],
+          "default": "direct",
+          "order": 11,
+          "description": "【A股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
+        },
+        "marketlens.aShare.proxyUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:10808",
+          "order": 12,
+          "description": "【A股板块】代理地址"
+        },
+        "marketlens.aShare.stopOnMarketClosed": {
+          "type": "boolean",
+          "default": true,
+          "order": 13,
+          "description": "【A股板块】闭市期间停止轮询（开启后仅在 A 股交易时段 9:15-11:30, 13:00-15:05 请求数据）"
+        },
+        "marketlens.binance.enabled": {
+          "type": "boolean",
+          "default": true,
+          "order": 20,
+          "description": "【Binance板块】是否启用 Binance 主流加密货币行情"
+        },
+        "marketlens.binance.networkMode": {
+          "type": "string",
+          "enum": [
+            "proxy",
+            "direct"
+          ],
+          "enumDescriptions": [
+            "强制使用代理（默认），绝对不发起任何直连请求，杜绝公司网络审计检测",
+            "直连访问，不走代理"
+          ],
+          "default": "proxy",
+          "order": 21,
+          "description": "【Binance板块】网络访问模式：proxy (强制走代理) 或 direct (直连)"
+        },
+        "marketlens.binance.proxyUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:10808",
+          "order": 22,
+          "description": "【Binance板块】代理地址（支持自动探测 10808, 10809, 7890, 7897, 2080, 1080 等本地端口）"
+        },
+        "marketlens.alpha.enabled": {
+          "type": "boolean",
+          "default": true,
+          "order": 30,
+          "description": "【Alpha板块】是否启用 Alpha 链上代币行情（BSC、Solana、Base 等全链 DEX）"
+        },
+        "marketlens.alpha.networkMode": {
+          "type": "string",
+          "enum": [
+            "proxy",
+            "direct"
+          ],
+          "enumDescriptions": [
+            "强制使用代理（默认），绝对不发起任何直连请求，杜绝公司网络审计检测",
+            "直连访问，不走代理"
+          ],
+          "default": "proxy",
+          "order": 31,
+          "description": "【Alpha板块】网络访问模式：proxy (强制走代理) 或 direct (直连)"
+        },
+        "marketlens.alpha.proxyUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:10808",
+          "order": 32,
+          "description": "【Alpha板块】代理地址（支持自动探测主流代理客户端端口）"
+        },
+        "marketlens.watchlist": {
+          "type": "object",
+          "order": 99,
+          "description": "自选列表配置，按分组组织",
+          "default": {
+            "A股": [
+              {
+                "symbol": "sh600519",
+                "name": "贵州茅台",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sz000839",
+                "name": "中信国安",
+                "type": "A_SHARE"
+              }
+            ],
+            "Binance": [
+              {
+                "symbol": "BTCUSDT",
+                "name": "BTC/USDT",
+                "type": "CRYPTO"
+              },
+              {
+                "symbol": "ETHUSDT",
+                "name": "ETH/USDT",
+                "type": "CRYPTO"
+              }
+            ],
+            "Alpha": [
+              {
+                "symbol": "0x73b84f7e3901f39fc29f3704a03126d317ab4444",
+                "name": "PUP",
+                "type": "ALPHA_TOKEN"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "dev": "node esbuild.js --watch",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.7"
+  }
 }

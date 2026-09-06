@@ -40,11 +40,24 @@ export interface WatchlistConfig {
   [group: string]: WatchConfigItem[];
 }
 
+export interface SectionConfig {
+  enabled: boolean;
+  networkMode?: "proxy" | "direct";
+  proxyUrl?: string;
+}
+
 export interface MarketLensConfig {
+  // ── 全局设置 ──
+  autoRefresh: boolean;
   refreshInterval: number;
   maskMode: boolean;
-  colorNeutral?: boolean;
-  cryptoProxyMode: "proxy" | "direct";
-  cryptoProxyUrl: string;
+  colorNeutral: boolean;
+
+  // ── 分板块独立设置 ──
+  aShare: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean };
+  binance: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string };
+  alpha: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string };
+
+  // ── 自选列表 ──
   watchlist: WatchlistConfig;
 }

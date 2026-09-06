@@ -30,7 +30,10 @@ export class AShareService {
     return `sh${code}`;
   }
 
-  async fetchQuotes(codes: string[]): Promise<MarketItem[]> {
+  async fetchQuotes(
+    codes: string[],
+    options: { mode: "proxy" | "direct"; proxyUrl?: string } = { mode: "direct" }
+  ): Promise<MarketItem[]> {
     if (!codes.length) { return []; }
 
     const normalizedCodes = codes.map((c) => this.normalizeCode(c));
@@ -40,6 +43,7 @@ export class AShareService {
       const response = await directGet<ArrayBuffer>(url, {
         responseType: "arraybuffer",
         timeout: 5000,
+        proxy: options.mode === "proxy" ? undefined : false, // 由 network 层处理
       });
 
       const text = new TextDecoder("gbk").decode(response.data);

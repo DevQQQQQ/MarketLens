@@ -62,15 +62,16 @@ export class GroupItem extends vscode.TreeItem {
 export class StockItem extends vscode.TreeItem {
   constructor(
     public item: MarketItem,
-    private maskMode: boolean
+    private maskMode: boolean,
+    private colorNeutral: boolean = false
   ) {
     super(item.name || item.symbol, vscode.TreeItemCollapsibleState.None);
     this.contextValue = "stockItem";
-    this.refresh(item, maskMode);
+    this.refresh(item, maskMode, colorNeutral);
   }
 
   /** 更新显示内容与悬停详细信息 */
-  refresh(item: MarketItem, maskMode: boolean): void {
+  refresh(item: MarketItem, maskMode: boolean, colorNeutral: boolean = false): void {
     this.item = item;
     const currency = item.currency || (item.type === "A_SHARE" ? "CNY" : "USD");
     const currSym = currency === "CNY" ? "¥" : "$";
@@ -79,7 +80,7 @@ export class StockItem extends vscode.TreeItem {
     const sign = item.changePercent >= 0 ? "+" : "";
     const pctStr = maskMode ? "**" : `${sign}${item.changePercent.toFixed(2)}%`;
     const arrow = item.changePercent >= 0 ? "▲" : "▼";
-    const colorHint = item.changePercent >= 0 ? "🟢" : "🔴";
+    const colorHint = colorNeutral ? "•" : (item.changePercent >= 0 ? "🟢" : "🔴");
 
     this.label = item.name || item.symbol;
     this.description = maskMode ? "****  **" : `${priceStr}  ${arrow} ${pctStr}`;
@@ -157,12 +158,19 @@ export class StockItem extends vscode.TreeItem {
     this.tooltip = new vscode.MarkdownString(mdText);
     this.tooltip.isTrusted = true;
 
-    this.iconPath = new vscode.ThemeIcon(
-      item.changePercent >= 0 ? "arrow-up" : "arrow-down",
-      new vscode.ThemeColor(
-        item.changePercent >= 0 ? "charts.green" : "charts.red"
-      )
-    );
+    if (colorNeutral) {
+      // 颜色脱敏：使用系统默认前景色，杜绝红绿色视觉刺激
+      this.iconPath = new vscode.ThemeIcon(
+        item.changePercent >= 0 ? "arrow-up" : "arrow-down"
+      );
+    } else {
+      this.iconPath = new vscode.ThemeIcon(
+        item.changePercent >= 0 ? "arrow-up" : "arrow-down",
+        new vscode.ThemeColor(
+          item.changePercent >= 0 ? "charts.green" : "charts.red"
+        )
+      );
+    }
   }
 }
 
@@ -177,7 +185,10 @@ export class WatchlistProvider
   private groups: GroupItem[] = [];
   private stockMap = new Map<string, StockItem>();
 
-  constructor(private maskMode: boolean) {}
+  constructor(
+    private maskMode: boolean,
+    private colorNeutral: boolean = false
+  ) {}
 
   isEmpty(): boolean {
     return this.groups.length === 0;
@@ -199,10 +210,28 @@ export class WatchlistProvider
     return [];
   }
 
-  buildTree(config: WatchlistConfig, quoteMap: Map<string, MarketItem>): void {
+  buildTree(
+    config: WatchlistConfig,
+    quoteMap: Map<string, MarketItem>,
+    enabledSections: { aShare: boolean; binance: boolean; alpha: boolean } = { aShare: true, binance: true, alpha: true }
+  ): void {
     this.stockMap.clear();
 
-    this.groups = Object.entries(config).map(([groupName, items]) => {
+    const filteredEntries = Object.entries(config).filter(([groupName]) => {
+      const lower = groupName.toLowerCase();
+      if ((groupName.includes("A股") || lower.includes("ashare")) && !enabledSections.aShare) {
+        return false;
+      }
+      if ((lower.includes("binance") || lower.includes("crypto")) && !enabledSections.binance) {
+        return false;
+      }
+      if ((lower.includes("alpha") || lower.includes("bsc") || lower.includes("dex")) && !enabledSections.alpha) {
+        return false;
+      }
+      return true;
+    });
+
+    this.groups = filteredEntries.map(([groupName, items]) => {
       const children = (items || []).map((conf) => {
         const key = conf.symbol.toLowerCase();
         const found =
@@ -216,7 +245,7 @@ export class WatchlistProvider
             changePercent: 0,
           };
 
-        const node = new StockItem(found, this.maskMode);
+        const node = new StockItem(found, this.maskMode, this.colorNeutral);
         this.stockMap.set(key, node);
         this.stockMap.set(conf.symbol, node);
         if (found.id) {
@@ -242,7 +271,7 @@ export class WatchlistProvider
       for (const key of candidates) {
         const node = this.stockMap.get(key);
         if (node) {
-          node.refresh(q, this.maskMode);
+          node.refresh(q, this.maskMode, this.colorNeutral);
           this._onDidChangeTreeData.fire(node);
           break;
         }
@@ -253,7 +282,15 @@ export class WatchlistProvider
   setMaskMode(enabled: boolean): void {
     this.maskMode = enabled;
     for (const node of this.stockMap.values()) {
-      node.refresh(node.item, enabled);
+      node.refresh(node.item, this.maskMode, this.colorNeutral);
+    }
+    this._onDidChangeTreeData.fire();
+  }
+
+  setColorNeutral(enabled: boolean): void {
+    this.colorNeutral = enabled;
+    for (const node of this.stockMap.values()) {
+      node.refresh(node.item, this.maskMode, this.colorNeutral);
     }
     this._onDidChangeTreeData.fire();
   }

@@ -25,19 +25,22 @@ export class MarketManager {
   /**
    * 统一调度方法：并行抓取 A股、主流加密货币、Alpha 链上代币三类资产并聚合输出
    * @param targets 需要拉取的目标列表
-   * @param cryptoOptions 针对加密货币与 Alpha 的代理配置（默认强制代理，严禁直连泄密）
+   * @param aShareOptions 针对 A股 板块的网络配置（默认 direct 直连）
+   * @param binanceOptions 针对 Binance 板块的网络配置（默认 proxy 强制代理）
+   * @param alphaOptions 针对 Alpha 板块的网络配置（默认 proxy 强制代理）
    */
   async pollAll(
     targets: PollTargets,
-    cryptoOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" }
+    aShareOptions: CryptoNetworkOptions = { mode: "direct" },
+    binanceOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" },
+    alphaOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" }
   ): Promise<MarketItem[]> {
     const { aShares = [], cryptos = [], bscTokens = [] } = targets;
 
-    // A股走直连；Binance 与 Alpha 严格遵循用户的代理模式
     const [aShareRes, cryptoRes, bscRes] = await Promise.allSettled([
-      this.aShareService.fetchQuotes(aShares),
-      this.binanceService.fetchQuotes(cryptos, cryptoOptions),
-      this.dexScreenerService.fetchQuotes(bscTokens, cryptoOptions),
+      aShares.length ? this.aShareService.fetchQuotes(aShares, aShareOptions) : Promise.resolve([]),
+      cryptos.length ? this.binanceService.fetchQuotes(cryptos, binanceOptions) : Promise.resolve([]),
+      bscTokens.length ? this.dexScreenerService.fetchQuotes(bscTokens, alphaOptions) : Promise.resolve([]),
     ]);
 
     const aggregated: MarketItem[] = [];
