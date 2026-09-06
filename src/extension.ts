@@ -1,7 +1,7 @@
 // src/extension.ts
 import * as vscode from "vscode";
 import { MarketManager } from "./services/marketManager";
-import { WatchlistProvider, GroupItem } from "./ui/watchlistProvider";
+import { WatchlistProvider, GroupItem, StockItem } from "./ui/watchlistProvider";
 import { StatusBar } from "./ui/statusBar";
 import { SettingsWebviewPanel } from "./ui/settingsWebview";
 import { MarketLensConfig, MarketItem } from "./types";

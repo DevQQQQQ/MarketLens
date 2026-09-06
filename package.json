@@ -1,21 +1,28 @@
 {
   "name": "marketlens",
-  "displayName": "MarketLens - 极客行情看板与摸鱼神器",
-  "description": "极度隐蔽的 VS Code 行情看板，支持 A 股、Binance、全链 Alpha DEX 代币，自带老板键与代码伪装模式",
+  "displayName": "MarketLens - A股与加密货币行情看板",
+  "description": "专为开发者打造的行情看板与效率工具，实时查看 A股、主流加密货币、DEX 资产，支持快捷键隐藏、简洁模式及网络代理配置。",
   "version": "1.0.0",
-  "publisher": "DevQQQQQ",
+  "publisher": "devqqqqq",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DevQQQQQ/MarketLens"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
+  "icon": "assets/icon.png",
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "keywords": [
-    "股票",
     "A股",
-    "加密货币",
-    "摸鱼",
-    "行情"
+    "股票",
+    "行情看板",
+    "Binance",
+    "Crypto"
   ],
   "activationEvents": [
     "*"
@@ -35,7 +42,7 @@
       "marketlens-container": [
         {
           "id": "marketlens.watchlist",
-          "name": "MarketLens: 自选",
+          "name": "MarketLens",
           "icon": "assets/icon.svg"
         }
       ]
@@ -53,12 +60,12 @@
       },
       {
         "command": "marketlens.toggleMask",
-        "title": "切换伪装模式",
+        "title": "切换简洁展示模式",
         "icon": "$(eye)"
       },
       {
         "command": "marketlens.toggleBossKey",
-        "title": "老板键（一键隐藏/恢复）",
+        "title": "专注模式（一键隐藏/恢复）",
         "icon": "$(eye-closed)"
       },
       {
@@ -184,13 +191,13 @@
           "type": "boolean",
           "default": false,
           "order": 3,
-          "description": "【全局】伪装模式：将行情数据伪装成 Git / 构建日志，彻底隐蔽"
+          "description": "【全局】紧凑展示模式：将行情数据展示为简洁构建信息格式"
         },
         "marketlens.colorNeutral": {
           "type": "boolean",
           "default": false,
           "order": 4,
-          "description": "【全局】颜色脱敏：关闭红绿配色刺激，使用系统默认字体颜色，防止旁观者察觉"
+          "description": "【全局】中性色彩模式：关闭红绿色彩标记，使用编辑器默认主题文本颜色"
         },
         "marketlens.aShare.enabled": {
           "type": "boolean",
@@ -237,12 +244,12 @@
             "direct"
           ],
           "enumDescriptions": [
-            "强制使用代理（默认），绝对不发起任何直连请求，杜绝公司网络审计检测",
+            "通过代理服务器访问（推荐，适用于特定网络环境）",
             "直连访问，不走代理"
           ],
           "default": "proxy",
           "order": 21,
-          "description": "【Binance板块】网络访问模式：proxy (强制走代理) 或 direct (直连)"
+          "description": "【Binance板块】网络访问模式：proxy (走代理) 或 direct (直连)"
         },
         "marketlens.binance.proxyUrl": {
           "type": "string",
@@ -263,12 +270,12 @@
             "direct"
           ],
           "enumDescriptions": [
-            "强制使用代理（默认），绝对不发起任何直连请求，杜绝公司网络审计检测",
+            "通过代理服务器访问（推荐，适用于特定网络环境）",
             "直连访问，不走代理"
           ],
           "default": "proxy",
           "order": 31,
-          "description": "【Alpha板块】网络访问模式：proxy (强制走代理) 或 direct (直连)"
+          "description": "【Alpha板块】网络访问模式：proxy (走代理) 或 direct (直连)"
         },
         "marketlens.alpha.proxyUrl": {
           "type": "string",
@@ -283,13 +290,63 @@
           "default": {
             "A股": [
               {
-                "symbol": "sh600519",
-                "name": "贵州茅台",
+                "symbol": "sh688584",
+                "name": "上海合晶",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sh600030",
+                "name": "中信证券",
                 "type": "A_SHARE"
               },
               {
                 "symbol": "sz000839",
-                "name": "中信国安",
+                "name": "国安股份",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sz002385",
+                "name": "大北农",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sh603686",
+                "name": "福龙马",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sz002867",
+                "name": "周大生",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sh603031",
+                "name": "安孚科技",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sh601988",
+                "name": "中国银行",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sh603019",
+                "name": "中科曙光",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sz000977",
+                "name": "浪潮信息",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sh688545",
+                "name": "兴福电子",
+                "type": "A_SHARE"
+              },
+              {
+                "symbol": "sz301293",
+                "name": "三博脑科",
                 "type": "A_SHARE"
               }
             ],
@@ -302,6 +359,21 @@
               {
                 "symbol": "ETHUSDT",
                 "name": "ETH/USDT",
+                "type": "CRYPTO"
+              },
+              {
+                "symbol": "ETCUSDT",
+                "name": "ETC/USDT",
+                "type": "CRYPTO"
+              },
+              {
+                "symbol": "LUNAUSDT",
+                "name": "LUNA/USDT",
+                "type": "CRYPTO"
+              },
+              {
+                "symbol": "DOGEUSDT",
+                "name": "DOGE/USDT",
                 "type": "CRYPTO"
               }
             ],
@@ -321,6 +393,7 @@
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js --production",
     "dev": "node esbuild.js --watch",
+    "package": "vsce package --allow-missing-repository --allow-star-activation --no-dependencies",
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {

@@ -2,7 +2,7 @@
 // 数据获取服务（骨架层）——后续每种市场对应独立 fetcher
 
 import * as vscode from "vscode";
-import { Quote, WatchItem } from "../types";
+import { Quote } from "../types";
 
 // -------------------------------------------------------------------
 // 内部工具
@@ -23,6 +23,12 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 // 抽象：每个市场实现此接口
 // -------------------------------------------------------------------
 
+export interface WatchItem {
+  symbol: string;
+  name?: string;
+  market: string;
+}
+
 export interface MarketFetcher {
   fetchBatch(items: WatchItem[]): Promise<Quote[]>;
 }
@@ -37,13 +43,13 @@ class MockFetcher implements MarketFetcher {
       const base = Math.random() * 100 + 10;
       const changePercent = (Math.random() - 0.5) * 10;
       return {
+        id: item.symbol,
         symbol: item.symbol,
-        name: item.name,
-        market: item.market,
+        name: item.name ?? item.symbol,
+        type: "A_SHARE" as const,
         price: parseFloat(base.toFixed(2)),
         changePercent: parseFloat(changePercent.toFixed(2)),
         change: parseFloat(((base * changePercent) / 100).toFixed(2)),
-        timestamp: Date.now(),
       };
     });
   }
