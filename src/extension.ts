@@ -5,6 +5,7 @@ import { WatchlistProvider, GroupItem, StockItem } from "./ui/watchlistProvider"
 import { StatusBar } from "./ui/statusBar";
 import { SettingsWebviewPanel } from "./ui/settingsWebview";
 import { MarketLensConfig, MarketItem } from "./types";
+import { isSameSymbol } from "./utils/symbolHelper";
 
 // ── 模块级句柄：让 deactivate() 可以显式清理，防止热重载内存泄漏 ──
 let _timer: ReturnType<typeof setInterval> | undefined;
@@ -26,31 +27,40 @@ function readConfig(): MarketLensConfig {
     maskMode:        cfg.get<boolean>("maskMode", false),
     colorNeutral:    cfg.get<boolean>("colorNeutral", false),
 
+    statusBar: {
+      enabled: cfg.get<boolean>("statusBar.enabled", true),
+    },
+
     aShare: {
       enabled:            cfg.get<boolean>("aShare.enabled", true),
+      statusBar:          cfg.get<boolean>("aShare.statusBar", true),
       networkMode:        cfg.get<"proxy" | "direct">("aShare.networkMode", "direct"),
       proxyUrl:           cfg.get<string>("aShare.proxyUrl", "http://127.0.0.1:10808"),
       stopOnMarketClosed: cfg.get<boolean>("aShare.stopOnMarketClosed", true),
     },
     hkStock: {
       enabled:            cfg.get<boolean>("hkStock.enabled", true),
+      statusBar:          cfg.get<boolean>("hkStock.statusBar", true),
       networkMode:        cfg.get<"proxy" | "direct">("hkStock.networkMode", "direct"),
       proxyUrl:           cfg.get<string>("hkStock.proxyUrl", "http://127.0.0.1:10808"),
       stopOnMarketClosed: cfg.get<boolean>("hkStock.stopOnMarketClosed", true),
     },
     usStock: {
       enabled:            cfg.get<boolean>("usStock.enabled", true),
+      statusBar:          cfg.get<boolean>("usStock.statusBar", true),
       networkMode:        cfg.get<"proxy" | "direct">("usStock.networkMode", "direct"),
       proxyUrl:           cfg.get<string>("usStock.proxyUrl", "http://127.0.0.1:10808"),
       stopOnMarketClosed: cfg.get<boolean>("usStock.stopOnMarketClosed", true),
     },
     binance: {
       enabled:     cfg.get<boolean>("binance.enabled", true),
+      statusBar:   cfg.get<boolean>("binance.statusBar", true),
       networkMode: cfg.get<"proxy" | "direct">("binance.networkMode", legacyProxyMode),
       proxyUrl:    cfg.get<string>("binance.proxyUrl", legacyProxyUrl),
     },
     alpha: {
       enabled:     cfg.get<boolean>("alpha.enabled", true),
+      statusBar:   cfg.get<boolean>("alpha.statusBar", true),
       networkMode: cfg.get<"proxy" | "direct">("alpha.networkMode", legacyProxyMode),
       proxyUrl:    cfg.get<string>("alpha.proxyUrl", legacyProxyUrl),
     },
@@ -220,17 +230,120 @@ export async function activate(
     maskMode:     config.maskMode,
     colorNeutral: config.colorNeutral,
   });
+  if (config.statusBar?.enabled === false) {
+    statusBar.hide();
+  }
 
   // 绑定到模块级变量，使 deactivate() 可以显式清理
   _statusBar = statusBar;
 
   const treeView = vscode.window.createTreeView("marketlens.watchlist", {
     treeDataProvider: treeProvider,
+    dragAndDropController: treeProvider,
     showCollapseAll:  true,
   });
 
   const quoteCache = new Map<string, MarketItem>();
   let isRefreshing  = false; // 防止定时器并发触发多次 doRefresh
+
+  // 绑定拖拽排序回调
+  treeProvider.onReorderCallback = async (
+    sourceGroup: string,
+    sourceSymbol: string,
+    targetGroup: string,
+    targetSymbol?: string
+  ) => {
+    const cfg = readConfig();
+    const watchlist = { ...cfg.watchlist };
+
+    if (!watchlist[sourceGroup] || !watchlist[targetGroup]) {
+      return;
+    }
+
+    if (sourceGroup === targetGroup) {
+      const items = [...watchlist[sourceGroup]];
+      const origDragIndex = items.findIndex((it) =>
+        isSameSymbol(it.symbol, sourceSymbol) || it.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
+      );
+      if (origDragIndex === -1) {
+        return;
+      }
+
+      if (targetSymbol) {
+        const origTargetIndex = items.findIndex((it) =>
+          isSameSymbol(it.symbol, targetSymbol) || it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
+        );
+        if (origTargetIndex === -1 || origTargetIndex === origDragIndex) {
+          return;
+        }
+
+        const [draggedItem] = items.splice(origDragIndex, 1);
+        const newTargetIndex = items.findIndex((it) =>
+          isSameSymbol(it.symbol, targetSymbol) || it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
+        );
+        if (newTargetIndex !== -1) {
+          if (origDragIndex < origTargetIndex) {
+            items.splice(newTargetIndex + 1, 0, draggedItem);
+          } else {
+            items.splice(newTargetIndex, 0, draggedItem);
+          }
+        } else {
+          items.push(draggedItem);
+        }
+      } else {
+        // 拖拽到组名上时放到最顶部
+        const [draggedItem] = items.splice(origDragIndex, 1);
+        items.unshift(draggedItem);
+      }
+
+      watchlist[sourceGroup] = items;
+    } else {
+      // 跨组移动
+      const sourceItems = [...watchlist[sourceGroup]];
+      const targetItems = [...watchlist[targetGroup]];
+
+      const dragIndex = sourceItems.findIndex((it) =>
+        isSameSymbol(it.symbol, sourceSymbol) || it.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
+      );
+      if (dragIndex === -1) {
+        return;
+      }
+
+      const [draggedItem] = sourceItems.splice(dragIndex, 1);
+      watchlist[sourceGroup] = sourceItems;
+
+      if (targetSymbol) {
+        const targetIndex = targetItems.findIndex((it) =>
+          isSameSymbol(it.symbol, targetSymbol) || it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
+        );
+        if (targetIndex !== -1) {
+          targetItems.splice(targetIndex, 0, draggedItem);
+        } else {
+          targetItems.push(draggedItem);
+        }
+      } else {
+        targetItems.push(draggedItem);
+      }
+
+      watchlist[targetGroup] = targetItems;
+    }
+
+    try {
+      await vscode.workspace
+        .getConfiguration("marketlens")
+        .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
+
+      treeProvider.buildTree(watchlist, quoteCache, {
+        aShare: cfg.aShare.enabled,
+        hkStock: cfg.hkStock.enabled,
+        usStock: cfg.usStock.enabled,
+        binance: cfg.binance.enabled,
+        alpha: cfg.alpha.enabled,
+      });
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`调整标的顺序失败: ${err?.message || err}`);
+    }
+  };
 
   // 立即构建初版树骨架（展示配置中的所有分组和标的，无需等待首次网络请求返回）
   treeProvider.buildTree(config.watchlist, quoteCache, {
@@ -317,7 +430,20 @@ export async function activate(
         treeProvider.applyQuotes(quotes);
       }
 
-      statusBar.setQuotes(quotes);
+      if (config.statusBar?.enabled === false) {
+        statusBar.hide();
+      } else {
+        const filteredQuotes = quotes.filter((q) => {
+          if (q.type === "A_SHARE") return config.aShare.statusBar !== false;
+          if (q.type === "HK_STOCK") return config.hkStock.statusBar !== false;
+          if (q.type === "US_STOCK") return config.usStock.statusBar !== false;
+          if (q.type === "CRYPTO") return config.binance.statusBar !== false;
+          if (q.type === "BSC_TOKEN" || q.type === "ALPHA_TOKEN") return config.alpha.statusBar !== false;
+          return true;
+        });
+        statusBar.setQuotes(filteredQuotes);
+        statusBar.show();
+      }
     } catch (err) {
       // 静默降级：仅写日志，绝不弹窗打断用户编码
       console.error("[MarketLens] refresh error:", err);
@@ -490,7 +616,8 @@ export async function activate(
   context.subscriptions.push(
     // 打开设置界面（专属 Webview 控制台面板）
     vscode.commands.registerCommand("marketlens.openSettings", () => {
-      SettingsWebviewPanel.createOrShow(context.extensionUri);
+      const extVersion = context.extension?.packageJSON?.version || "1.1.2";
+      SettingsWebviewPanel.createOrShow(context.extensionUri, extVersion);
     }),
 
     // 全量刷新（手动点击无论是否闭市都重新获取最新收盘/盘中数据）
@@ -667,6 +794,105 @@ export async function activate(
       }
     }),
 
+    // 置顶标的（点击图钉图标或命令触发）
+    vscode.commands.registerCommand(
+      "marketlens.pinToTop",
+      async (node?: StockItem) => {
+        const cfg = readConfig();
+        const watchlist = { ...cfg.watchlist };
+
+        let targetSymbol: string | undefined;
+        let targetGroup: string | undefined;
+        let targetName: string | undefined;
+
+        if (node) {
+          targetSymbol = node.confSymbol || node.item?.symbol || node.item?.id;
+          targetGroup  = node.groupName;
+          targetName   = node.item?.name || targetSymbol;
+        } else {
+          const allItems: { label: string; description: string; group: string; symbol: string }[] = [];
+          for (const [grp, items] of Object.entries(watchlist)) {
+            for (const it of items ?? []) {
+              allItems.push({
+                label: it.name || it.symbol,
+                description: `分组: ${grp} · 代码: ${it.symbol}`,
+                group: grp,
+                symbol: it.symbol,
+              });
+            }
+          }
+
+          if (allItems.length === 0) {
+            vscode.window.showInformationMessage("MarketLens: 当前自选列表为空");
+            return;
+          }
+
+          const picked = await vscode.window.showQuickPick(allItems, {
+            title: "选择要置顶的标的",
+            placeHolder: "搜索股票、币对或合约地址",
+          });
+          if (!picked) { return; }
+          targetSymbol = picked.symbol;
+          targetGroup  = picked.group;
+          targetName   = picked.label;
+        }
+
+        if (!targetSymbol) { return; }
+
+        if (!targetGroup) {
+          for (const [grp, items] of Object.entries(watchlist)) {
+            if (items?.some((it) => isSameSymbol(it.symbol, targetSymbol))) {
+              targetGroup = grp;
+              break;
+            }
+          }
+        }
+
+        if (!targetGroup || !watchlist[targetGroup]) { return; }
+
+        const items = [...watchlist[targetGroup]];
+        const index = items.findIndex(
+          (it) =>
+            isSameSymbol(it.symbol, targetSymbol) ||
+            it.symbol?.toLowerCase() === targetSymbol!.toLowerCase() ||
+            (node?.item?.id && isSameSymbol(it.symbol, node.item.id)) ||
+            (node?.item?.symbol && isSameSymbol(it.symbol, node.item.symbol))
+        );
+
+        if (index === -1) {
+          return;
+        }
+        if (index === 0) {
+          vscode.window.showInformationMessage(`MarketLens: "${targetName || targetSymbol}" 已在最顶部`);
+          return;
+        }
+
+        const [pinnedItem] = items.splice(index, 1);
+        items.unshift(pinnedItem);
+        watchlist[targetGroup] = items;
+
+        try {
+          await vscode.workspace
+            .getConfiguration("marketlens")
+            .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
+
+          treeProvider.buildTree(watchlist, quoteCache, {
+            aShare: cfg.aShare.enabled,
+            hkStock: cfg.hkStock.enabled,
+            usStock: cfg.usStock.enabled,
+            binance: cfg.binance.enabled,
+            alpha: cfg.alpha.enabled,
+          });
+
+          vscode.window.showInformationMessage(`📌 已将 "${targetName || targetSymbol}" 置顶`);
+        } catch (err: any) {
+          vscode.window.showErrorMessage(
+            `无法更新设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
+          );
+        }
+      }
+    ),
+
     // 删除自选（点击垃圾桶图标或命令触发）
     vscode.commands.registerCommand(
       "marketlens.removeItem",
@@ -678,9 +904,10 @@ export async function activate(
         let targetGroup: string | undefined;
         let targetName: string | undefined;
 
-        if (node && node.item) {
-          targetSymbol = node.item.symbol || node.item.id;
-          targetName   = node.item.name || targetSymbol;
+        if (node) {
+          targetSymbol = node.confSymbol || node.item?.symbol || node.item?.id;
+          targetGroup  = node.groupName;
+          targetName   = node.item?.name || targetSymbol;
         } else {
           // 未传 node 时弹窗供用户选择
           const allItems: { label: string; description: string; group: string; symbol: string }[] = [];
@@ -721,15 +948,21 @@ export async function activate(
         );
         if (confirm !== "删除") { return; }
 
+        const matchItem = (it: { symbol?: string; name?: string }): boolean => {
+          if (!targetSymbol) return false;
+          if (it.symbol && isSameSymbol(it.symbol, targetSymbol)) return true;
+          if (it.name && targetName && it.name.toLowerCase() === targetName.toLowerCase()) return true;
+          if (node?.item?.id && it.symbol && isSameSymbol(it.symbol, node.item.id)) return true;
+          if (node?.item?.symbol && it.symbol && isSameSymbol(it.symbol, node.item.symbol)) return true;
+          return false;
+        };
+
         // 从分组中移除该项
         let removed = false;
         for (const [grp, items] of Object.entries(watchlist)) {
           if (targetGroup && grp !== targetGroup) { continue; }
           const beforeLen = items.length;
-          const filtered = items.filter(
-            (it) => it.symbol?.toLowerCase() !== targetSymbol!.toLowerCase() &&
-                    it.name?.toLowerCase() !== targetSymbol!.toLowerCase()
-          );
+          const filtered = items.filter((it) => !matchItem(it));
           if (filtered.length !== beforeLen) {
             watchlist[grp] = filtered;
             removed = true;
@@ -739,10 +972,12 @@ export async function activate(
         // 若特定分组未匹配，进行全局清理兜底
         if (!removed) {
           for (const [grp, items] of Object.entries(watchlist)) {
-            watchlist[grp] = items.filter(
-              (it) => it.symbol?.toLowerCase() !== targetSymbol!.toLowerCase() &&
-                      it.name?.toLowerCase() !== targetSymbol!.toLowerCase()
-            );
+            const beforeLen = items.length;
+            const filtered = items.filter((it) => !matchItem(it));
+            if (filtered.length !== beforeLen) {
+              watchlist[grp] = filtered;
+              removed = true;
+            }
           }
         }
 
@@ -753,7 +988,16 @@ export async function activate(
             .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
 
           // 清理缓存
-          quoteCache.delete(targetSymbol.toLowerCase());
+          if (targetSymbol) {
+            quoteCache.delete(targetSymbol.toLowerCase());
+            quoteCache.delete(targetSymbol.toLowerCase().replace(/[\._\-]/g, ""));
+          }
+          if (node?.item?.id) {
+            quoteCache.delete(node.item.id.toLowerCase());
+          }
+          if (node?.item?.symbol) {
+            quoteCache.delete(node.item.symbol.toLowerCase());
+          }
 
           // 重新构建树视图
           treeProvider.buildTree(watchlist, quoteCache, {
@@ -777,6 +1021,10 @@ export async function activate(
       await SettingsWebviewPanel.restoreDefaults();
     }),
 
+    vscode.commands.registerCommand("marketlens.clearWatchlist", async () => {
+      await SettingsWebviewPanel.clearWatchlist();
+    }),
+
     // 配置变更监听
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("marketlens")) {
@@ -785,6 +1033,11 @@ export async function activate(
         treeProvider.setColorNeutral(config.colorNeutral);
         statusBar.setMaskMode(config.maskMode);
         statusBar.setColorNeutral(config.colorNeutral);
+        if (config.statusBar?.enabled === false) {
+          statusBar.hide();
+        } else {
+          statusBar.show();
+        }
         treeProvider.buildTree(config.watchlist, quoteCache, {
           aShare: config.aShare.enabled,
           hkStock: config.hkStock.enabled,

@@ -52,13 +52,14 @@ export interface MarketLensConfig {
   refreshInterval: number;
   maskMode: boolean;
   colorNeutral: boolean;
+  statusBar: { enabled: boolean };
 
   // ── 分板块独立设置 ──
-  aShare:  { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean };
-  hkStock: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean };
-  usStock: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean };
-  binance: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string };
-  alpha:   { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string };
+  aShare:  { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean; statusBar: boolean };
+  hkStock: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean; statusBar: boolean };
+  usStock: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean; statusBar: boolean };
+  binance: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; statusBar: boolean };
+  alpha:   { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; statusBar: boolean };
 
   // ── 自选列表 ──
   watchlist: WatchlistConfig;

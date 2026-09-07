@@ -94,9 +94,26 @@ export class StatusBar implements vscode.Disposable {
   /** 更新全量行情数据，触发显示刷新 */
   setQuotes(quotes: MarketItem[]): void {
     this.quotes = quotes;
-    this.carouselIndex = 0;
+    if (this.quotes.length === 0) {
+      this.carouselIndex = 0;
+    } else if (this.carouselIndex >= this.quotes.length) {
+      this.carouselIndex = this.carouselIndex % this.quotes.length;
+    }
     this.restartCarousel();
     this.render();
+  }
+
+  /** 显示状态栏 */
+  show(): void {
+    if (!this.bossKeyActive) {
+      this.barItem.show();
+      this.render();
+    }
+  }
+
+  /** 隐藏状态栏 */
+  hide(): void {
+    this.barItem.hide();
   }
 
   /** 切换伪装模式 */
@@ -134,13 +151,16 @@ export class StatusBar implements vscode.Disposable {
   // ── 轮播 ────────────────────────────────────────────────────────
 
   private restartCarousel(): void {
-    this.stopCarousel();
     if (this.quotes.length > StatusBar.INLINE_MAX) {
-      this.carouselTimer = setInterval(() => {
-        this.carouselIndex =
-          (this.carouselIndex + 1) % this.quotes.length;
-        this.render();
-      }, StatusBar.CAROUSEL_INTERVAL);
+      if (!this.carouselTimer) {
+        this.carouselTimer = setInterval(() => {
+          this.carouselIndex =
+            (this.carouselIndex + 1) % this.quotes.length;
+          this.render();
+        }, StatusBar.CAROUSEL_INTERVAL);
+      }
+    } else {
+      this.stopCarousel();
     }
   }
 

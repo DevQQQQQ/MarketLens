@@ -1,6 +1,7 @@
 // src/ui/watchlistProvider.ts
 import * as vscode from "vscode";
 import { MarketItem, WatchlistConfig } from "../types";
+import { isSameSymbol } from "../utils/symbolHelper";
 
 /**
  * 智能格式化价格
@@ -60,6 +61,7 @@ export class GroupItem extends vscode.TreeItem {
     public readonly children: StockItem[]
   ) {
     super(groupName, vscode.TreeItemCollapsibleState.Expanded);
+    this.id = `group_${groupName}`;
     this.contextValue = "groupItem";
     this.iconPath = new vscode.ThemeIcon("folder");
     this.description = `(${children.length})`;
@@ -70,10 +72,13 @@ export class GroupItem extends vscode.TreeItem {
 export class StockItem extends vscode.TreeItem {
   constructor(
     public item: MarketItem,
+    public groupName: string,
+    public readonly confSymbol: string,
     private maskMode: boolean,
     private colorNeutral: boolean = false
   ) {
     super(item.name || item.symbol, vscode.TreeItemCollapsibleState.None);
+    this.id = `${groupName}_${confSymbol}`;
     this.contextValue = "stockItem";
     this.refresh(item, maskMode, colorNeutral);
   }
@@ -188,8 +193,20 @@ export class StockItem extends vscode.TreeItem {
 }
 
 export class WatchlistProvider
-  implements vscode.TreeDataProvider<GroupItem | StockItem>
+  implements
+    vscode.TreeDataProvider<GroupItem | StockItem>,
+    vscode.TreeDragAndDropController<GroupItem | StockItem>
 {
+  readonly dropMimeTypes = ["application/vnd.code.tree.marketlens.watchlist"];
+  readonly dragMimeTypes = ["application/vnd.code.tree.marketlens.watchlist"];
+
+  public onReorderCallback?: (
+    sourceGroup: string,
+    sourceSymbol: string,
+    targetGroup: string,
+    targetSymbol?: string
+  ) => void | Promise<void>;
+
   private _onDidChangeTreeData = new vscode.EventEmitter<
     GroupItem | StockItem | undefined | void
   >();
@@ -202,6 +219,95 @@ export class WatchlistProvider
     private maskMode: boolean,
     private colorNeutral: boolean = false
   ) {}
+
+  handleDrag(
+    source: readonly (GroupItem | StockItem)[],
+    treeDataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): void | Thenable<void> {
+    const stockItems = source.filter(
+      (item): item is StockItem => item instanceof StockItem
+    );
+    if (stockItems.length > 0) {
+      const payload = stockItems.map((it) => ({
+        groupName: it.groupName,
+        confSymbol: it.confSymbol,
+        symbol: it.item?.symbol,
+        id: it.item?.id,
+        name: it.item?.name,
+      }));
+      treeDataTransfer.set(
+        "application/vnd.code.tree.marketlens.watchlist",
+        new vscode.DataTransferItem(payload)
+      );
+    }
+  }
+
+  async handleDrop(
+    target: GroupItem | StockItem | undefined,
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    const transferItem = dataTransfer.get(
+      "application/vnd.code.tree.marketlens.watchlist"
+    );
+    if (!transferItem) {
+      return;
+    }
+
+    let rawList: any[] = [];
+    if (Array.isArray(transferItem.value)) {
+      rawList = transferItem.value;
+    } else if (typeof transferItem.value === "string") {
+      try {
+        rawList = JSON.parse(transferItem.value);
+      } catch {}
+    } else {
+      try {
+        const str = await transferItem.asString();
+        rawList = JSON.parse(str);
+      } catch {}
+    }
+
+    if (!rawList || rawList.length === 0) {
+      return;
+    }
+
+    const dragged = rawList[0];
+    const sourceGroup = dragged.groupName;
+    const sourceSymbol =
+      dragged.confSymbol ||
+      dragged.symbol ||
+      dragged.id ||
+      (dragged.item ? (dragged.item.symbol || dragged.item.id) : undefined);
+
+    if (!sourceGroup || !sourceSymbol) {
+      return;
+    }
+
+    let targetGroup: string | undefined;
+    let targetSymbol: string | undefined;
+
+    if (target instanceof GroupItem) {
+      targetGroup = target.groupName;
+      targetSymbol = undefined;
+    } else if (target instanceof StockItem) {
+      targetGroup = target.groupName;
+      targetSymbol =
+        target.confSymbol ||
+        target.item?.symbol ||
+        target.item?.id;
+    }
+
+    if (targetGroup && this.onReorderCallback) {
+      await this.onReorderCallback(
+        sourceGroup,
+        sourceSymbol,
+        targetGroup,
+        targetSymbol
+      );
+    }
+  }
 
   isEmpty(): boolean {
     return this.groups.length === 0;
@@ -289,7 +395,7 @@ export class WatchlistProvider
             changePercent: 0,
           };
 
-        const node = new StockItem(found, this.maskMode, this.colorNeutral);
+        const node = new StockItem(found, groupName, conf.symbol, this.maskMode, this.colorNeutral);
         this.stockMap.set(key, node);
         this.stockMap.set(conf.symbol, node);
         this.stockMap.set(keyClean, node);

@@ -7,17 +7,46 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ## [1.1.1] - 2026-09-07
 
-### 🎨 UI & Usability Enhancements / 体验优化与出厂重置功能
+### 🚀 Comprehensive Enhancements & Usability Upgrades / 功能增强与交互体验升级
 
 #### English
-- **Canonical Watchlist Ordering**: Fixed watchlist group order to strictly follow the standard sequence: `A-Shares` -> `HK Stocks` -> `US Stocks` -> `Binance` -> `Alpha` regardless of configuration key insertion order.
-- **Restore Factory Defaults**: Added a one-click "Restore Default Settings" card in General Settings to allow users to easily reset all watchlist groups (A-Shares, HK, US, Binance, Alpha) and configurations back to fresh installation defaults with confirmation protection.
-- **Activation Optimization**: Replaced legacy `*` star activation with official `onStartupFinished` to improve startup performance and eliminate editor warnings.
+- **Status Bar Smooth Carousel & Independent Controls**:
+  - Resolved carousel freezing issue caused by background quote refreshes, allowing all symbols across all markets to rotate seamlessly.
+  - Added global status bar carousel toggle in General Settings (`marketlens.statusBar.enabled`).
+  - Added independent carousel toggles for each market: A-Shares (`marketlens.aShare.statusBar`), HK Stocks (`marketlens.hkStock.statusBar`), US Stocks (`marketlens.usStock.statusBar`), Binance (`marketlens.binance.statusBar`), and Alpha (`marketlens.alpha.statusBar`).
+- **Drag & Drop Reordering & Pinning**:
+  - Implemented native VS Code `TreeDragAndDropController` support. Users can long-press and drag any stock/token to reorder items within categories.
+  - Added a pin button (`$(pin)`) on hover to instantly pin any symbol to the top of its category.
+- **One-Click Clear Watchlist & Factory Reset**:
+  - Added "Clear Watchlist" in General Settings to wipe all preset symbols across all markets with safe confirmation dialog, allowing users to start from scratch.
+  - Added "Restore Factory Defaults" to reset all symbols and configs back to fresh installation state anytime.
+- **Official Telegram Community & Support**:
+  - Added official Telegram community group link (`https://t.me/+-eZR0R--jyUwN2Nl`) and author direct Telegram link (`https://t.me/Dev_QQQQQ`) with one-click open and copy buttons in the About panel.
+- **Documentation & Packaging Restructure**:
+  - Separated developer packaging instructions into dedicated `RELEASE.md`.
+  - Comprehensive rewrite of `README.md` showcasing all features and quick-start guides.
+- **Dynamic Versioning & Startup Optimization**:
+  - Settings panel automatically and dynamically fetches and displays the current extension version (`v1.1.1`) directly from package metadata.
+  - Replaced legacy `*` star activation with official `onStartupFinished` to improve startup performance.
 
 #### 中文
-- **自选分组标准排序**：锁定自选侧边栏分组排序规则，始终严格按照 `A股` -> `港股` -> `美股` -> `Binance` -> `Alpha` 标准顺序展示，不受用户配置先后影响。
-- **恢复出厂默认设置**：在【通用设置】顶部新增一键“恢复默认设置”卡片及独立命令（带二次确认弹窗），方便用户在自定义操作后一键将所有板块（A股/港股/美股/币安/Alpha）与配置还原为首次安装时的默认标的。
-- **启动事件规范化**：将旧版 `*` 激活事件替换为 VS Code 官方标准的 `onStartupFinished`，彻底消除性能警告并提升编辑器启动流畅度。
+- **底部状态栏丝滑轮播与各板块独立开关**：
+  - 彻底修复后台刷新重置索引导致的轮播卡顿在前两项的问题，实现全市场标的（A股/港股/美股/Binance/Alpha）丝滑滚动展示。
+  - 在【通用设置】中新增“全部标的参与底部轮播”总控开关（`marketlens.statusBar.enabled`），关闭后状态栏彻底隐藏。
+  - 在【A股】、【港股】、【美股】、【Binance】、【Alpha】各板块页面中分别新增独立的“参与底部轮播”开关，自由定制轮播内容。
+- **长按拖拽上下排序与一键置顶**：
+  - 支持 VS Code 原生 `TreeDragAndDropController` 拖拽规范，长按标的即可在当前分组内自由上下拖动调整排序。
+  - 标的悬停新增置顶图钉图标（`$(pin)`），点击即可一键置顶到当前分组顶部。
+- **一键清空标的与出厂默认恢复**：
+  - 新增“一键清空自选标的”卡片（带二次确认），方便从零开始添加自己关注的资产。
+  - 新增“恢复出厂默认设置”卡片，随时一键还原为系统出厂预设标的。
+- **官方 Telegram 社区与作者直联反馈**：
+  - 在“关于与帮助”页面新增官方 Telegram 交流群链接（`https://t.me/+-eZR0R--jyUwN2Nl`）及作者个人 TG 对话（`https://t.me/Dev_QQQQQ`），支持一键唤起与一键复制。
+- **文档与发布体系重构**：
+  - 将开发者打包发布指南分离至独立 `RELEASE.md`，主 `README.md` 全面扩充各项功能使用说明。
+- **动态版本号展示与启动优化**：
+  - 设置中心动态读取运行时包元数据展示版本号（`MarketLens v1.1.1`）。
+  - 规范化激活事件为 `onStartupFinished`，彻底消除性能警告。
 
 ---
 

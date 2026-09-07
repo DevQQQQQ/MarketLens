@@ -5,9 +5,10 @@ import { detectAvailableProxy } from "../services/network";
 export class SettingsWebviewPanel {
   public static currentPanel: SettingsWebviewPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
+  private readonly _version: string;
   private _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(extensionUri: vscode.Uri) {
+  public static createOrShow(extensionUri: vscode.Uri, version: string = "1.1.2") {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
@@ -27,7 +28,7 @@ export class SettingsWebviewPanel {
       }
     );
 
-    SettingsWebviewPanel.currentPanel = new SettingsWebviewPanel(panel, extensionUri);
+    SettingsWebviewPanel.currentPanel = new SettingsWebviewPanel(panel, extensionUri, version);
   }
 
   private static _generateNonce(): string {
@@ -39,8 +40,9 @@ export class SettingsWebviewPanel {
     return text;
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, version: string = "1.1.2") {
     this._panel = panel;
+    this._version = version;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._panel.webview.html = this._getHtmlForWebview();
 
@@ -73,6 +75,20 @@ export class SettingsWebviewPanel {
           case "restoreDefaults":
             await SettingsWebviewPanel.restoreDefaults();
             break;
+          case "clearWatchlist":
+            await SettingsWebviewPanel.clearWatchlist();
+            break;
+          case "openExternal":
+            if (message.url) {
+              await vscode.env.openExternal(vscode.Uri.parse(message.url));
+            }
+            break;
+          case "copyToClipboard":
+            if (message.text) {
+              await vscode.env.clipboard.writeText(message.text);
+              vscode.window.showInformationMessage(`📋 已复制到剪贴板: ${message.text}`);
+            }
+            break;
         }
       },
       null,
@@ -100,22 +116,28 @@ export class SettingsWebviewPanel {
       "refreshInterval",
       "maskMode",
       "colorNeutral",
+      "statusBar.enabled",
       "aShare.enabled",
+      "aShare.statusBar",
       "aShare.networkMode",
       "aShare.proxyUrl",
       "aShare.stopOnMarketClosed",
       "hkStock.enabled",
+      "hkStock.statusBar",
       "hkStock.networkMode",
       "hkStock.proxyUrl",
       "hkStock.stopOnMarketClosed",
       "usStock.enabled",
+      "usStock.statusBar",
       "usStock.networkMode",
       "usStock.proxyUrl",
       "usStock.stopOnMarketClosed",
       "binance.enabled",
+      "binance.statusBar",
       "binance.networkMode",
       "binance.proxyUrl",
       "alpha.enabled",
+      "alpha.statusBar",
       "alpha.networkMode",
       "alpha.proxyUrl",
     ];
@@ -135,6 +157,38 @@ export class SettingsWebviewPanel {
     return true;
   }
 
+  public static async clearWatchlist(): Promise<boolean> {
+    const confirm = await vscode.window.showWarningMessage(
+      "确定要一键清空当前所有自选标的吗？\n清空后自选列表将变为空白（保留板块分类），方便您从零开始自由添加喜欢的资产。\n（注：您后续仍可随时通过【恢复出厂默认设置】重新找回系统预设标的）",
+      { modal: true },
+      "确认清空",
+      "取消"
+    );
+    if (confirm !== "确认清空") {
+      return false;
+    }
+
+    const cfg = vscode.workspace.getConfiguration("marketlens");
+    const currentWatchlist = cfg.get<Record<string, any>>("watchlist", {});
+    const emptyWatchlist: Record<string, any[]> = {};
+    for (const group of Object.keys(currentWatchlist)) {
+      emptyWatchlist[group] = [];
+    }
+    if (!emptyWatchlist["A股"]) emptyWatchlist["A股"] = [];
+    if (!emptyWatchlist["港股"]) emptyWatchlist["港股"] = [];
+    if (!emptyWatchlist["美股"]) emptyWatchlist["美股"] = [];
+    if (!emptyWatchlist["Binance"]) emptyWatchlist["Binance"] = [];
+    if (!emptyWatchlist["Alpha"]) emptyWatchlist["Alpha"] = [];
+
+    await cfg.update("watchlist", emptyWatchlist, vscode.ConfigurationTarget.Global);
+
+    // 触发全局强制刷新
+    await vscode.commands.executeCommand("marketlens.refresh");
+
+    vscode.window.showInformationMessage("🗑️ 已成功清空所有自选标的！您可以点击自选栏顶部的加号 [+] 开始添加属于您的标的。");
+    return true;
+  }
+
   private sendCurrentSettings() {
     const cfg = vscode.workspace.getConfiguration("marketlens");
     const data = {
@@ -142,22 +196,28 @@ export class SettingsWebviewPanel {
       refreshInterval:          cfg.get<number>("refreshInterval", 5000),
       maskMode:                 cfg.get<boolean>("maskMode", false),
       colorNeutral:             cfg.get<boolean>("colorNeutral", false),
+      statusBarEnabled:         cfg.get<boolean>("statusBar.enabled", true),
       aShareEnabled:            cfg.get<boolean>("aShare.enabled", true),
+      aShareStatusBar:          cfg.get<boolean>("aShare.statusBar", true),
       aShareStopOnMarketClosed: cfg.get<boolean>("aShare.stopOnMarketClosed", true),
       aShareNetworkMode:        cfg.get<string>("aShare.networkMode", "direct"),
       aShareProxyUrl:           cfg.get<string>("aShare.proxyUrl", "http://127.0.0.1:10808"),
       hkStockEnabled:           cfg.get<boolean>("hkStock.enabled", true),
+      hkStockStatusBar:         cfg.get<boolean>("hkStock.statusBar", true),
       hkStockStopOnMarketClosed: cfg.get<boolean>("hkStock.stopOnMarketClosed", true),
       hkStockNetworkMode:       cfg.get<string>("hkStock.networkMode", "direct"),
       hkStockProxyUrl:          cfg.get<string>("hkStock.proxyUrl", "http://127.0.0.1:10808"),
       usStockEnabled:           cfg.get<boolean>("usStock.enabled", true),
+      usStockStatusBar:         cfg.get<boolean>("usStock.statusBar", true),
       usStockStopOnMarketClosed: cfg.get<boolean>("usStock.stopOnMarketClosed", true),
       usStockNetworkMode:       cfg.get<string>("usStock.networkMode", "direct"),
       usStockProxyUrl:          cfg.get<string>("usStock.proxyUrl", "http://127.0.0.1:10808"),
       binanceEnabled:           cfg.get<boolean>("binance.enabled", true),
+      binanceStatusBar:         cfg.get<boolean>("binance.statusBar", true),
       binanceNetworkMode:       cfg.get<string>("binance.networkMode", "proxy"),
       binanceProxyUrl:          cfg.get<string>("binance.proxyUrl", "http://127.0.0.1:10808"),
       alphaEnabled:             cfg.get<boolean>("alpha.enabled", true),
+      alphaStatusBar:           cfg.get<boolean>("alpha.statusBar", true),
       alphaNetworkMode:         cfg.get<string>("alpha.networkMode", "proxy"),
       alphaProxyUrl:            cfg.get<string>("alpha.proxyUrl", "http://127.0.0.1:10808"),
     };
@@ -371,6 +431,46 @@ export class SettingsWebviewPanel {
       border-color: rgba(244, 135, 113, 0.6);
       color: #fff;
     }
+    .btn-clear {
+      background: rgba(239, 68, 68, 0.12);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-clear:hover {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: rgba(239, 68, 68, 0.6);
+      color: #fff;
+    }
+    .btn-telegram {
+      background: #0088cc;
+      color: #ffffff;
+      border: 1px solid #0088cc;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-telegram:hover {
+      background: #0077b5;
+      border-color: #0077b5;
+      color: #ffffff;
+    }
 
     .toast {
       position: fixed; bottom: 24px; right: 24px;
@@ -414,6 +514,22 @@ export class SettingsWebviewPanel {
             <div class="card-desc">将所有自选标的列表（A股、港股、美股、Binance、Alpha）恢复为首次安装时的初始预设，并还原所有配置项。</div>
           </div>
           <button class="btn-restore" id="btnRestoreDefaults">🔄 恢复默认设置</button>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">一键清空自选标的</div>
+            <div class="card-desc">一键清空当前所有板块（A股、港股、美股、Binance、Alpha）的自选标的，保留板块分类，方便您从零开始自定义添加喜欢的资产。</div>
+          </div>
+          <button class="btn-clear" id="btnClearWatchlist">🗑️ 一键清空标的</button>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">全部标的参与底部轮播</div>
+            <div class="card-desc">控制 VS Code 底部状态栏是否展示行情轮播。关闭后底部状态栏将完全隐藏自选行情。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="statusBarEnabled"><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -479,6 +595,14 @@ export class SettingsWebviewPanel {
 
         <div class="card">
           <div class="card-info">
+            <div class="card-title">A股标的参与底部轮播</div>
+            <div class="card-desc">控制 A 股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="aShareStatusBar"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
             <div class="card-title">A股闭市期间停止轮询</div>
             <div class="card-desc">开启后仅在 A 股交易时段（北京时间 9:15–11:30, 13:00–15:05）请求数据，休市与周末停止拉取。</div>
           </div>
@@ -525,6 +649,14 @@ export class SettingsWebviewPanel {
             <div class="card-desc">是否在左侧看板展示港股相关自选分组。</div>
           </div>
           <label class="switch"><input type="checkbox" id="hkStockEnabled"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">港股标的参与底部轮播</div>
+            <div class="card-desc">控制港股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="hkStockStatusBar"><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -579,6 +711,14 @@ export class SettingsWebviewPanel {
 
         <div class="card">
           <div class="card-info">
+            <div class="card-title">美股标的参与底部轮播</div>
+            <div class="card-desc">控制美股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="usStockStatusBar"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
             <div class="card-title">美股闭市期间停止轮询</div>
             <div class="card-desc">开启后仅在美股交易时段（北京时间工作日 21:00 至次日凌晨 5:00）请求数据，非交易时段展示收盘价。</div>
           </div>
@@ -629,6 +769,14 @@ export class SettingsWebviewPanel {
 
         <div class="card">
           <div class="card-info">
+            <div class="card-title">Binance标的参与底部轮播</div>
+            <div class="card-desc">控制 Binance 主流代币是否在 VS Code 底部状态栏循环轮播展示。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="binanceStatusBar"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
             <div class="card-title">网络访问模式 (防公司审计)</div>
             <div class="card-desc">
               在公司网络下强烈建议保持<b>强制代理</b>，插件将绝对阻止直连包，杜绝网关产生访问记录。
@@ -667,6 +815,14 @@ export class SettingsWebviewPanel {
             <div class="card-desc">是否在侧边栏展示链上 DEX 代币行情。</div>
           </div>
           <label class="switch"><input type="checkbox" id="alphaEnabled"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">Alpha标的参与底部轮播</div>
+            <div class="card-desc">控制 Alpha 链上代币是否在 VS Code 底部状态栏循环轮播展示。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="alphaStatusBar"><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -717,8 +873,25 @@ export class SettingsWebviewPanel {
         </div>
         <div class="card">
           <div class="card-info">
+            <div class="card-title">问题反馈与社区交流</div>
+            <div class="card-desc">遇到 Bug、行情数据异常或有新功能建议？欢迎加入官方 Telegram 交流群，或直接联系作者个人 TG 交流反馈。</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn-telegram" id="btnJoinTelegram" style="width: 175px; justify-content: center;">✈️ 进入 Telegram 交流群</button>
+              <button class="btn-shortcut" id="btnCopyTelegram" title="复制群链接到剪贴板">📋 复制链接</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn-telegram" id="btnJoinPersonalTelegram" style="width: 175px; justify-content: center; background: #2AABEE; border-color: #2AABEE;">💬 联系作者个人 TG</button>
+              <button class="btn-shortcut" id="btnCopyPersonalTelegram" title="复制个人链接到剪贴板">📋 复制链接</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
             <div class="card-title">版本信息</div>
-            <div class="card-desc">MarketLens v1.0.0 · 由 DevQQQQQ 打造</div>
+            <div class="card-desc">MarketLens v${this._version.replace(/^v/i, "")} · 由 DevQQQQQ 打造</div>
           </div>
         </div>
       </div>
@@ -824,6 +997,9 @@ export class SettingsWebviewPanel {
       on('btnRestoreDefaults', 'click', function() {
         vscode.postMessage({ command: 'restoreDefaults' });
       });
+      on('btnClearWatchlist', 'click', function() {
+        vscode.postMessage({ command: 'clearWatchlist' });
+      });
       on('autoRefresh', 'change', function() { sendUpdate('autoRefresh', this.checked); });
       on('refreshInterval', 'change', function() {
         var val = parseInt(this.value, 10);
@@ -831,6 +1007,7 @@ export class SettingsWebviewPanel {
       });
       on('maskMode', 'change', function() { sendUpdate('maskMode', this.checked); });
       on('colorNeutral', 'change', function() { sendUpdate('colorNeutral', this.checked); });
+      on('statusBarEnabled', 'change', function() { sendUpdate('statusBar.enabled', this.checked); });
 
       // 自定义快捷键跳转
       on('btnKeybindMask', 'click', function() {
@@ -843,8 +1020,25 @@ export class SettingsWebviewPanel {
         vscode.postMessage({ command: 'openKeybindings', query: 'marketlens' });
       });
 
+      // Telegram 社区交流与反馈
+      on('btnJoinTelegram', 'click', function() {
+        vscode.postMessage({ command: 'openExternal', url: 'https://t.me/+-eZR0R--jyUwN2Nl' });
+      });
+      on('btnCopyTelegram', 'click', function() {
+        vscode.postMessage({ command: 'copyToClipboard', text: 'https://t.me/+-eZR0R--jyUwN2Nl' });
+        showToast('📋 已复制 Telegram 群链接');
+      });
+      on('btnJoinPersonalTelegram', 'click', function() {
+        vscode.postMessage({ command: 'openExternal', url: 'https://t.me/Dev_QQQQQ' });
+      });
+      on('btnCopyPersonalTelegram', 'click', function() {
+        vscode.postMessage({ command: 'copyToClipboard', text: 'https://t.me/Dev_QQQQQ' });
+        showToast('📋 已复制作者个人 TG 链接');
+      });
+
       // A股
       on('aShareEnabled', 'change', function() { sendUpdate('aShare.enabled', this.checked); });
+      on('aShareStatusBar', 'change', function() { sendUpdate('aShare.statusBar', this.checked); });
       on('aShareStopOnMarketClosed', 'change', function() { sendUpdate('aShare.stopOnMarketClosed', this.checked); });
       on('aShareNetDirect', 'change', function() { handleNetChange('aShare', 'direct'); });
       on('aShareNetProxy', 'change', function() { handleNetChange('aShare', 'proxy'); });
@@ -853,6 +1047,7 @@ export class SettingsWebviewPanel {
 
       // 港股
       on('hkStockEnabled', 'change', function() { sendUpdate('hkStock.enabled', this.checked); });
+      on('hkStockStatusBar', 'change', function() { sendUpdate('hkStock.statusBar', this.checked); });
       on('hkStockStopOnMarketClosed', 'change', function() { sendUpdate('hkStock.stopOnMarketClosed', this.checked); });
       on('hkStockNetDirect', 'change', function() { handleNetChange('hkStock', 'direct'); });
       on('hkStockNetProxy', 'change', function() { handleNetChange('hkStock', 'proxy'); });
@@ -861,6 +1056,7 @@ export class SettingsWebviewPanel {
 
       // 美股
       on('usStockEnabled', 'change', function() { sendUpdate('usStock.enabled', this.checked); });
+      on('usStockStatusBar', 'change', function() { sendUpdate('usStock.statusBar', this.checked); });
       on('usStockStopOnMarketClosed', 'change', function() { sendUpdate('usStock.stopOnMarketClosed', this.checked); });
       on('usStockNetDirect', 'change', function() { handleNetChange('usStock', 'direct'); });
       on('usStockNetProxy', 'change', function() { handleNetChange('usStock', 'proxy'); });
@@ -869,6 +1065,7 @@ export class SettingsWebviewPanel {
 
       // Binance
       on('binanceEnabled', 'change', function() { sendUpdate('binance.enabled', this.checked); });
+      on('binanceStatusBar', 'change', function() { sendUpdate('binance.statusBar', this.checked); });
       on('binanceNetDirect', 'change', function() { handleNetChange('binance', 'direct'); });
       on('binanceNetProxy', 'change', function() { handleNetChange('binance', 'proxy'); });
       on('binanceProxyUrl', 'blur', function() { handleProxyBlur('binance.proxyUrl', this); });
@@ -876,6 +1073,7 @@ export class SettingsWebviewPanel {
 
       // Alpha
       on('alphaEnabled', 'change', function() { sendUpdate('alpha.enabled', this.checked); });
+      on('alphaStatusBar', 'change', function() { sendUpdate('alpha.statusBar', this.checked); });
       on('alphaNetDirect', 'change', function() { handleNetChange('alpha', 'direct'); });
       on('alphaNetProxy', 'change', function() { handleNetChange('alpha', 'proxy'); });
       on('alphaProxyUrl', 'blur', function() { handleProxyBlur('alpha.proxyUrl', this); });
@@ -911,13 +1109,15 @@ export class SettingsWebviewPanel {
           function setChecked(id, val) { var el = document.getElementById(id); if (el) el.checked = !!val; }
           function setValue(id, val)   { var el = document.getElementById(id); if (el) el.value = val; }
 
-          setChecked('autoRefresh',    d.autoRefresh);
-          setValue('refreshInterval',  d.refreshInterval);
-          setChecked('maskMode',       d.maskMode);
-          setChecked('colorNeutral',   d.colorNeutral);
+          setChecked('autoRefresh',      d.autoRefresh);
+          setValue('refreshInterval',    d.refreshInterval);
+          setChecked('maskMode',         d.maskMode);
+          setChecked('colorNeutral',     d.colorNeutral);
+          setChecked('statusBarEnabled', d.statusBarEnabled);
 
           // A股
           setChecked('aShareEnabled',            d.aShareEnabled);
+          setChecked('aShareStatusBar',          d.aShareStatusBar);
           setChecked('aShareStopOnMarketClosed',  d.aShareStopOnMarketClosed);
           if (d.aShareNetworkMode === 'proxy') {
             setChecked('aShareNetProxy', true);
@@ -930,6 +1130,7 @@ export class SettingsWebviewPanel {
 
           // 港股
           setChecked('hkStockEnabled',            d.hkStockEnabled);
+          setChecked('hkStockStatusBar',          d.hkStockStatusBar);
           setChecked('hkStockStopOnMarketClosed',  d.hkStockStopOnMarketClosed);
           if (d.hkStockNetworkMode === 'proxy') {
             setChecked('hkStockNetProxy', true);
@@ -942,6 +1143,7 @@ export class SettingsWebviewPanel {
 
           // 美股
           setChecked('usStockEnabled',            d.usStockEnabled);
+          setChecked('usStockStatusBar',          d.usStockStatusBar);
           setChecked('usStockStopOnMarketClosed',  d.usStockStopOnMarketClosed);
           if (d.usStockNetworkMode === 'proxy') {
             setChecked('usStockNetProxy', true);
@@ -953,7 +1155,8 @@ export class SettingsWebviewPanel {
           setValue('usStockProxyUrl', d.usStockProxyUrl);
 
           // Binance
-          setChecked('binanceEnabled', d.binanceEnabled);
+          setChecked('binanceEnabled',   d.binanceEnabled);
+          setChecked('binanceStatusBar', d.binanceStatusBar);
           if (d.binanceNetworkMode === 'proxy') {
             setChecked('binanceNetProxy', true);
             applyProxyCardVisibility('binance', 'proxy');
@@ -964,7 +1167,8 @@ export class SettingsWebviewPanel {
           setValue('binanceProxyUrl', d.binanceProxyUrl);
 
           // Alpha
-          setChecked('alphaEnabled', d.alphaEnabled);
+          setChecked('alphaEnabled',   d.alphaEnabled);
+          setChecked('alphaStatusBar', d.alphaStatusBar);
           if (d.alphaNetworkMode === 'proxy') {
             setChecked('alphaNetProxy', true);
             applyProxyCardVisibility('alpha', 'proxy');

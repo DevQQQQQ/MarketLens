@@ -97,6 +97,16 @@
 				"command": "marketlens.restoreDefaults",
 				"title": "恢复出厂默认设置",
 				"icon": "$(discard)"
+			},
+			{
+				"command": "marketlens.clearWatchlist",
+				"title": "一键清空自选标的",
+				"icon": "$(clear-all)"
+			},
+			{
+				"command": "marketlens.pinToTop",
+				"title": "置顶",
+				"icon": "$(pin)"
 			}
 		],
 		"keybindings": [
@@ -169,9 +179,14 @@
 					"group": "inline"
 				},
 				{
+					"command": "marketlens.pinToTop",
+					"when": "view == marketlens.watchlist && viewItem == stockItem",
+					"group": "inline@1"
+				},
+				{
 					"command": "marketlens.removeItem",
 					"when": "view == marketlens.watchlist && viewItem == stockItem",
-					"group": "inline"
+					"group": "inline@2"
 				}
 			]
 		},
@@ -203,6 +218,12 @@
 					"default": false,
 					"order": 4,
 					"description": "【全局】中性色彩模式：关闭红绿色彩标记，使用编辑器默认主题文本颜色"
+				},
+				"marketlens.statusBar.enabled": {
+					"type": "boolean",
+					"default": true,
+					"order": 5,
+					"description": "【全局】全部标的参与底部轮播：是否在底部状态栏轮播展示行情（关闭后彻底隐藏底部状态栏）"
 				},
 				"marketlens.aShare.enabled": {
 					"type": "boolean",
@@ -236,6 +257,12 @@
 					"order": 13,
 					"description": "【A股板块】闭市期间停止轮询（开启后仅在 A 股交易时段 9:15-11:30, 13:00-15:05 请求数据）"
 				},
+				"marketlens.aShare.statusBar": {
+					"type": "boolean",
+					"default": true,
+					"order": 14,
+					"description": "【A股板块】A股标的是否参与底部状态栏轮播"
+				},
 				"marketlens.hkStock.enabled": {
 					"type": "boolean",
 					"default": true,
@@ -267,6 +294,12 @@
 					"default": true,
 					"order": 17,
 					"description": "【港股板块】闭市期间停止轮询（开启后仅在港股交易时段 9:30-12:00, 13:00-16:10 请求数据）"
+				},
+				"marketlens.hkStock.statusBar": {
+					"type": "boolean",
+					"default": true,
+					"order": 18,
+					"description": "【港股板块】港股标的是否参与底部状态栏轮播"
 				},
 				"marketlens.usStock.enabled": {
 					"type": "boolean",
@@ -300,6 +333,12 @@
 					"order": 21,
 					"description": "【美股板块】闭市期间停止轮询（开启后仅在美股交易时段工作日 21:00 至次日 05:00 请求数据）"
 				},
+				"marketlens.usStock.statusBar": {
+					"type": "boolean",
+					"default": true,
+					"order": 22,
+					"description": "【美股板块】美股标的是否参与底部状态栏轮播"
+				},
 				"marketlens.binance.enabled": {
 					"type": "boolean",
 					"default": true,
@@ -326,6 +365,12 @@
 					"order": 22,
 					"description": "【Binance板块】代理地址（支持自动探测 10808, 10809, 7890, 7897, 2080, 1080 等本地端口）"
 				},
+				"marketlens.binance.statusBar": {
+					"type": "boolean",
+					"default": true,
+					"order": 23,
+					"description": "【Binance板块】Binance标的是否参与底部状态栏轮播"
+				},
 				"marketlens.alpha.enabled": {
 					"type": "boolean",
 					"default": true,
@@ -351,6 +396,12 @@
 					"default": "http://127.0.0.1:10808",
 					"order": 32,
 					"description": "【Alpha板块】代理地址（支持自动探测主流代理客户端端口）"
+				},
+				"marketlens.alpha.statusBar": {
+					"type": "boolean",
+					"default": true,
+					"order": 33,
+					"description": "【Alpha板块】Alpha标的是否参与底部状态栏轮播"
 				},
 				"marketlens.watchlist": {
 					"type": "object",
