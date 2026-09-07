@@ -411,6 +411,11 @@
 						],
 						"港股": [
 							{
+								"symbol": "hk06030",
+								"name": "中信证券",
+								"type": "HK_STOCK"
+							},
+							{
 								"symbol": "hk00700",
 								"name": "腾讯控股",
 								"type": "HK_STOCK"
@@ -428,11 +433,6 @@
 							{
 								"symbol": "hk00981",
 								"name": "中芯国际",
-								"type": "HK_STOCK"
-							},
-							{
-								"symbol": "hk06030",
-								"name": "中信证券",
 								"type": "HK_STOCK"
 							},
 							{
@@ -500,6 +500,11 @@
 								"type": "CRYPTO"
 							},
 							{
+								"symbol": "ETCUSDT",
+								"name": "ETC/USDT",
+								"type": "CRYPTO"
+							},
+							{
 								"symbol": "SOLUSDT",
 								"name": "SOL/USDT",
 								"type": "CRYPTO"
@@ -507,11 +512,6 @@
 							{
 								"symbol": "BNBUSDT",
 								"name": "BNB/USDT",
-								"type": "CRYPTO"
-							},
-							{
-								"symbol": "DOGEUSDT",
-								"name": "DOGE/USDT",
 								"type": "CRYPTO"
 							},
 							{
@@ -530,6 +530,11 @@
 								"type": "CRYPTO"
 							},
 							{
+								"symbol": "DOGEUSDT",
+								"name": "DOGE/USDT",
+								"type": "CRYPTO"
+							},
+							{
 								"symbol": "ORDIUSDT",
 								"name": "ORDI/USDT",
 								"type": "CRYPTO"
@@ -537,11 +542,6 @@
 							{
 								"symbol": "ASTERUSDT",
 								"name": "ASTER/USDT",
-								"type": "CRYPTO"
-							},
-							{
-								"symbol": "ETCUSDT",
-								"name": "ETC/USDT",
 								"type": "CRYPTO"
 							},
 							{
@@ -557,13 +557,23 @@
 								"type": "ALPHA_TOKEN"
 							},
 							{
-								"symbol": "0x28cd1fc7b6eebf46b59001ff49c9d14f8bb97777",
-								"name": "翻身币",
+								"symbol": "0x924fa68a0fc644485b8df8abfa0a41c2e7744444",
+								"name": "币安人生",
 								"type": "ALPHA_TOKEN"
 							},
 							{
-								"symbol": "0x4fa7c69a7b69f8bc48233024d546bc299d6b03bf",
-								"name": "quq",
+								"symbol": "0x82ec31d69b3c289e541b50e30681fd1acad24444",
+								"name": "哈基米",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x3ac8e2c113d5d7824ac6ebe82a3c60b1b9d64444",
+								"name": "客服小何",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x0a43fc31a73013089df59194872ecae4cae14444",
+								"name": "4",
 								"type": "ALPHA_TOKEN"
 							},
 							{
@@ -572,8 +582,18 @@
 								"type": "ALPHA_TOKEN"
 							},
 							{
+								"symbol": "0x4fa7c69a7b69f8bc48233024d546bc299d6b03bf",
+								"name": "quq",
+								"type": "ALPHA_TOKEN"
+							},
+							{
 								"symbol": "0x02e75d28a8aa2a0033b8cf866fcf0bb0e1ee4444",
 								"name": "PALU",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0xa49fa5e8106e2d6d6a69e78df9b6a20aab9c4444",
+								"name": "DONKEY",
 								"type": "ALPHA_TOKEN"
 							},
 							{
@@ -587,28 +607,8 @@
 								"type": "ALPHA_TOKEN"
 							},
 							{
-								"symbol": "0xa49fa5e8106e2d6d6a69e78df9b6a20aab9c4444",
-								"name": "DONKEY",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0x0a43fc31a73013089df59194872ecae4cae14444",
-								"name": "4",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0x3ac8e2c113d5d7824ac6ebe82a3c60b1b9d64444",
-								"name": "客服小何",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0x82ec31d69b3c289e541b50e30681fd1acad24444",
-								"name": "哈基米",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0x924fa68a0fc644485b8df8abfa0a41c2e7744444",
-								"name": "币安人生",
+								"symbol": "0x28cd1fc7b6eebf46b59001ff49c9d14f8bb97777",
+								"name": "翻身币",
 								"type": "ALPHA_TOKEN"
 							}
 						]
