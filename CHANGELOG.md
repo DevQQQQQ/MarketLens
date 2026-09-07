@@ -5,6 +5,62 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ---
 
+## [1.1.1] - 2026-09-07
+
+### 🎨 UI & Usability Enhancements / 体验优化与出厂重置功能
+
+#### English
+- **Canonical Watchlist Ordering**: Fixed watchlist group order to strictly follow the standard sequence: `A-Shares` -> `HK Stocks` -> `US Stocks` -> `Binance` -> `Alpha` regardless of configuration key insertion order.
+- **Restore Factory Defaults**: Added a one-click "Restore Default Settings" card in General Settings to allow users to easily reset all watchlist groups (A-Shares, HK, US, Binance, Alpha) and configurations back to fresh installation defaults with confirmation protection.
+- **Activation Optimization**: Replaced legacy `*` star activation with official `onStartupFinished` to improve startup performance and eliminate editor warnings.
+
+#### 中文
+- **自选分组标准排序**：锁定自选侧边栏分组排序规则，始终严格按照 `A股` -> `港股` -> `美股` -> `Binance` -> `Alpha` 标准顺序展示，不受用户配置先后影响。
+- **恢复出厂默认设置**：在【通用设置】顶部新增一键“恢复默认设置”卡片及独立命令（带二次确认弹窗），方便用户在自定义操作后一键将所有板块（A股/港股/美股/币安/Alpha）与配置还原为首次安装时的默认标的。
+- **启动事件规范化**：将旧版 `*` 激活事件替换为 VS Code 官方标准的 `onStartupFinished`，彻底消除性能警告并提升编辑器启动流畅度。
+
+---
+
+## [1.1.0] - 2026-09-07
+
+### 🚀 Major Feature Release: HK & US Stocks / 重磅新增：港股与美股市场支持
+
+#### English
+- **Hong Kong Stocks (HK Stocks)**:
+  - Full support for HK stocks via Tencent Finance API (`hk00700`, `hk03690`, `hk09988`, `hk06030`, `hk01810`, etc.).
+  - Multi-currency display with `HK$` Hong Kong Dollars in tooltips, tree items, and detail cards.
+  - Intelligent closed-market detection for HK trading hours (09:30-12:00, 13:00-16:10).
+- **US Stocks & Indices**:
+  - Full support for US stocks (`AAPL`, `NVDA`, `TSLA`, `NET`, `TSM`, `AMD`, `AVGO`, `ARM`, etc.) and market indices (`.IXIC`, etc.).
+  - Multi-currency display with `$` US Dollars.
+  - Intelligent trading hours detection for US market (21:00 to 05:00 next day).
+- **Settings & Management**:
+  - Independent settings tabs in the Settings Webview for HK and US stocks, supporting direct connection or proxy routing, stop polling during market closure, and auto proxy detection.
+  - Smart input parser automatically identifies 5-digit codes as HK stocks, English letter codes as US stocks, and provides instant group suggestions.
+- **Default Watchlists & Instant Display**:
+  - Expanded Binance default crypto list (`BTC`, `ETH`, `SOL`, `BNB`, `DOGE`, `ARB`, `OP`, `APT`, `ORDI`, `ASTER`, `ETC`, `LUNA`).
+  - Added popular on-chain Alpha tokens deduplicated and automatically resolved with readable token symbols (`翻身币`, `quq`, `人生K线`, `PALU`, `恶俗企鹅`, `我踏马来了`, `DONKEY`, `4`, `客服小何`, `哈基米`, `币安人生`, etc.).
+  - Pre-configured trending US tech stocks and HK blue-chip stocks.
+  - Zero-wait initial display: Immediately renders the tree skeleton on startup and guarantees instant first-load quote retrieval even during market closure or weekends.
+
+#### 中文
+- **港股市场板块**：
+  - 接入腾讯官方港股接口，支持全部港股标的（如 `hk00700` 腾讯控股、`hk03690` 美团、`hk09988` 阿里巴巴、`hk00981` 中芯国际、`hk06030` 中信证券、`hk01810` 小米集团等）。
+  - 支持 `HK$` 港币多币种专属结算与悬停卡片展示（含开盘、昨收、高低、成交量(股)、成交额(港币)）。
+  - 港股智能休市检测（工作日 09:30-12:00, 13:00-16:10），闭市期间自动停止高频轮询节约资源。
+- **美股市场板块**：
+  - 接入腾讯官方美股接口，支持美股个股（`AAPL` 苹果、`NVDA` 英伟达、`TSLA` 特斯拉、`NET` Cloudflare、`TSM` 台积电、`AMD` 超威半导体、`AVGO` 博通、`ARM` 安谋等）及主要指数（如 `.IXIC` 纳斯达克指数）。
+  - 支持 `$` 美元专属结算展示。
+  - 美股智能交易时段检测（工作日 21:00 至次日凌晨 05:00），夜间盘中自动跟踪。
+- **设置与交互体验升级**：
+  - 设置面板中新增独立的【港股市场】与【美股市场】专栏配置，支持开关、闭市休眠、直连/代理切换与一键代理探测。
+  - 添加自选智能识别器升级：输入 5 位数字或 `hk` 前缀自动匹配港股；输入纯英文字母代码（如 `AAPL`）自动推荐美股。
+- **自选预设与秒级开箱体验**：
+  - 扩充出厂默认自选库：Binance 新增 SOL、BNB、DOGE、ARB、OP、APT、ORDI、ASTER 等主流与热门币种；Alpha 板块新增 11 个经过链上去重并智能解析出代币简称（翻身币、quq、人生K线、PALU、恶俗企鹅、我踏马来了、DONKEY、4、客服小何、哈基米、币安人生等）的链上标的；美股预设包含 Cloudflare 及热门芯片龙头股。
+  - 首次启动秒级展示：启动时立即展示标的骨架，无需空白等待；首次刷新强制穿透拉取最新收盘价，彻底解决“安装后首次打开无价格”问题。
+
+---
+
 ## [1.0.0] - 2026-09-06
 
 ### 🚀 Major Release / 正式发布

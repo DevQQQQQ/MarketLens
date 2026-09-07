@@ -70,11 +70,69 @@ export class SettingsWebviewPanel {
               message.query || "marketlens"
             );
             break;
+          case "restoreDefaults":
+            await SettingsWebviewPanel.restoreDefaults();
+            break;
         }
       },
       null,
       this._disposables
     );
+  }
+
+  public static async restoreDefaults(): Promise<boolean> {
+    const confirm = await vscode.window.showWarningMessage(
+      "确定要将 MarketLens 恢复为出厂默认设置吗？\n所有自选标的列表将重置为初始预设（A股10只/港股6只/美股9只/Binance12个/Alpha12个），自定义配置也将还原。",
+      { modal: true },
+      "确认恢复",
+      "取消"
+    );
+    if (confirm !== "确认恢复") {
+      return false;
+    }
+
+    const cfg = vscode.workspace.getConfiguration("marketlens");
+    // 先清空核心 watchlist
+    await cfg.update("watchlist", undefined, vscode.ConfigurationTarget.Global);
+
+    const keys = [
+      "autoRefresh",
+      "refreshInterval",
+      "maskMode",
+      "colorNeutral",
+      "aShare.enabled",
+      "aShare.networkMode",
+      "aShare.proxyUrl",
+      "aShare.stopOnMarketClosed",
+      "hkStock.enabled",
+      "hkStock.networkMode",
+      "hkStock.proxyUrl",
+      "hkStock.stopOnMarketClosed",
+      "usStock.enabled",
+      "usStock.networkMode",
+      "usStock.proxyUrl",
+      "usStock.stopOnMarketClosed",
+      "binance.enabled",
+      "binance.networkMode",
+      "binance.proxyUrl",
+      "alpha.enabled",
+      "alpha.networkMode",
+      "alpha.proxyUrl",
+    ];
+
+    for (const k of keys) {
+      await cfg.update(k, undefined, vscode.ConfigurationTarget.Global);
+    }
+
+    if (SettingsWebviewPanel.currentPanel) {
+      SettingsWebviewPanel.currentPanel.sendCurrentSettings();
+    }
+
+    // 触发全局强制刷新全部最新行情
+    await vscode.commands.executeCommand("marketlens.refresh");
+
+    vscode.window.showInformationMessage("✅ MarketLens 已成功恢复为出厂默认设置，并已刷新全部实时行情！");
+    return true;
   }
 
   private sendCurrentSettings() {
@@ -88,6 +146,14 @@ export class SettingsWebviewPanel {
       aShareStopOnMarketClosed: cfg.get<boolean>("aShare.stopOnMarketClosed", true),
       aShareNetworkMode:        cfg.get<string>("aShare.networkMode", "direct"),
       aShareProxyUrl:           cfg.get<string>("aShare.proxyUrl", "http://127.0.0.1:10808"),
+      hkStockEnabled:           cfg.get<boolean>("hkStock.enabled", true),
+      hkStockStopOnMarketClosed: cfg.get<boolean>("hkStock.stopOnMarketClosed", true),
+      hkStockNetworkMode:       cfg.get<string>("hkStock.networkMode", "direct"),
+      hkStockProxyUrl:          cfg.get<string>("hkStock.proxyUrl", "http://127.0.0.1:10808"),
+      usStockEnabled:           cfg.get<boolean>("usStock.enabled", true),
+      usStockStopOnMarketClosed: cfg.get<boolean>("usStock.stopOnMarketClosed", true),
+      usStockNetworkMode:       cfg.get<string>("usStock.networkMode", "direct"),
+      usStockProxyUrl:          cfg.get<string>("usStock.proxyUrl", "http://127.0.0.1:10808"),
       binanceEnabled:           cfg.get<boolean>("binance.enabled", true),
       binanceNetworkMode:       cfg.get<string>("binance.networkMode", "proxy"),
       binanceProxyUrl:          cfg.get<string>("binance.proxyUrl", "http://127.0.0.1:10808"),
@@ -285,6 +351,26 @@ export class SettingsWebviewPanel {
       color: var(--primary-fg);
       border-color: var(--primary);
     }
+    .btn-restore {
+      background: rgba(244, 135, 113, 0.12);
+      color: var(--vscode-errorForeground, #f48771);
+      border: 1px solid rgba(244, 135, 113, 0.35);
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-restore:hover {
+      background: rgba(244, 135, 113, 0.25);
+      border-color: rgba(244, 135, 113, 0.6);
+      color: #fff;
+    }
 
     .toast {
       position: fixed; bottom: 24px; right: 24px;
@@ -305,6 +391,8 @@ export class SettingsWebviewPanel {
     </div>
     <div id="nav-general" class="nav-item active"><span class="icon">⚙️</span><span>通用设置</span></div>
     <div id="nav-ashare"  class="nav-item"><span class="icon">🇨🇳</span><span>A股板块</span></div>
+    <div id="nav-hkstock" class="nav-item"><span class="icon">🇭🇰</span><span>港股板块</span></div>
+    <div id="nav-usstock" class="nav-item"><span class="icon">🇺🇸</span><span>美股板块</span></div>
     <div id="nav-binance" class="nav-item"><span class="icon">🟡</span><span>Binance板块</span></div>
     <div id="nav-alpha"   class="nav-item"><span class="icon">🦄</span><span>Alpha板块</span></div>
     <div id="nav-about"   class="nav-item"><span class="icon">ℹ️</span><span>关于与帮助</span></div>
@@ -320,6 +408,14 @@ export class SettingsWebviewPanel {
         <p>控制全局刷新调度、摸鱼模式与视觉脱敏</p>
       </div>
       <div class="card-list">
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">恢复出厂默认设置</div>
+            <div class="card-desc">将所有自选标的列表（A股、港股、美股、Binance、Alpha）恢复为首次安装时的初始预设，并还原所有配置项。</div>
+          </div>
+          <button class="btn-restore" id="btnRestoreDefaults">🔄 恢复默认设置</button>
+        </div>
+
         <div class="card">
           <div class="card-info">
             <div class="card-title">定时自动刷新</div>
@@ -353,10 +449,10 @@ export class SettingsWebviewPanel {
         <div class="card">
           <div class="card-info">
             <div class="card-title" style="display: flex; align-items: center; gap: 8px;">
-              <span>颜色脱敏 (Color Neutral)</span>
+              <span>颜色脱敏模式</span>
               <span class="shortcut-tag">Ctrl+Alt+C</span>
             </div>
-            <div class="card-desc">关闭红绿色视觉刺激，所有价格与图标使用系统默认字体颜色，避免路过同事察觉。</div>
+            <div class="card-desc">开启后所有涨跌数值使用编辑器默认中性颜色，关闭红绿配色刺激，防止旁观者察觉。</div>
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
             <button class="btn-shortcut" id="btnKeybindColor" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
@@ -366,17 +462,17 @@ export class SettingsWebviewPanel {
       </div>
     </div>
 
-    <!-- 2. A股板块 -->
+    <!-- 2. A 股板块 -->
     <div id="tab-ashare" class="tab-pane">
       <div class="section-header">
         <h1>A股市场设置</h1>
-        <p>配置国内沪深京 A 股行情抓取选项</p>
+        <p>配置沪深京全市场股票与指数的抓取策略</p>
       </div>
       <div class="card-list">
         <div class="card">
           <div class="card-info">
-            <div class="card-title">启用 A 股市场分组</div>
-            <div class="card-desc">取消勾选后将在侧边栏自选中完全隐藏 A 股分组。</div>
+            <div class="card-title">启用 A 股分组</div>
+            <div class="card-desc">是否在左侧看板展示 A 股相关自选分组。</div>
           </div>
           <label class="switch"><input type="checkbox" id="aShareEnabled"><span class="slider"></span></label>
         </div>
@@ -411,6 +507,106 @@ export class SettingsWebviewPanel {
           <div class="proxy-input-box">
             <input type="text" id="aShareProxyUrl" style="width: 220px;">
             <button class="btn-detect" id="btnDetectAshare">⚡ 探测代理</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 港股板块 -->
+    <div id="tab-hkstock" class="tab-pane">
+      <div class="section-header">
+        <h1>港股市场设置 (HK Stocks)</h1>
+        <p>配置港股市场（腾讯控股、美团、阿里巴巴等）的抓取策略</p>
+      </div>
+      <div class="card-list">
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">启用港股分组</div>
+            <div class="card-desc">是否在左侧看板展示港股相关自选分组。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="hkStockEnabled"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">港股闭市期间停止轮询</div>
+            <div class="card-desc">开启后仅在港股交易时段（北京时间 9:30–12:00, 13:00–16:10）请求数据，休市与周末停止拉取。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="hkStockStopOnMarketClosed"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">网络访问模式</div>
+            <div class="card-desc">
+              腾讯财经港股行情源境内畅通，推荐选择<b>直连</b>（零延迟）。
+              <div id="hkStockNetTag" class="direct-tag">⚡ 当前为境内直连（推荐）</div>
+            </div>
+          </div>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="direct" id="hkStockNetDirect"> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="proxy"  id="hkStockNetProxy"> 强制代理</label>
+          </div>
+        </div>
+
+        <div class="card" id="hkStockProxyCard">
+          <div class="card-info">
+            <div class="card-title">港股代理地址</div>
+            <div class="card-desc">指定港股请求所使用的代理服务器。</div>
+          </div>
+          <div class="proxy-input-box">
+            <input type="text" id="hkStockProxyUrl" style="width: 220px;">
+            <button class="btn-detect" id="btnDetectHkStock">⚡ 探测代理</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 美股板块 -->
+    <div id="tab-usstock" class="tab-pane">
+      <div class="section-header">
+        <h1>美股市场设置 (US Stocks)</h1>
+        <p>配置美股纳斯达克、标普与道琼斯标的（苹果、英伟达、特斯拉等）的抓取策略</p>
+      </div>
+      <div class="card-list">
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">启用美股分组</div>
+            <div class="card-desc">是否在左侧看板展示美股相关自选分组。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="usStockEnabled"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">美股闭市期间停止轮询</div>
+            <div class="card-desc">开启后仅在美股交易时段（北京时间工作日 21:00 至次日凌晨 5:00）请求数据，非交易时段展示收盘价。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="usStockStopOnMarketClosed"><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">网络访问模式</div>
+            <div class="card-desc">
+              腾讯财经美股行情源支持境内直连，亦支持强制走代理。
+              <div id="usStockNetTag" class="direct-tag">⚡ 当前为直连访问</div>
+            </div>
+          </div>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="usStockNetwork" value="direct" id="usStockNetDirect"> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="usStockNetwork" value="proxy"  id="usStockNetProxy"> 强制代理</label>
+          </div>
+        </div>
+
+        <div class="card" id="usStockProxyCard">
+          <div class="card-info">
+            <div class="card-title">美股代理地址</div>
+            <div class="card-desc">指定美股请求所使用的代理服务器。</div>
+          </div>
+          <div class="proxy-input-box">
+            <input type="text" id="usStockProxyUrl" style="width: 220px;">
+            <button class="btn-detect" id="btnDetectUsStock">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -540,6 +736,8 @@ export class SettingsWebviewPanel {
       var TABS = [
         { navId: 'nav-general', paneId: 'tab-general' },
         { navId: 'nav-ashare',  paneId: 'tab-ashare' },
+        { navId: 'nav-hkstock', paneId: 'tab-hkstock' },
+        { navId: 'nav-usstock', paneId: 'tab-usstock' },
         { navId: 'nav-binance', paneId: 'tab-binance' },
         { navId: 'nav-alpha',   paneId: 'tab-alpha' },
         { navId: 'nav-about',   paneId: 'tab-about' }
@@ -623,6 +821,9 @@ export class SettingsWebviewPanel {
       }
 
       // 通用
+      on('btnRestoreDefaults', 'click', function() {
+        vscode.postMessage({ command: 'restoreDefaults' });
+      });
       on('autoRefresh', 'change', function() { sendUpdate('autoRefresh', this.checked); });
       on('refreshInterval', 'change', function() {
         var val = parseInt(this.value, 10);
@@ -649,6 +850,22 @@ export class SettingsWebviewPanel {
       on('aShareNetProxy', 'change', function() { handleNetChange('aShare', 'proxy'); });
       on('aShareProxyUrl', 'blur', function() { handleProxyBlur('aShare.proxyUrl', this); });
       on('btnDetectAshare', 'click', function() { triggerDetect('aShare'); });
+
+      // 港股
+      on('hkStockEnabled', 'change', function() { sendUpdate('hkStock.enabled', this.checked); });
+      on('hkStockStopOnMarketClosed', 'change', function() { sendUpdate('hkStock.stopOnMarketClosed', this.checked); });
+      on('hkStockNetDirect', 'change', function() { handleNetChange('hkStock', 'direct'); });
+      on('hkStockNetProxy', 'change', function() { handleNetChange('hkStock', 'proxy'); });
+      on('hkStockProxyUrl', 'blur', function() { handleProxyBlur('hkStock.proxyUrl', this); });
+      on('btnDetectHkStock', 'click', function() { triggerDetect('hkStock'); });
+
+      // 美股
+      on('usStockEnabled', 'change', function() { sendUpdate('usStock.enabled', this.checked); });
+      on('usStockStopOnMarketClosed', 'change', function() { sendUpdate('usStock.stopOnMarketClosed', this.checked); });
+      on('usStockNetDirect', 'change', function() { handleNetChange('usStock', 'direct'); });
+      on('usStockNetProxy', 'change', function() { handleNetChange('usStock', 'proxy'); });
+      on('usStockProxyUrl', 'blur', function() { handleProxyBlur('usStock.proxyUrl', this); });
+      on('btnDetectUsStock', 'click', function() { triggerDetect('usStock'); });
 
       // Binance
       on('binanceEnabled', 'change', function() { sendUpdate('binance.enabled', this.checked); });
@@ -710,6 +927,30 @@ export class SettingsWebviewPanel {
             applyProxyCardVisibility('aShare', 'direct');
           }
           setValue('aShareProxyUrl', d.aShareProxyUrl);
+
+          // 港股
+          setChecked('hkStockEnabled',            d.hkStockEnabled);
+          setChecked('hkStockStopOnMarketClosed',  d.hkStockStopOnMarketClosed);
+          if (d.hkStockNetworkMode === 'proxy') {
+            setChecked('hkStockNetProxy', true);
+            applyProxyCardVisibility('hkStock', 'proxy');
+          } else {
+            setChecked('hkStockNetDirect', true);
+            applyProxyCardVisibility('hkStock', 'direct');
+          }
+          setValue('hkStockProxyUrl', d.hkStockProxyUrl);
+
+          // 美股
+          setChecked('usStockEnabled',            d.usStockEnabled);
+          setChecked('usStockStopOnMarketClosed',  d.usStockStopOnMarketClosed);
+          if (d.usStockNetworkMode === 'proxy') {
+            setChecked('usStockNetProxy', true);
+            applyProxyCardVisibility('usStock', 'proxy');
+          } else {
+            setChecked('usStockNetDirect', true);
+            applyProxyCardVisibility('usStock', 'direct');
+          }
+          setValue('usStockProxyUrl', d.usStockProxyUrl);
 
           // Binance
           setChecked('binanceEnabled', d.binanceEnabled);

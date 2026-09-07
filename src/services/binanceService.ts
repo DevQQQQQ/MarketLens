@@ -84,7 +84,41 @@ export class BinanceService {
       }
     }
 
-    console.error("[BinanceService] All endpoints failed for:", cleanSymbols);
+    // 兜底策略：如果批量查询因某个退市/无效币种导致 400 失败，转为单币并发查询，保障正常币种正常展示
+    const individualResults = await Promise.allSettled(
+      cleanSymbols.map(async (s): Promise<MarketItem> => {
+        const singleUrl = `https://data-api.binance.vision/api/v3/ticker/24hr?symbol=${encodeURIComponent(s)}`;
+        const res = await cryptoGet<BinanceTicker24hr>(singleUrl, options, { timeout: 3500 });
+        const item = res.data;
+        const sym = item.symbol;
+        return {
+          id:           sym,
+          name:         this.formatDisplayName(sym),
+          symbol:       sym,
+          type:         "CRYPTO" as const,
+          price:        parseFloat(item.lastPrice)         || 0,
+          changePercent: parseFloat(item.priceChangePercent) || 0,
+          open:         parseFloat(item.openPrice)         || 0,
+          prevClose:    parseFloat(item.prevClosePrice)    || 0,
+          high:         parseFloat(item.highPrice)         || 0,
+          low:          parseFloat(item.lowPrice)          || 0,
+          change:       parseFloat(item.priceChange)       || 0,
+          volume:       parseFloat(item.volume)            || 0,
+          turnover:     parseFloat(item.quoteVolume)       || 0,
+          currency:     "USD" as const,
+        };
+      })
+    );
+
+    const successfulItems = individualResults
+      .filter((r): r is PromiseFulfilledResult<MarketItem> => r.status === "fulfilled")
+      .map((r) => r.value);
+
+    if (successfulItems.length > 0) {
+      return successfulItems;
+    }
+
+    console.error("[BinanceService] All endpoints and individual fallbacks failed for:", cleanSymbols);
     return [];
   }
 }

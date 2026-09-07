@@ -1,6 +1,6 @@
 // src/types/index.ts
 
-export type AssetType = "A_SHARE" | "CRYPTO" | "BSC_TOKEN" | "ALPHA_TOKEN";
+export type AssetType = "A_SHARE" | "HK_STOCK" | "US_STOCK" | "CRYPTO" | "BSC_TOKEN" | "ALPHA_TOKEN";
 
 /** 统一行情数据结构 */
 export interface MarketItem {
@@ -18,8 +18,8 @@ export interface MarketItem {
   low?: number;        // 今日最低价
   change?: number;     // 涨跌额
   volume?: number;     // 成交量
-  turnover?: number;   // 成交额 (USD / CNY)
-  currency?: "CNY" | "USD"; // 计价货币
+  turnover?: number;   // 成交额 (USD / CNY / HKD)
+  currency?: "CNY" | "USD" | "HKD"; // 计价货币
 
   // ── Alpha 链上代币专属字段 ──
   chain?: string;      // 公链标识，如 "bsc", "solana", "base", "ethereum"
@@ -54,9 +54,11 @@ export interface MarketLensConfig {
   colorNeutral: boolean;
 
   // ── 分板块独立设置 ──
-  aShare: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean };
+  aShare:  { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean };
+  hkStock: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean };
+  usStock: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean };
   binance: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string };
-  alpha: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string };
+  alpha:   { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string };
 
   // ── 自选列表 ──
   watchlist: WatchlistConfig;

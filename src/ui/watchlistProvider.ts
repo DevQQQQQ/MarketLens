@@ -5,9 +5,12 @@ import { MarketItem, WatchlistConfig } from "../types";
 /**
  * 智能格式化价格
  */
-function formatPrice(price: number, currency: "CNY" | "USD" = "USD"): string {
+function formatPrice(price: number, currency: "CNY" | "USD" | "HKD" = "USD"): string {
   if (price === 0) return "0.00";
-  const sym = currency === "CNY" ? "¥" : "$";
+  let sym = "$";
+  if (currency === "CNY") sym = "¥";
+  else if (currency === "HKD") sym = "HK$";
+
   if (price < 0.0001) return `${sym}${price.toExponential(4)}`;
   if (price < 1) return `${sym}${price.toFixed(6)}`;
   if (price < 10) return `${sym}${price.toFixed(3)}`;
@@ -17,13 +20,18 @@ function formatPrice(price: number, currency: "CNY" | "USD" = "USD"): string {
 /**
  * 格式化大数值（成交量 / 成交额 / 流动性）
  */
-function formatLargeNumber(num: number | undefined, isVolume: boolean, currency: "CNY" | "USD" = "USD"): string {
+function formatLargeNumber(num: number | undefined, isVolume: boolean, currency: "CNY" | "USD" | "HKD" = "USD"): string {
   if (num === undefined || num === 0) return "--";
 
-  const prefix = isVolume ? "" : (currency === "CNY" ? "¥" : "$");
-  const unit = isVolume ? (currency === "CNY" ? "股" : "") : "";
+  let prefix = "";
+  if (!isVolume) {
+    if (currency === "CNY") prefix = "¥";
+    else if (currency === "HKD") prefix = "HK$";
+    else prefix = "$";
+  }
+  const unit = isVolume ? (currency === "CNY" || currency === "HKD" ? "股" : "") : "";
 
-  if (currency === "CNY") {
+  if (currency === "CNY" || currency === "HKD") {
     if (num >= 1e8) {
       return `${prefix}${(num / 1e8).toFixed(2)} 亿${unit}`;
     }
@@ -73,9 +81,10 @@ export class StockItem extends vscode.TreeItem {
   /** 更新显示内容与悬停详细信息 */
   refresh(item: MarketItem, maskMode: boolean, colorNeutral: boolean = false): void {
     this.item = item;
-    const currency = item.currency || (item.type === "A_SHARE" ? "CNY" : "USD");
-    const currSym = currency === "CNY" ? "¥" : "$";
+    const currency = item.currency || (item.type === "A_SHARE" ? "CNY" : (item.type === "HK_STOCK" ? "HKD" : "USD"));
+    const currSym = currency === "CNY" ? "¥" : (currency === "HKD" ? "HK$" : "$");
 
+    const hasQuote = item.price !== undefined && item.price > 0;
     const priceStr = maskMode ? "****" : formatPrice(item.price, currency);
     const sign = item.changePercent >= 0 ? "+" : "";
     const pctStr = maskMode ? "**" : `${sign}${item.changePercent.toFixed(2)}%`;
@@ -83,7 +92,9 @@ export class StockItem extends vscode.TreeItem {
     const colorHint = colorNeutral ? "•" : (item.changePercent >= 0 ? "🟢" : "🔴");
 
     this.label = item.name || item.symbol;
-    this.description = maskMode ? "****  **" : `${priceStr}  ${arrow} ${pctStr}`;
+    this.description = maskMode
+      ? "****  **"
+      : (hasQuote ? `${priceStr}  ${arrow} ${pctStr}` : "获取行情中…");
 
     // ── 差异化构建 Tooltip ──
     const isAlpha = item.type === "ALPHA_TOKEN" || item.type === "BSC_TOKEN" || item.chain !== undefined;
@@ -136,7 +147,7 @@ export class StockItem extends vscode.TreeItem {
 
       const volStr = formatLargeNumber(item.volume, true, currency);
       const turnoverStr = formatLargeNumber(item.turnover, false, currency);
-      const currencyLabel = currency === "CNY" ? "人民币 (CNY)" : "美元 (USD)";
+      const currencyLabel = currency === "CNY" ? "人民币 (¥ CNY)" : (currency === "HKD" ? "港币 (HK$ HKD)" : "美元 ($ USD)");
 
       mdText =
         `### ${item.name} (\`${item.symbol}\`)\n` +
@@ -158,7 +169,9 @@ export class StockItem extends vscode.TreeItem {
     this.tooltip = new vscode.MarkdownString(mdText);
     this.tooltip.isTrusted = true;
 
-    if (colorNeutral) {
+    if (!hasQuote) {
+      this.iconPath = new vscode.ThemeIcon("sync~spin");
+    } else if (colorNeutral) {
       // 颜色脱敏：使用系统默认前景色，杜绝红绿色视觉刺激
       this.iconPath = new vscode.ThemeIcon(
         item.changePercent >= 0 ? "arrow-up" : "arrow-down"
@@ -213,13 +226,25 @@ export class WatchlistProvider
   buildTree(
     config: WatchlistConfig,
     quoteMap: Map<string, MarketItem>,
-    enabledSections: { aShare: boolean; binance: boolean; alpha: boolean } = { aShare: true, binance: true, alpha: true }
+    enabledSections: { aShare: boolean; hkStock?: boolean; usStock?: boolean; binance: boolean; alpha: boolean } = {
+      aShare: true,
+      hkStock: true,
+      usStock: true,
+      binance: true,
+      alpha: true,
+    }
   ): void {
     this.stockMap.clear();
 
     const filteredEntries = Object.entries(config).filter(([groupName]) => {
       const lower = groupName.toLowerCase();
       if ((groupName.includes("A股") || lower.includes("ashare")) && !enabledSections.aShare) {
+        return false;
+      }
+      if ((groupName.includes("港股") || lower.includes("hk")) && enabledSections.hkStock === false) {
+        return false;
+      }
+      if ((groupName.includes("美股") || lower.includes("us")) && enabledSections.usStock === false) {
         return false;
       }
       if ((lower.includes("binance") || lower.includes("crypto")) && !enabledSections.binance) {
@@ -231,12 +256,31 @@ export class WatchlistProvider
       return true;
     });
 
+    const getGroupWeight = (name: string): number => {
+      const lower = name.toLowerCase().trim();
+      if (name.includes("A股") || lower.includes("ashare")) return 1;
+      if (name.includes("港股") || lower.includes("hk")) return 2;
+      if (name.includes("美股") || lower.includes("us")) return 3;
+      if (lower.includes("binance") || lower.includes("crypto")) return 4;
+      if (lower.includes("alpha") || lower.includes("bsc") || lower.includes("dex")) return 5;
+      return 100;
+    };
+
+    filteredEntries.sort((a, b) => getGroupWeight(a[0]) - getGroupWeight(b[0]));
+
     this.groups = filteredEntries.map(([groupName, items]) => {
       const children = (items || []).map((conf) => {
         const key = conf.symbol.toLowerCase();
+        const keyClean = key.replace(/[\._\-]/g, "");
+        const rawTicker = key.replace(/^(us|hk|sh|sz|bj)[\._\-]?/i, "");
         const found =
           quoteMap.get(key) ||
-          quoteMap.get(conf.symbol) || {
+          quoteMap.get(conf.symbol) ||
+          quoteMap.get(keyClean) ||
+          quoteMap.get(rawTicker) ||
+          quoteMap.get("us" + rawTicker) ||
+          quoteMap.get("us." + rawTicker) ||
+          quoteMap.get("hk" + rawTicker) || {
             id: conf.symbol,
             name: conf.name || conf.symbol,
             symbol: conf.symbol,
@@ -248,6 +292,18 @@ export class WatchlistProvider
         const node = new StockItem(found, this.maskMode, this.colorNeutral);
         this.stockMap.set(key, node);
         this.stockMap.set(conf.symbol, node);
+        this.stockMap.set(keyClean, node);
+        this.stockMap.set(rawTicker, node);
+        if (key.startsWith("us") || conf.type === "US_STOCK") {
+          this.stockMap.set("us" + rawTicker, node);
+          this.stockMap.set("us." + rawTicker, node);
+          this.stockMap.set("us_" + rawTicker, node);
+          this.stockMap.set("." + rawTicker, node);
+        }
+        if (key.startsWith("hk") || conf.type === "HK_STOCK") {
+          this.stockMap.set("hk" + rawTicker, node);
+          this.stockMap.set(rawTicker.replace(/^0+/, ""), node);
+        }
         if (found.id) {
           this.stockMap.set(found.id.toLowerCase(), node);
         }
@@ -261,14 +317,24 @@ export class WatchlistProvider
 
   applyQuotes(quotes: MarketItem[]): void {
     for (const q of quotes) {
+      const id = q.id?.toLowerCase() || "";
+      const sym = q.symbol?.toLowerCase() || "";
       const candidates = [
-        q.id?.toLowerCase(),
-        q.symbol?.toLowerCase(),
+        id,
+        sym,
+        id.replace(/[\._\-]/g, ""),
+        sym.replace(/[\._\-]/g, ""),
         q.id,
         q.symbol,
-      ].filter(Boolean) as string[];
+      ];
+      if (id.startsWith("us") || q.type === "US_STOCK") {
+        candidates.push("us." + sym, "us_" + sym, "us" + sym, "." + sym);
+      }
+      if (id.startsWith("hk") || q.type === "HK_STOCK") {
+        candidates.push("hk" + sym, sym.replace(/^0+/, ""));
+      }
 
-      for (const key of candidates) {
+      for (const key of candidates.filter(Boolean)) {
         const node = this.stockMap.get(key);
         if (node) {
           node.refresh(q, this.maskMode, this.colorNeutral);

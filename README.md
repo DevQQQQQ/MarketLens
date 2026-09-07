@@ -1,16 +1,18 @@
-# MarketLens — A股 / 加密货币看板
+# MarketLens — 全球资产行情看板 (A股 / 港股 / 美股 / 加密货币)
 
 <p align="center">
   <b>📊 专为开发者打造的专业行情看板与效率工具</b><br>
-  实时盯盘 A股 (沪深京)、Binance 主流加密货币、全链 DEX 链上资产 (Solana / BSC / Base / 以太坊等)。
+  实时盯盘 A股 (沪深京)、港股 (恒生/腾讯/美团等)、美股 (纳斯达克/标普/英伟达/苹果等)、Binance 主流加密货币、全链 DEX 链上资产 (Solana / BSC / Base / 以太坊等)。
 </p>
 
 ---
 
 ## ✨ 核心亮点
 
-- 🌲 **全市场资产三合一**：
+- 🌲 **全市场资产五合一**：
   - 🇨🇳 **A股市场**：直连腾讯官方金融行情源，支持沪深京全市场股票与指数，支持闭市期间智能停止轮询；
+  - 🇭🇰 **港股市场**：腾讯官方行情源，支持 5 位代码（如 `00700` 腾讯、`03690` 美团），智能休市节流与多币种（`HK$`）结算展示；
+  - 🇺🇸 **美股市场**：腾讯官方美股/指数源，支持英文代码（如 `AAPL` 苹果、`NVDA` 英伟达、`TSLA` 特斯拉、`.IXIC` 纳指），夜间交易时段自动轮询；
   - 🟡 **Binance 币安**：覆盖 BTC、ETH、SOL 等主流及山寨代币，实时 24h 涨跌与价格拉取；
   - 🦄 **Alpha 链上新币**：接入 DexScreener 全球链上聚合接口，输入代币合约地址即可实时追踪全链资产行情。
 - 🛡️ **专注模式与极简展示**：
@@ -18,7 +20,7 @@
   - 🎭 **简洁展示模式**：快捷键 `Ctrl + Alt + K` 或 `Alt + K`，将状态栏展示为极简构建日志风格（如 `git:(main) build: 65.2k`）。
   - ⚪ **颜色脱敏 (Color Neutral)**：快捷键 `Ctrl + Alt + C` 或 `Alt + C`，一键褪去红绿色视觉刺激，所有价格与图标使用编辑器中性字体颜色。
 - 🌐 **网络代理支持**：
-  - A股默认零延迟境内直连；
+  - A股、港股、美股默认零延迟境内直连，亦可根据需要开启代理；
   - Binance 与 Alpha 支持自定义代理服务器访问；
   - 支持一键自动探测本机活跃代理端口（Clash / Clash Verge / v2rayN 等）。
 - ⚙️ **专属图形化设置面板**：
@@ -42,7 +44,9 @@
 ### 1. 添加自选
 点击左侧自选栏顶部的 **`+`** 号：
 - **添加 A 股**：输入 6 位数字代码（如 `600519` 或 `sh600519`），自动识别并推荐进入 `A股` 分组；
-- **添加主流币**：输入币对名称（如 `BTCUSDT` 或 `ETH`），自动规范化进入 `Binance` 分组；
+- **添加港股**：输入 5 位代码或带前缀（如 `00700` 或 `hk00700`），自动识别并推荐进入 `港股` 分组；
+- **添加美股**：输入美股代码（如 `AAPL`、`NVDA`、`TSLA` 或指数 `.IXIC`），自动识别进入 `美股` 分组；
+- **添加主流币**：输入币对名称（如 `BTCUSDT`），自动规范化进入 `Binance` 分组；
 - **添加链上新币**：粘贴任意公链合约地址（`0x...` 或 Solana 地址），自动识别进入 `Alpha` 分组。
 
 ### 2. 删除自选
@@ -65,7 +69,7 @@
   ```
 - **方式二：指定输出文件名**
   ```powershell
-  npx @vscode/vsce package -o marketlens-1.0.0.vsix --allow-missing-repository --allow-star-activation --no-dependencies
+  npx @vscode/vsce package -o marketlens-1.1.0.vsix --allow-missing-repository --allow-star-activation --no-dependencies
   ```
 
 > **参数说明**：
@@ -77,7 +81,7 @@
 生成的 `.vsix` 文件可直接发给朋友或在本地离线安装：
 1. 打开 VS Code，按下 `Ctrl + Shift + P`（Mac: `Cmd + Shift + P`）；
 2. 输入并回车：`Extensions: Install from VSIX...`（从 VSIX 安装...）；
-3. 选中生成的 `marketlens-1.0.0.vsix` 文件即可完成安装。
+3. 选中生成的 `marketlens-1.1.0.vsix` 文件即可完成安装。
 
 ### 3. 发布至 VS Code Marketplace 官方市场
 - **网页端上传（最便捷）**：访问 [Visual Studio Marketplace Management Portal](https://marketplace.visualstudio.com/manage)，点击 **New extension** -> **Visual Studio Code**，上传生成的 `.vsix` 文件即可。

@@ -1,411 +1,639 @@
 {
-  "name": "marketlens",
-  "displayName": "MarketLens - A股与加密货币行情看板",
-  "description": "专为开发者打造的行情看板与效率工具，实时查看 A股、主流加密货币、DEX 资产，支持快捷键隐藏、简洁模式及网络代理配置。",
-  "version": "1.0.0",
-  "publisher": "devqqqqq",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/DevQQQQQ/MarketLens"
-  },
-  "license": "MIT",
-  "engines": {
-    "vscode": "^1.85.0"
-  },
-  "icon": "assets/icon.png",
-  "categories": [
-    "Other",
-    "Visualization"
-  ],
-  "keywords": [
-    "A股",
-    "股票",
-    "行情看板",
-    "Binance",
-    "Crypto"
-  ],
-  "activationEvents": [
-    "*"
-  ],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "marketlens-container",
-          "title": "MarketLens",
-          "icon": "assets/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "marketlens-container": [
-        {
-          "id": "marketlens.watchlist",
-          "name": "MarketLens",
-          "icon": "assets/icon.svg"
-        }
-      ]
-    },
-    "commands": [
-      {
-        "command": "marketlens.refresh",
-        "title": "立即刷新全部",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "marketlens.refreshGroup",
-        "title": "刷新当前分类",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "marketlens.toggleMask",
-        "title": "切换简洁展示模式",
-        "icon": "$(eye)"
-      },
-      {
-        "command": "marketlens.toggleBossKey",
-        "title": "专注模式（一键隐藏/恢复）",
-        "icon": "$(eye-closed)"
-      },
-      {
-        "command": "marketlens.addItem",
-        "title": "添加自选",
-        "icon": "$(add)"
-      },
-      {
-        "command": "marketlens.removeItem",
-        "title": "删除",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "marketlens.toggleColorNeutral",
-        "title": "切换颜色脱敏模式",
-        "icon": "$(paintcan)"
-      },
-      {
-        "command": "marketlens.openKeybindings",
-        "title": "自定义快捷键",
-        "icon": "$(keyboard)"
-      },
-      {
-        "command": "marketlens.openSettings",
-        "title": "设置",
-        "icon": "$(gear)"
-      }
-    ],
-    "keybindings": [
-      {
-        "command": "marketlens.toggleBossKey",
-        "key": "ctrl+alt+m",
-        "win": "ctrl+alt+m",
-        "mac": "cmd+alt+m"
-      },
-      {
-        "command": "marketlens.toggleBossKey",
-        "key": "alt+m",
-        "win": "alt+m"
-      },
-      {
-        "command": "marketlens.toggleMask",
-        "key": "ctrl+alt+k",
-        "win": "ctrl+alt+k",
-        "mac": "cmd+alt+k"
-      },
-      {
-        "command": "marketlens.toggleMask",
-        "key": "alt+k",
-        "win": "alt+k"
-      },
-      {
-        "command": "marketlens.toggleColorNeutral",
-        "key": "ctrl+alt+c",
-        "win": "ctrl+alt+c",
-        "mac": "cmd+alt+c"
-      },
-      {
-        "command": "marketlens.toggleColorNeutral",
-        "key": "alt+c",
-        "win": "alt+c"
-      }
-    ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "marketlens.openSettings",
-          "when": "view == marketlens.watchlist",
-          "group": "navigation@1"
-        },
-        {
-          "command": "marketlens.refresh",
-          "when": "view == marketlens.watchlist",
-          "group": "navigation@2"
-        },
-        {
-          "command": "marketlens.toggleBossKey",
-          "when": "view == marketlens.watchlist",
-          "group": "navigation@3"
-        },
-        {
-          "command": "marketlens.toggleMask",
-          "when": "view == marketlens.watchlist",
-          "group": "navigation@4"
-        },
-        {
-          "command": "marketlens.addItem",
-          "when": "view == marketlens.watchlist",
-          "group": "navigation@5"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "marketlens.refreshGroup",
-          "when": "view == marketlens.watchlist && viewItem == groupItem",
-          "group": "inline"
-        },
-        {
-          "command": "marketlens.removeItem",
-          "when": "view == marketlens.watchlist && viewItem == stockItem",
-          "group": "inline"
-        }
-      ]
-    },
-    "configuration": {
-      "title": "MarketLens",
-      "properties": {
-        "marketlens.autoRefresh": {
-          "type": "boolean",
-          "default": true,
-          "order": 1,
-          "description": "【全局】是否开启定时自动刷新（取消勾选则不自动刷新，仅在手动点击刷新按钮时更新）"
-        },
-        "marketlens.refreshInterval": {
-          "type": "number",
-          "default": 5000,
-          "minimum": 1000,
-          "maximum": 300000,
-          "order": 2,
-          "description": "【全局】定时刷新间隔（毫秒），如 5000 表示 5 秒"
-        },
-        "marketlens.maskMode": {
-          "type": "boolean",
-          "default": false,
-          "order": 3,
-          "description": "【全局】紧凑展示模式：将行情数据展示为简洁构建信息格式"
-        },
-        "marketlens.colorNeutral": {
-          "type": "boolean",
-          "default": false,
-          "order": 4,
-          "description": "【全局】中性色彩模式：关闭红绿色彩标记，使用编辑器默认主题文本颜色"
-        },
-        "marketlens.aShare.enabled": {
-          "type": "boolean",
-          "default": true,
-          "order": 10,
-          "description": "【A股板块】是否启用 A 股市场行情（取消勾选则在自选列表中隐藏 A 股）"
-        },
-        "marketlens.aShare.networkMode": {
-          "type": "string",
-          "enum": [
-            "direct",
-            "proxy"
-          ],
-          "enumDescriptions": [
-            "直连访问（默认，腾讯接口境内推荐直连，零延迟）",
-            "强制走代理"
-          ],
-          "default": "direct",
-          "order": 11,
-          "description": "【A股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
-        },
-        "marketlens.aShare.proxyUrl": {
-          "type": "string",
-          "default": "http://127.0.0.1:10808",
-          "order": 12,
-          "description": "【A股板块】代理地址"
-        },
-        "marketlens.aShare.stopOnMarketClosed": {
-          "type": "boolean",
-          "default": true,
-          "order": 13,
-          "description": "【A股板块】闭市期间停止轮询（开启后仅在 A 股交易时段 9:15-11:30, 13:00-15:05 请求数据）"
-        },
-        "marketlens.binance.enabled": {
-          "type": "boolean",
-          "default": true,
-          "order": 20,
-          "description": "【Binance板块】是否启用 Binance 主流加密货币行情"
-        },
-        "marketlens.binance.networkMode": {
-          "type": "string",
-          "enum": [
-            "proxy",
-            "direct"
-          ],
-          "enumDescriptions": [
-            "通过代理服务器访问（推荐，适用于特定网络环境）",
-            "直连访问，不走代理"
-          ],
-          "default": "proxy",
-          "order": 21,
-          "description": "【Binance板块】网络访问模式：proxy (走代理) 或 direct (直连)"
-        },
-        "marketlens.binance.proxyUrl": {
-          "type": "string",
-          "default": "http://127.0.0.1:10808",
-          "order": 22,
-          "description": "【Binance板块】代理地址（支持自动探测 10808, 10809, 7890, 7897, 2080, 1080 等本地端口）"
-        },
-        "marketlens.alpha.enabled": {
-          "type": "boolean",
-          "default": true,
-          "order": 30,
-          "description": "【Alpha板块】是否启用 Alpha 链上代币行情（BSC、Solana、Base 等全链 DEX）"
-        },
-        "marketlens.alpha.networkMode": {
-          "type": "string",
-          "enum": [
-            "proxy",
-            "direct"
-          ],
-          "enumDescriptions": [
-            "通过代理服务器访问（推荐，适用于特定网络环境）",
-            "直连访问，不走代理"
-          ],
-          "default": "proxy",
-          "order": 31,
-          "description": "【Alpha板块】网络访问模式：proxy (走代理) 或 direct (直连)"
-        },
-        "marketlens.alpha.proxyUrl": {
-          "type": "string",
-          "default": "http://127.0.0.1:10808",
-          "order": 32,
-          "description": "【Alpha板块】代理地址（支持自动探测主流代理客户端端口）"
-        },
-        "marketlens.watchlist": {
-          "type": "object",
-          "order": 99,
-          "description": "自选列表配置，按分组组织",
-          "default": {
-            "A股": [
-              {
-                "symbol": "sh688584",
-                "name": "上海合晶",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sh600030",
-                "name": "中信证券",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sz000839",
-                "name": "国安股份",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sz002385",
-                "name": "大北农",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sh603686",
-                "name": "福龙马",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sz002867",
-                "name": "周大生",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sh603031",
-                "name": "安孚科技",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sh601988",
-                "name": "中国银行",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sh603019",
-                "name": "中科曙光",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sz000977",
-                "name": "浪潮信息",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sh688545",
-                "name": "兴福电子",
-                "type": "A_SHARE"
-              },
-              {
-                "symbol": "sz301293",
-                "name": "三博脑科",
-                "type": "A_SHARE"
-              }
-            ],
-            "Binance": [
-              {
-                "symbol": "BTCUSDT",
-                "name": "BTC/USDT",
-                "type": "CRYPTO"
-              },
-              {
-                "symbol": "ETHUSDT",
-                "name": "ETH/USDT",
-                "type": "CRYPTO"
-              },
-              {
-                "symbol": "ETCUSDT",
-                "name": "ETC/USDT",
-                "type": "CRYPTO"
-              },
-              {
-                "symbol": "LUNAUSDT",
-                "name": "LUNA/USDT",
-                "type": "CRYPTO"
-              },
-              {
-                "symbol": "DOGEUSDT",
-                "name": "DOGE/USDT",
-                "type": "CRYPTO"
-              }
-            ],
-            "Alpha": [
-              {
-                "symbol": "0x73b84f7e3901f39fc29f3704a03126d317ab4444",
-                "name": "PUP",
-                "type": "ALPHA_TOKEN"
-              }
-            ]
-          }
-        }
-      }
-    }
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run build",
-    "build": "node esbuild.js --production",
-    "dev": "node esbuild.js --watch",
-    "package": "vsce package --allow-missing-repository --allow-star-activation --no-dependencies",
-    "lint": "eslint src --ext ts"
-  },
-  "devDependencies": {
-    "@types/node": "^20.11.0",
-    "@types/vscode": "^1.85.0",
-    "@typescript-eslint/eslint-plugin": "^6.19.0",
-    "@typescript-eslint/parser": "^6.19.0",
-    "esbuild": "^0.20.0",
-    "eslint": "^8.56.0",
-    "typescript": "^5.3.3"
-  },
-  "dependencies": {
-    "axios": "^1.6.7"
-  }
+	"name": "marketlens",
+	"displayName": "MarketLens - 全球行情看板 (A股/港股/美股/加密货币)",
+	"description": "专为开发者打造的行情看板与效率工具，实时查看 A股、港股、美股、主流加密货币、DEX 资产，支持快捷键隐藏、简洁模式及网络代理配置。",
+	"version": "1.1.1",
+	"publisher": "devqqqqq",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/DevQQQQQ/MarketLens"
+	},
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.85.0"
+	},
+	"icon": "assets/icon.png",
+	"categories": [
+		"Other",
+		"Visualization"
+	],
+	"keywords": [
+		"A股",
+		"港股美股",
+		"行情看板",
+		"Binance",
+		"Crypto"
+	],
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "marketlens-container",
+					"title": "MarketLens",
+					"icon": "assets/icon.svg"
+				}
+			]
+		},
+		"views": {
+			"marketlens-container": [
+				{
+					"id": "marketlens.watchlist",
+					"name": "MarketLens",
+					"icon": "assets/icon.svg"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "marketlens.refresh",
+				"title": "立即刷新全部",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "marketlens.refreshGroup",
+				"title": "刷新当前分类",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "marketlens.toggleMask",
+				"title": "切换简洁展示模式",
+				"icon": "$(eye)"
+			},
+			{
+				"command": "marketlens.toggleBossKey",
+				"title": "专注模式（一键隐藏/恢复）",
+				"icon": "$(eye-closed)"
+			},
+			{
+				"command": "marketlens.addItem",
+				"title": "添加自选",
+				"icon": "$(add)"
+			},
+			{
+				"command": "marketlens.removeItem",
+				"title": "删除",
+				"icon": "$(trash)"
+			},
+			{
+				"command": "marketlens.toggleColorNeutral",
+				"title": "切换颜色脱敏模式",
+				"icon": "$(paintcan)"
+			},
+			{
+				"command": "marketlens.openKeybindings",
+				"title": "自定义快捷键",
+				"icon": "$(keyboard)"
+			},
+			{
+				"command": "marketlens.openSettings",
+				"title": "设置",
+				"icon": "$(gear)"
+			},
+			{
+				"command": "marketlens.restoreDefaults",
+				"title": "恢复出厂默认设置",
+				"icon": "$(discard)"
+			}
+		],
+		"keybindings": [
+			{
+				"command": "marketlens.toggleBossKey",
+				"key": "ctrl+alt+m",
+				"win": "ctrl+alt+m",
+				"mac": "cmd+alt+m"
+			},
+			{
+				"command": "marketlens.toggleBossKey",
+				"key": "alt+m",
+				"win": "alt+m"
+			},
+			{
+				"command": "marketlens.toggleMask",
+				"key": "ctrl+alt+k",
+				"win": "ctrl+alt+k",
+				"mac": "cmd+alt+k"
+			},
+			{
+				"command": "marketlens.toggleMask",
+				"key": "alt+k",
+				"win": "alt+k"
+			},
+			{
+				"command": "marketlens.toggleColorNeutral",
+				"key": "ctrl+alt+c",
+				"win": "ctrl+alt+c",
+				"mac": "cmd+alt+c"
+			},
+			{
+				"command": "marketlens.toggleColorNeutral",
+				"key": "alt+c",
+				"win": "alt+c"
+			}
+		],
+		"menus": {
+			"view/title": [
+				{
+					"command": "marketlens.openSettings",
+					"when": "view == marketlens.watchlist",
+					"group": "navigation@1"
+				},
+				{
+					"command": "marketlens.refresh",
+					"when": "view == marketlens.watchlist",
+					"group": "navigation@2"
+				},
+				{
+					"command": "marketlens.toggleBossKey",
+					"when": "view == marketlens.watchlist",
+					"group": "navigation@3"
+				},
+				{
+					"command": "marketlens.toggleMask",
+					"when": "view == marketlens.watchlist",
+					"group": "navigation@4"
+				},
+				{
+					"command": "marketlens.addItem",
+					"when": "view == marketlens.watchlist",
+					"group": "navigation@5"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "marketlens.refreshGroup",
+					"when": "view == marketlens.watchlist && viewItem == groupItem",
+					"group": "inline"
+				},
+				{
+					"command": "marketlens.removeItem",
+					"when": "view == marketlens.watchlist && viewItem == stockItem",
+					"group": "inline"
+				}
+			]
+		},
+		"configuration": {
+			"title": "MarketLens",
+			"properties": {
+				"marketlens.autoRefresh": {
+					"type": "boolean",
+					"default": true,
+					"order": 1,
+					"description": "【全局】是否开启定时自动刷新（取消勾选则不自动刷新，仅在手动点击刷新按钮时更新）"
+				},
+				"marketlens.refreshInterval": {
+					"type": "number",
+					"default": 5000,
+					"minimum": 1000,
+					"maximum": 300000,
+					"order": 2,
+					"description": "【全局】定时刷新间隔（毫秒），如 5000 表示 5 秒"
+				},
+				"marketlens.maskMode": {
+					"type": "boolean",
+					"default": false,
+					"order": 3,
+					"description": "【全局】紧凑展示模式：将行情数据展示为简洁构建信息格式"
+				},
+				"marketlens.colorNeutral": {
+					"type": "boolean",
+					"default": false,
+					"order": 4,
+					"description": "【全局】中性色彩模式：关闭红绿色彩标记，使用编辑器默认主题文本颜色"
+				},
+				"marketlens.aShare.enabled": {
+					"type": "boolean",
+					"default": true,
+					"order": 10,
+					"description": "【A股板块】是否启用 A 股市场行情（取消勾选则在自选列表中隐藏 A 股）"
+				},
+				"marketlens.aShare.networkMode": {
+					"type": "string",
+					"enum": [
+						"direct",
+						"proxy"
+					],
+					"enumDescriptions": [
+						"直连访问（默认，腾讯接口境内推荐直连，零延迟）",
+						"强制走代理"
+					],
+					"default": "direct",
+					"order": 11,
+					"description": "【A股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
+				},
+				"marketlens.aShare.proxyUrl": {
+					"type": "string",
+					"default": "http://127.0.0.1:10808",
+					"order": 12,
+					"description": "【A股板块】代理地址"
+				},
+				"marketlens.aShare.stopOnMarketClosed": {
+					"type": "boolean",
+					"default": true,
+					"order": 13,
+					"description": "【A股板块】闭市期间停止轮询（开启后仅在 A 股交易时段 9:15-11:30, 13:00-15:05 请求数据）"
+				},
+				"marketlens.hkStock.enabled": {
+					"type": "boolean",
+					"default": true,
+					"order": 14,
+					"description": "【港股板块】是否启用港股行情（取消勾选则在自选列表中隐藏港股）"
+				},
+				"marketlens.hkStock.networkMode": {
+					"type": "string",
+					"enum": [
+						"direct",
+						"proxy"
+					],
+					"enumDescriptions": [
+						"直连访问（默认，腾讯接口境内推荐直连，零延迟）",
+						"强制走代理"
+					],
+					"default": "direct",
+					"order": 15,
+					"description": "【港股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
+				},
+				"marketlens.hkStock.proxyUrl": {
+					"type": "string",
+					"default": "http://127.0.0.1:10808",
+					"order": 16,
+					"description": "【港股板块】代理地址"
+				},
+				"marketlens.hkStock.stopOnMarketClosed": {
+					"type": "boolean",
+					"default": true,
+					"order": 17,
+					"description": "【港股板块】闭市期间停止轮询（开启后仅在港股交易时段 9:30-12:00, 13:00-16:10 请求数据）"
+				},
+				"marketlens.usStock.enabled": {
+					"type": "boolean",
+					"default": true,
+					"order": 18,
+					"description": "【美股板块】是否启用美股行情（取消勾选则在自选列表中隐藏美股）"
+				},
+				"marketlens.usStock.networkMode": {
+					"type": "string",
+					"enum": [
+						"direct",
+						"proxy"
+					],
+					"enumDescriptions": [
+						"直连访问（默认，腾讯接口境内推荐直连，零延迟）",
+						"强制走代理"
+					],
+					"default": "direct",
+					"order": 19,
+					"description": "【美股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
+				},
+				"marketlens.usStock.proxyUrl": {
+					"type": "string",
+					"default": "http://127.0.0.1:10808",
+					"order": 20,
+					"description": "【美股板块】代理地址"
+				},
+				"marketlens.usStock.stopOnMarketClosed": {
+					"type": "boolean",
+					"default": true,
+					"order": 21,
+					"description": "【美股板块】闭市期间停止轮询（开启后仅在美股交易时段工作日 21:00 至次日 05:00 请求数据）"
+				},
+				"marketlens.binance.enabled": {
+					"type": "boolean",
+					"default": true,
+					"order": 20,
+					"description": "【Binance板块】是否启用 Binance 主流加密货币行情"
+				},
+				"marketlens.binance.networkMode": {
+					"type": "string",
+					"enum": [
+						"proxy",
+						"direct"
+					],
+					"enumDescriptions": [
+						"通过代理服务器访问（推荐，适用于特定网络环境）",
+						"直连访问，不走代理"
+					],
+					"default": "proxy",
+					"order": 21,
+					"description": "【Binance板块】网络访问模式：proxy (走代理) 或 direct (直连)"
+				},
+				"marketlens.binance.proxyUrl": {
+					"type": "string",
+					"default": "http://127.0.0.1:10808",
+					"order": 22,
+					"description": "【Binance板块】代理地址（支持自动探测 10808, 10809, 7890, 7897, 2080, 1080 等本地端口）"
+				},
+				"marketlens.alpha.enabled": {
+					"type": "boolean",
+					"default": true,
+					"order": 30,
+					"description": "【Alpha板块】是否启用 Alpha 链上代币行情（BSC、Solana、Base 等全链 DEX）"
+				},
+				"marketlens.alpha.networkMode": {
+					"type": "string",
+					"enum": [
+						"proxy",
+						"direct"
+					],
+					"enumDescriptions": [
+						"通过代理服务器访问（推荐，适用于特定网络环境）",
+						"直连访问，不走代理"
+					],
+					"default": "proxy",
+					"order": 31,
+					"description": "【Alpha板块】网络访问模式：proxy (走代理) 或 direct (直连)"
+				},
+				"marketlens.alpha.proxyUrl": {
+					"type": "string",
+					"default": "http://127.0.0.1:10808",
+					"order": 32,
+					"description": "【Alpha板块】代理地址（支持自动探测主流代理客户端端口）"
+				},
+				"marketlens.watchlist": {
+					"type": "object",
+					"order": 99,
+					"description": "自选列表配置，按分组组织",
+					"default": {
+						"A股": [
+							{
+								"symbol": "sh600030",
+								"name": "中信证券",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sz000839",
+								"name": "国安股份",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sz002385",
+								"name": "大北农",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sh603686",
+								"name": "福龙马",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sz002867",
+								"name": "周大生",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sh603031",
+								"name": "安孚科技",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sz000977",
+								"name": "浪潮信息",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sh688545",
+								"name": "兴福电子",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sh688584",
+								"name": "上海合晶",
+								"type": "A_SHARE"
+							},
+							{
+								"symbol": "sz301293",
+								"name": "三博脑科",
+								"type": "A_SHARE"
+							}
+						],
+						"港股": [
+							{
+								"symbol": "hk00700",
+								"name": "腾讯控股",
+								"type": "HK_STOCK"
+							},
+							{
+								"symbol": "hk03690",
+								"name": "美团-W",
+								"type": "HK_STOCK"
+							},
+							{
+								"symbol": "hk09988",
+								"name": "阿里巴巴-SW",
+								"type": "HK_STOCK"
+							},
+							{
+								"symbol": "hk00981",
+								"name": "中芯国际",
+								"type": "HK_STOCK"
+							},
+							{
+								"symbol": "hk06030",
+								"name": "中信证券",
+								"type": "HK_STOCK"
+							},
+							{
+								"symbol": "hk01810",
+								"name": "小米集团-W",
+								"type": "HK_STOCK"
+							}
+						],
+						"美股": [
+							{
+								"symbol": "usAAPL",
+								"name": "苹果",
+								"type": "US_STOCK"
+							},
+							{
+								"symbol": "usNVDA",
+								"name": "英伟达",
+								"type": "US_STOCK"
+							},
+							{
+								"symbol": "usTSLA",
+								"name": "特斯拉",
+								"type": "US_STOCK"
+							},
+							{
+								"symbol": "usNET",
+								"name": "Cloudflare",
+								"type": "US_STOCK"
+							},
+							{
+								"symbol": "usTSM",
+								"name": "台积电",
+								"type": "US_STOCK"
+							},
+							{
+								"symbol": "usAMD",
+								"name": "超威半导体",
+								"type": "US_STOCK"
+							},
+							{
+								"symbol": "usAVGO",
+								"name": "博通",
+								"type": "US_STOCK"
+							},
+							{
+								"symbol": "usARM",
+								"name": "安谋",
+								"type": "US_STOCK"
+							},
+							{
+								"symbol": "usIXIC",
+								"name": "纳斯达克综合指数",
+								"type": "US_STOCK"
+							}
+						],
+						"Binance": [
+							{
+								"symbol": "BTCUSDT",
+								"name": "BTC/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "ETHUSDT",
+								"name": "ETH/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "SOLUSDT",
+								"name": "SOL/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "BNBUSDT",
+								"name": "BNB/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "DOGEUSDT",
+								"name": "DOGE/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "ARBUSDT",
+								"name": "ARB/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "OPUSDT",
+								"name": "OP/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "APTUSDT",
+								"name": "APT/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "ORDIUSDT",
+								"name": "ORDI/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "ASTERUSDT",
+								"name": "ASTER/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "ETCUSDT",
+								"name": "ETC/USDT",
+								"type": "CRYPTO"
+							},
+							{
+								"symbol": "LUNAUSDT",
+								"name": "LUNA/USDT",
+								"type": "CRYPTO"
+							}
+						],
+						"Alpha": [
+							{
+								"symbol": "0x73b84f7e3901f39fc29f3704a03126d317ab4444",
+								"name": "PUP",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x28cd1fc7b6eebf46b59001ff49c9d14f8bb97777",
+								"name": "翻身币",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x4fa7c69a7b69f8bc48233024d546bc299d6b03bf",
+								"name": "quq",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x1a1e69f1e6182e2f8b9e8987e83c016ac9444444",
+								"name": "人生K线",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x02e75d28a8aa2a0033b8cf866fcf0bb0e1ee4444",
+								"name": "PALU",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0xe1e93e92c0c2aff2dc4d7d4a8b250d973cad4444",
+								"name": "恶俗企鹅",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0xc51a9250795c0186a6fb4a7d20a90330651e4444",
+								"name": "我踏马来了",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0xa49fa5e8106e2d6d6a69e78df9b6a20aab9c4444",
+								"name": "DONKEY",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x0a43fc31a73013089df59194872ecae4cae14444",
+								"name": "4",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x3ac8e2c113d5d7824ac6ebe82a3c60b1b9d64444",
+								"name": "客服小何",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x82ec31d69b3c289e541b50e30681fd1acad24444",
+								"name": "哈基米",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0x924fa68a0fc644485b8df8abfa0a41c2e7744444",
+								"name": "币安人生",
+								"type": "ALPHA_TOKEN"
+							}
+						]
+					}
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run build",
+		"build": "node esbuild.js --production",
+		"dev": "node esbuild.js --watch",
+		"package": "vsce package --allow-missing-repository --no-dependencies",
+		"lint": "eslint src --ext ts"
+	},
+	"devDependencies": {
+		"@types/node": "^20.11.0",
+		"@types/vscode": "^1.85.0",
+		"@typescript-eslint/eslint-plugin": "^6.19.0",
+		"@typescript-eslint/parser": "^6.19.0",
+		"esbuild": "^0.20.0",
+		"eslint": "^8.56.0",
+		"typescript": "^5.3.3"
+	},
+	"dependencies": {
+		"axios": "^1.6.7"
+	}
 }

@@ -9,7 +9,7 @@ import { MarketLensConfig, MarketItem } from "./types";
 // ── 模块级句柄：让 deactivate() 可以显式清理，防止热重载内存泄漏 ──
 let _timer: ReturnType<typeof setInterval> | undefined;
 let _statusBar: StatusBar | undefined;
-let hasLoadedInitialAShare = false;
+let hasLoadedInitialQuotes = false;
 
 // ────────────────────────────────────────────────────────────────
 //  配置读取
@@ -32,6 +32,18 @@ function readConfig(): MarketLensConfig {
       proxyUrl:           cfg.get<string>("aShare.proxyUrl", "http://127.0.0.1:10808"),
       stopOnMarketClosed: cfg.get<boolean>("aShare.stopOnMarketClosed", true),
     },
+    hkStock: {
+      enabled:            cfg.get<boolean>("hkStock.enabled", true),
+      networkMode:        cfg.get<"proxy" | "direct">("hkStock.networkMode", "direct"),
+      proxyUrl:           cfg.get<string>("hkStock.proxyUrl", "http://127.0.0.1:10808"),
+      stopOnMarketClosed: cfg.get<boolean>("hkStock.stopOnMarketClosed", true),
+    },
+    usStock: {
+      enabled:            cfg.get<boolean>("usStock.enabled", true),
+      networkMode:        cfg.get<"proxy" | "direct">("usStock.networkMode", "direct"),
+      proxyUrl:           cfg.get<string>("usStock.proxyUrl", "http://127.0.0.1:10808"),
+      stopOnMarketClosed: cfg.get<boolean>("usStock.stopOnMarketClosed", true),
+    },
     binance: {
       enabled:     cfg.get<boolean>("binance.enabled", true),
       networkMode: cfg.get<"proxy" | "direct">("binance.networkMode", legacyProxyMode),
@@ -49,20 +61,49 @@ function readConfig(): MarketLensConfig {
 
 /**
  * 校验当前是否处于 A 股交易时段：
- * - 必须为周一至周五（排除周六周日）
- * - 包含早盘集合竞价与连续竞价：9:15 ~ 11:30
- * - 下午连续竞价至收盘：13:00 ~ 15:05
+ * - 周一至周五 9:15 ~ 11:30, 13:00 ~ 15:05
  */
 export function isAShareMarketOpen(): boolean {
   const now = new Date();
   const day = now.getDay();
-  if (day === 0 || day === 6) {
-    return false;
-  }
+  if (day === 0 || day === 6) { return false; }
   const totalMinutes = now.getHours() * 60 + now.getMinutes();
   const isMorning   = totalMinutes >= 9 * 60 + 15 && totalMinutes <= 11 * 60 + 30;
   const isAfternoon = totalMinutes >= 13 * 60 && totalMinutes <= 15 * 60 + 5;
   return isMorning || isAfternoon;
+}
+
+/**
+ * 校验当前是否处于港股交易时段：
+ * - 周一至周五 9:30 ~ 12:00, 13:00 ~ 16:10
+ */
+export function isHKMarketOpen(): boolean {
+  const now = new Date();
+  const day = now.getDay();
+  if (day === 0 || day === 6) { return false; }
+  const totalMinutes = now.getHours() * 60 + now.getMinutes();
+  const isMorning   = totalMinutes >= 9 * 60 + 30 && totalMinutes <= 12 * 60;
+  const isAfternoon = totalMinutes >= 13 * 60 && totalMinutes <= 16 * 60 + 10;
+  return isMorning || isAfternoon;
+}
+
+/**
+ * 校验当前是否处于美股交易时段（含盘前盘后简易覆盖）：
+ * - 北京时间工作日晚上 21:00 至次日凌晨 05:00
+ */
+export function isUSMarketOpen(): boolean {
+  const now = new Date();
+  const day = now.getDay();
+  const totalMinutes = now.getHours() * 60 + now.getMinutes();
+  // 周六早晨 05:00 之前仍属于美股周五交易日收尾
+  if (day === 6 && totalMinutes <= 5 * 60) { return true; }
+  if (day === 0 || day === 6) { return false; }
+  // 周一早晨无美股
+  if (day === 1 && totalMinutes < 21 * 60) { return false; }
+
+  const isNight = totalMinutes >= 21 * 60;
+  const isEarlyMorning = totalMinutes <= 5 * 60;
+  return isNight || isEarlyMorning;
 }
 
 function isContractAddress(str: string): boolean {
@@ -70,14 +111,16 @@ function isContractAddress(str: string): boolean {
 }
 
 /**
- * 将 watchlist 配置分类为三种抓取目标（受板块启用状态控制）
+ * 将 watchlist 配置分类为五种抓取目标（受板块启用状态控制）
  */
 function extractTargets(
   config: MarketLensConfig,
   specificGroupName?: string,
-  forceAShare: boolean = false
+  forceAll: boolean = false
 ) {
-  const aShares: string[] = [];
+  const aShares:  string[] = [];
+  const hkStocks: string[] = [];
+  const usStocks: string[] = [];
   const cryptos:  string[] = [];
   const bscTokens: string[] = [];
 
@@ -90,6 +133,18 @@ function extractTargets(
       const sym  = item.symbol;
       const type = item.type;
       if (!sym) { continue; }
+
+      const isHK =
+        type === "HK_STOCK" ||
+        groupName.includes("港股") ||
+        /^hk/i.test(sym) ||
+        (/^\d{5}$/.test(sym) && !/^\d{6}$/.test(sym));
+
+      const isUS =
+        type === "US_STOCK" ||
+        groupName.includes("美股") ||
+        /^us/i.test(sym) ||
+        sym.startsWith(".");
 
       const isAShare =
         type === "A_SHARE" ||
@@ -108,10 +163,18 @@ function extractTargets(
         lowerGroup.includes("binance") ||
         lowerGroup.includes("crypto");
 
-      if (isAShare) {
-        // 核心规则：首次打开、手动强制刷新、或单独刷新分组时，绝不跳过；
-        // 仅在已成功拉取过初始行情、且处于自动周期轮询、非交易时段时才跳过轮询
-        const canSkipByMarketClosed = config.aShare.stopOnMarketClosed && !isAShareMarketOpen() && hasLoadedInitialAShare && !forceAShare && !specificGroupName;
+      if (isHK) {
+        const canSkipByMarketClosed = config.hkStock.stopOnMarketClosed && !isHKMarketOpen() && hasLoadedInitialQuotes && !forceAll && !specificGroupName;
+        if (config.hkStock.enabled && !canSkipByMarketClosed) {
+          hkStocks.push(sym);
+        }
+      } else if (isUS) {
+        const canSkipByMarketClosed = config.usStock.stopOnMarketClosed && !isUSMarketOpen() && hasLoadedInitialQuotes && !forceAll && !specificGroupName;
+        if (config.usStock.enabled && !canSkipByMarketClosed) {
+          usStocks.push(sym);
+        }
+      } else if (isAShare) {
+        const canSkipByMarketClosed = config.aShare.stopOnMarketClosed && !isAShareMarketOpen() && hasLoadedInitialQuotes && !forceAll && !specificGroupName;
         if (config.aShare.enabled && !canSkipByMarketClosed) {
           aShares.push(sym);
         }
@@ -122,9 +185,10 @@ function extractTargets(
       } else {
         if (isContractAddress(sym) && config.alpha.enabled) {
           bscTokens.push(sym);
+        } else if (/^\d{5}$/.test(sym) && config.hkStock.enabled) {
+          hkStocks.push(sym);
         } else if (/^\d{6}$/.test(sym) && config.aShare.enabled) {
-          const canSkipByMarketClosed = config.aShare.stopOnMarketClosed && !isAShareMarketOpen() && hasLoadedInitialAShare && !forceAShare && !specificGroupName;
-          if (!canSkipByMarketClosed) { aShares.push(sym); }
+          aShares.push(sym);
         } else if (config.binance.enabled) {
           cryptos.push(sym);
         }
@@ -134,6 +198,8 @@ function extractTargets(
 
   return {
     aShares:   [...new Set(aShares)],
+    hkStocks:  [...new Set(hkStocks)],
+    usStocks:  [...new Set(usStocks)],
     cryptos:   [...new Set(cryptos)],
     bscTokens: [...new Set(bscTokens)],
   };
@@ -166,33 +232,84 @@ export async function activate(
   const quoteCache = new Map<string, MarketItem>();
   let isRefreshing  = false; // 防止定时器并发触发多次 doRefresh
 
+  // 立即构建初版树骨架（展示配置中的所有分组和标的，无需等待首次网络请求返回）
+  treeProvider.buildTree(config.watchlist, quoteCache, {
+    aShare: config.aShare.enabled,
+    hkStock: config.hkStock.enabled,
+    usStock: config.usStock.enabled,
+    binance: config.binance.enabled,
+    alpha: config.alpha.enabled,
+  });
+
+  function saveToQuoteCache(cache: Map<string, MarketItem>, q: MarketItem): void {
+    if (q.id) {
+      const idLow = q.id.toLowerCase();
+      cache.set(idLow, q);
+      cache.set(idLow.replace(/[\._\-]/g, ""), q);
+      if (idLow.startsWith("us")) {
+        const ticker = idLow.slice(2).replace(/[\._\-]/g, "");
+        cache.set("us." + ticker, q);
+        cache.set("us_" + ticker, q);
+        cache.set("." + ticker, q);
+      }
+    }
+    if (q.symbol) {
+      const symLow = q.symbol.toLowerCase();
+      cache.set(symLow, q);
+      cache.set(symLow.replace(/[\._\-]/g, ""), q);
+      if (q.type === "US_STOCK") {
+        cache.set("us" + symLow, q);
+        cache.set("us." + symLow, q);
+        cache.set("us_" + symLow, q);
+        cache.set("." + symLow, q);
+      } else if (q.type === "HK_STOCK") {
+        cache.set("hk" + symLow, q);
+        cache.set(symLow.replace(/^0+/, ""), q);
+        cache.set("hk" + symLow.replace(/^0+/, ""), q);
+      } else if (q.type === "A_SHARE") {
+        cache.set(symLow.replace(/^(sh|sz|bj)/, ""), q);
+      }
+    }
+  }
+
   // ── 全量刷新 ────────────────────────────────────────────────────
 
-  async function doRefresh(forceRefreshAShare: boolean = false): Promise<void> {
-    if (isRefreshing) { return; } // 上一次还没完成，跳过本次，避免竞争
+  async function doRefresh(forceRefreshAll: boolean = false): Promise<void> {
+    if (isRefreshing) {
+      if (forceRefreshAll) {
+        // 若当前已有刷新在执行，延迟 300ms 再次触发，确保强制刷新不丢失
+        setTimeout(() => void doRefresh(true), 300);
+      }
+      return;
+    }
     isRefreshing = true;
     try {
-      // 首次加载或明确要求强制刷新时，确保 A 股必定拉取
-      const forceAShare = forceRefreshAShare || !hasLoadedInitialAShare;
-      const targets = extractTargets(config, undefined, forceAShare);
+      // 首次加载或明确要求强制刷新时，确保必定拉取
+      const forceAll = forceRefreshAll || !hasLoadedInitialQuotes;
+      const targets = extractTargets(config, undefined, forceAll);
       const quotes  = await marketManager.pollAll(
         targets,
         { mode: config.aShare.networkMode, proxyUrl: config.aShare.proxyUrl },
+        { mode: config.hkStock.networkMode, proxyUrl: config.hkStock.proxyUrl },
+        { mode: config.usStock.networkMode, proxyUrl: config.usStock.proxyUrl },
         { mode: config.binance.networkMode, proxyUrl: config.binance.proxyUrl },
         { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl }
       );
 
       for (const q of quotes) {
-        if (q.id)     { quoteCache.set(q.id.toLowerCase(), q); }
-        if (q.symbol) { quoteCache.set(q.symbol.toLowerCase(), q); }
-        if ((q.type === "A_SHARE" || /^\d{6}$/.test(q.symbol)) && q.price > 0) {
-          hasLoadedInitialAShare = true;
-        }
+        saveToQuoteCache(quoteCache, q);
       }
 
-      if (treeProvider.isEmpty()) {
+      const wasFirstLoad = !hasLoadedInitialQuotes;
+      if (quotes.length > 0 || hasLoadedInitialQuotes) {
+        hasLoadedInitialQuotes = true;
+      }
+
+      if (treeProvider.isEmpty() || wasFirstLoad || forceRefreshAll) {
         treeProvider.buildTree(config.watchlist, quoteCache, {
           aShare: config.aShare.enabled,
+          hkStock: config.hkStock.enabled,
+          usStock: config.usStock.enabled,
           binance: config.binance.enabled,
           alpha: config.alpha.enabled,
         });
@@ -217,13 +334,14 @@ export async function activate(
       const quotes  = await marketManager.pollAll(
         targets,
         { mode: config.aShare.networkMode, proxyUrl: config.aShare.proxyUrl },
+        { mode: config.hkStock.networkMode, proxyUrl: config.hkStock.proxyUrl },
+        { mode: config.usStock.networkMode, proxyUrl: config.usStock.proxyUrl },
         { mode: config.binance.networkMode, proxyUrl: config.binance.proxyUrl },
         { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl }
       );
 
       for (const q of quotes) {
-        if (q.id)     { quoteCache.set(q.id.toLowerCase(), q); }
-        if (q.symbol) { quoteCache.set(q.symbol.toLowerCase(), q); }
+        saveToQuoteCache(quoteCache, q);
       }
 
       treeProvider.applyQuotes(quotes);
@@ -258,9 +376,11 @@ export async function activate(
   // ── 格式校验与智能识别函数 ────────────────────────────────────
   interface ParsedItemInput {
     symbol: string;
-    type: "A_SHARE" | "CRYPTO" | "ALPHA_TOKEN";
+    type: "A_SHARE" | "HK_STOCK" | "US_STOCK" | "CRYPTO" | "ALPHA_TOKEN";
     defaultGroup: string;
     hint: string;
+    alternativeGroup?: string;
+    alternativeType?: "A_SHARE" | "HK_STOCK" | "US_STOCK" | "CRYPTO" | "ALPHA_TOKEN";
   }
 
   function validateAndParseInput(input: string): { error?: string; parsed?: ParsedItemInput } {
@@ -281,48 +401,87 @@ export async function activate(
       };
     }
 
-    // 2. A 股代码校验 (支持 6 位数字，如 600519，或带前缀 sh600519 / sz000001 / bj830001)
-    const aShareMatch = trimmed.match(/^(sh|sz|bj)?(\d{6})$/i);
-    if (aShareMatch) {
-      const code = aShareMatch[2];
+    // 2. 港股代码校验（支持 5 位纯数字如 00700，或 hk00700 / r_hk00700）
+    const hkMatch = trimmed.match(/^(?:r_)?hk(\d{1,5})$/i) || (trimmed.length <= 5 && /^\d{3,5}$/.test(trimmed) ? [null, trimmed] : null);
+    if (hkMatch && hkMatch[1]) {
+      const code = hkMatch[1].padStart(5, "0");
       return {
         parsed: {
-          symbol: code,
-          type: "A_SHARE",
-          defaultGroup: "A股",
-          hint: `A股代码 (${code})`,
+          symbol: `hk${code}`,
+          type: "HK_STOCK",
+          defaultGroup: "港股",
+          hint: `港股代码 (hk${code})`,
         },
       };
     }
 
-    // 如果纯数字但不是 6 位，明确报错拦截
-    if (/^\d+$/.test(trimmed)) {
+    // 3. A 股代码校验 (支持 6 位数字，如 600519，或带前缀 sh600519 / sz000001 / bj830001)
+    const aShareMatch = trimmed.match(/^(sh|sz|bj)?(\d{6})$/i);
+    if (aShareMatch) {
+      const prefix = aShareMatch[1] ? aShareMatch[1].toLowerCase() : "";
+      const code = aShareMatch[2];
+      const fullSymbol = prefix ? `${prefix}${code}` : (/^[69]/.test(code) ? `sh${code}` : (/^[03]/.test(code) ? `sz${code}` : `bj${code}`));
       return {
-        error: `⚠️ 纯数字仅支持 6 位 A 股股票代码（如 600519），当前输入为 ${trimmed.length} 位数字`,
+        parsed: {
+          symbol: fullSymbol,
+          type: "A_SHARE",
+          defaultGroup: "A股",
+          hint: `A股代码 (${fullSymbol})`,
+        },
       };
     }
 
-    // 3. 加密货币币对 (如 BTCUSDT, ETH/USDT, SOL-USDT, BTC, DOGE 等)
-    // 必须全部为字母（中间可含 / 或 -），至少 2 位
-    const cryptoMatch = trimmed.match(/^([a-zA-Z]{2,10})([\/\-_]?([a-zA-Z]{2,10}))?$/);
-    if (cryptoMatch) {
-      let cleanSym = trimmed.toUpperCase().replace(/[\/\-_]/g, "");
-      // 若只输入了单币名且未含计价货币，默认补齐 USDT 方便拉取
-      if (!cryptoMatch[3] && !cleanSym.endsWith("USDT") && !cleanSym.endsWith("USD") && !cleanSym.endsWith("BUSD")) {
-        cleanSym = `${cleanSym}USDT`;
-      }
+    // 4. 美股显式前缀或指数（如 usAAPL, usTSLA, .IXIC, .DJI）
+    if (/^us[a-zA-Z\.]+$/i.test(trimmed) || trimmed.startsWith(".")) {
+      const sym = trimmed.toUpperCase();
       return {
         parsed: {
-          symbol: cleanSym,
-          type: "CRYPTO",
-          defaultGroup: "Binance",
-          hint: `加密货币币对 (${cleanSym})`,
+          symbol: sym,
+          type: "US_STOCK",
+          defaultGroup: "美股",
+          hint: `美股资产 (${sym})`,
+        },
+      };
+    }
+
+    // 如果纯数字但不是 5/6 位，明确报错拦截
+    if (/^\d+$/.test(trimmed)) {
+      return {
+        error: `⚠️ 纯数字仅支持 5位港股（如 00700）或 6位A股股票代码（如 600519），当前输入为 ${trimmed.length} 位数字`,
+      };
+    }
+
+    // 5. 字母代码：支持加密币（如 BTCUSDT, ETH, DOGE）或美股个股（如 AAPL, TSLA, NVDA）
+    const cryptoMatch = trimmed.match(/^([a-zA-Z]{1,10})([\/\-_]?([a-zA-Z]{2,10}))?$/);
+    if (cryptoMatch) {
+      const cleanUpper = trimmed.toUpperCase().replace(/[\/\-_]/g, "");
+      // 如果包含计价货币尾缀（如 USDT / USDC / BUSD），肯定是加密货币
+      if (cleanUpper.endsWith("USDT") || cleanUpper.endsWith("USDC") || cleanUpper.endsWith("BUSD")) {
+        return {
+          parsed: {
+            symbol: cleanUpper,
+            type: "CRYPTO",
+            defaultGroup: "Binance",
+            hint: `加密货币币对 (${cleanUpper})`,
+          },
+        };
+      }
+
+      // 如果是 1~5 位纯字母（如 AAPL, TSLA, NVDA），可能是美股也可以是单币
+      return {
+        parsed: {
+          symbol: cleanUpper,
+          type: "US_STOCK",
+          defaultGroup: "美股",
+          hint: `美股代码 (${cleanUpper})，亦可作为加密币加入 Binance`,
+          alternativeGroup: "Binance",
+          alternativeType: "CRYPTO",
         },
       };
     }
 
     return {
-      error: "⚠️ 格式不合法！请输入：A股6位代码(如 600519)、币对(如 BTCUSDT) 或 链上合约地址(0x...)",
+      error: "⚠️ 格式不合法！请输入：A股(6位)、港股(5位)、美股代码(如 AAPL)、币对(如 BTCUSDT) 或 链上合约地址(0x...)",
     };
   }
 
@@ -473,22 +632,39 @@ export async function activate(
       }
 
       // ── Step 4: 写入 settings.json ───────────────────────────────
+      let finalType = detected.type;
+      if (detected.alternativeType) {
+        if (detected.alternativeGroup && targetGroup.toLowerCase().includes(detected.alternativeGroup.toLowerCase())) {
+          finalType = detected.alternativeType;
+        } else if (targetGroup.includes("港股") || targetGroup.toLowerCase().includes("hk")) {
+          finalType = "HK_STOCK";
+        } else if (targetGroup.includes("美股") || targetGroup.toLowerCase().includes("us")) {
+          finalType = "US_STOCK";
+        }
+      }
+
       const updated = {
         ...watchlist,
         [targetGroup]: [
           ...groupItems,
-          { symbol: sym, name: sym, type: detected.type },
+          { symbol: sym, name: sym, type: finalType },
         ],
       };
 
-      await vscode.workspace
-        .getConfiguration("marketlens")
-        .update("watchlist", updated, vscode.ConfigurationTarget.Global);
+      try {
+        await vscode.workspace
+          .getConfiguration("marketlens")
+          .update("watchlist", updated, vscode.ConfigurationTarget.Global);
 
-      vscode.window.showInformationMessage(
-        `✅ 已添加 "${sym}" 到 ${targetGroup}`
-      );
-      void doRefresh();
+        vscode.window.showInformationMessage(
+          `✅ 已添加 "${sym}" 到 ${targetGroup}`
+        );
+        void doRefresh();
+      } catch (err: any) {
+        vscode.window.showErrorMessage(
+          `无法写入用户设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
+        );
+      }
     }),
 
     // 删除自选（点击垃圾桶图标或命令触发）
@@ -571,23 +747,35 @@ export async function activate(
         }
 
         // 保存更新到全局配置
-        await vscode.workspace
-          .getConfiguration("marketlens")
-          .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
+        try {
+          await vscode.workspace
+            .getConfiguration("marketlens")
+            .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
 
-        // 清理缓存
-        quoteCache.delete(targetSymbol.toLowerCase());
+          // 清理缓存
+          quoteCache.delete(targetSymbol.toLowerCase());
 
-        // 重新构建树视图
-        treeProvider.buildTree(watchlist, quoteCache, {
-          aShare: cfg.aShare.enabled,
-          binance: cfg.binance.enabled,
-          alpha: cfg.alpha.enabled,
-        });
+          // 重新构建树视图
+          treeProvider.buildTree(watchlist, quoteCache, {
+            aShare: cfg.aShare.enabled,
+            hkStock: cfg.hkStock.enabled,
+            usStock: cfg.usStock.enabled,
+            binance: cfg.binance.enabled,
+            alpha: cfg.alpha.enabled,
+          });
 
-        vscode.window.showInformationMessage(`✅ 已删除 "${targetName || targetSymbol}"`);
+          vscode.window.showInformationMessage(`✅ 已删除 "${targetName || targetSymbol}"`);
+        } catch (err: any) {
+          vscode.window.showErrorMessage(
+            `无法更新设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
+          );
+        }
       }
     ),
+
+    vscode.commands.registerCommand("marketlens.restoreDefaults", async () => {
+      await SettingsWebviewPanel.restoreDefaults();
+    }),
 
     // 配置变更监听
     vscode.workspace.onDidChangeConfiguration((e) => {
@@ -599,6 +787,8 @@ export async function activate(
         statusBar.setColorNeutral(config.colorNeutral);
         treeProvider.buildTree(config.watchlist, quoteCache, {
           aShare: config.aShare.enabled,
+          hkStock: config.hkStock.enabled,
+          usStock: config.usStock.enabled,
           binance: config.binance.enabled,
           alpha: config.alpha.enabled,
         });
