@@ -1,7 +1,8 @@
 // src/ui/watchlistProvider.ts
 import * as vscode from "vscode";
-import { MarketItem, WatchlistConfig } from "../types";
-import { isSameSymbol } from "../utils/symbolHelper";
+import { MarketItem, WatchlistConfig, WatchConfigItem } from "../types";
+import { normalizeSymbolKey, resolveItemAssetType } from "../utils/symbolHelper";
+import { isDisplayMasked } from "../utils/maskState";
 
 /**
  * 智能格式化价格
@@ -143,8 +144,8 @@ export class StockItem extends vscode.TreeItem {
       let changeAmtStr = "--";
       if (item.change !== undefined) {
         const cSign = item.change >= 0 ? "+" : "";
-        changeAmtStr = `${cSign}${currSym}${Math.abs(item.change).toFixed(item.price < 1 ? 4 : 2)}`;
-      } else if (item.price && item.changePercent !== undefined) {
+        changeAmtStr = `${cSign}${currSym}${Math.abs(item.change).toFixed(item.price > 0 && item.price < 1 ? 4 : 2)}`;
+      } else if (item.price > 0 && item.changePercent !== undefined) {
         const approxChange = item.price * (item.changePercent / 100);
         const cSign = approxChange >= 0 ? "+" : "";
         changeAmtStr = `${cSign}${currSym}${Math.abs(approxChange).toFixed(item.price < 1 ? 4 : 2)}`;
@@ -213,7 +214,7 @@ export class WatchlistProvider
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private groups: GroupItem[] = [];
-  private stockMap = new Map<string, StockItem>();
+  private stockMap = new Map<string, StockItem[]>();
 
   constructor(
     private maskMode: boolean,
@@ -273,18 +274,6 @@ export class WatchlistProvider
       return;
     }
 
-    const dragged = rawList[0];
-    const sourceGroup = dragged.groupName;
-    const sourceSymbol =
-      dragged.confSymbol ||
-      dragged.symbol ||
-      dragged.id ||
-      (dragged.item ? (dragged.item.symbol || dragged.item.id) : undefined);
-
-    if (!sourceGroup || !sourceSymbol) {
-      return;
-    }
-
     let targetGroup: string | undefined;
     let targetSymbol: string | undefined;
 
@@ -299,7 +288,23 @@ export class WatchlistProvider
         target.item?.id;
     }
 
-    if (targetGroup && this.onReorderCallback) {
+    if (!targetGroup || !this.onReorderCallback) {
+      return;
+    }
+
+    // 支持多选拖拽：按原顺序依次重排或跨组转移所有拖拽选中的标的
+    for (const dragged of rawList) {
+      const sourceGroup = dragged.groupName;
+      const sourceSymbol =
+        dragged.confSymbol ||
+        dragged.symbol ||
+        dragged.id ||
+        (dragged.item ? (dragged.item.symbol || dragged.item.id) : undefined);
+
+      if (!sourceGroup || !sourceSymbol) {
+        continue;
+      }
+
       await this.onReorderCallback(
         sourceGroup,
         sourceSymbol,
@@ -342,51 +347,72 @@ export class WatchlistProvider
   ): void {
     this.stockMap.clear();
 
-    const filteredEntries = Object.entries(config).filter(([groupName]) => {
-      const lower = groupName.toLowerCase();
-      if ((groupName.includes("A股") || lower.includes("ashare")) && !enabledSections.aShare) {
-        return false;
+    const isSectionEnabled = (type?: string): boolean => {
+      if (!type) return true; // 中立空组不归属任何单一边界板块，默认保持展示
+      switch (type) {
+        case "A_SHARE":
+          return enabledSections.aShare !== false;
+        case "HK_STOCK":
+          return enabledSections.hkStock !== false;
+        case "US_STOCK":
+          return enabledSections.usStock !== false;
+        case "CRYPTO":
+          return enabledSections.binance !== false;
+        case "ALPHA_TOKEN":
+        case "BSC_TOKEN":
+          return enabledSections.alpha !== false;
+        default:
+          return true;
       }
-      if ((groupName.includes("港股") || lower.includes("hk")) && enabledSections.hkStock === false) {
-        return false;
-      }
-      if ((groupName.includes("美股") || lower.includes("us")) && enabledSections.usStock === false) {
-        return false;
-      }
-      if ((lower.includes("binance") || lower.includes("crypto")) && !enabledSections.binance) {
-        return false;
-      }
-      if ((lower.includes("alpha") || lower.includes("bsc") || lower.includes("dex")) && !enabledSections.alpha) {
-        return false;
-      }
-      return true;
-    });
-
-    const getGroupWeight = (name: string): number => {
-      const lower = name.toLowerCase().trim();
-      if (name.includes("A股") || lower.includes("ashare")) return 1;
-      if (name.includes("港股") || lower.includes("hk")) return 2;
-      if (name.includes("美股") || lower.includes("us")) return 3;
-      if (lower.includes("binance") || lower.includes("crypto")) return 4;
-      if (lower.includes("alpha") || lower.includes("bsc") || lower.includes("dex")) return 5;
-      return 100;
     };
 
-    filteredEntries.sort((a, b) => getGroupWeight(a[0]) - getGroupWeight(b[0]));
+    const isGroupEnabled = (groupName: string, items?: WatchConfigItem[]): boolean => {
+      if (items && items.length > 0) {
+        // 先看组内 item 的真实 type：只要组内至少存在一个处于启用板块的标的，该组即保持展示
+        return items.some((item) => isSectionEnabled(resolveItemAssetType(item, groupName)));
+      }
+      // 组内为空时，按组名关键词推导所属板块进行兜底；若为中立组（如 "自选"）推导为 undefined，返回 true 保持展示
+      const inferredType = resolveItemAssetType({ symbol: "" }, groupName);
+      return isSectionEnabled(inferredType);
+    };
+
+    const filteredEntries = Object.entries(config).filter(([groupName, items]) => {
+      return isGroupEnabled(groupName, items);
+    });
+
+    const getGroupWeight = (name: string, items?: WatchConfigItem[]): number => {
+      // 组权重优先看组内标的主流类型，空组或无标的时按组名关键词兜底
+      let dominantType: string | undefined;
+      if (items && items.length > 0) {
+        dominantType = resolveItemAssetType(items[0], name);
+      } else {
+        dominantType = resolveItemAssetType({ symbol: "" }, name);
+      }
+      switch (dominantType) {
+        case "A_SHARE": return 1;
+        case "HK_STOCK": return 2;
+        case "US_STOCK": return 3;
+        case "CRYPTO": return 4;
+        case "ALPHA_TOKEN":
+        case "BSC_TOKEN": return 5;
+        default: return 100; // 中立空组排在最后
+      }
+    };
+
+    filteredEntries.sort((a, b) => getGroupWeight(a[0], a[1]) - getGroupWeight(b[0], b[1]));
 
     this.groups = filteredEntries.map(([groupName, items]) => {
-      const children = (items || []).map((conf) => {
-        const key = conf.symbol.toLowerCase();
-        const keyClean = key.replace(/[\._\-]/g, "");
-        const rawTicker = key.replace(/^(us|hk|sh|sz|bj)[\._\-]?/i, "");
+      const activeItems = (items || []).filter((conf) =>
+        isSectionEnabled(resolveItemAssetType(conf, groupName))
+      );
+      const children = activeItems.map((conf) => {
+        const normKey = normalizeSymbolKey(conf.symbol);
+        const rawTicker = conf.symbol.toLowerCase().replace(/^(us|hk|sh|sz|bj)[\._\-]?/i, "");
         const found =
-          quoteMap.get(key) ||
+          quoteMap.get(normKey) ||
           quoteMap.get(conf.symbol) ||
-          quoteMap.get(keyClean) ||
-          quoteMap.get(rawTicker) ||
-          quoteMap.get("us" + rawTicker) ||
-          quoteMap.get("us." + rawTicker) ||
-          quoteMap.get("hk" + rawTicker) || {
+          quoteMap.get(conf.symbol.toLowerCase()) ||
+          quoteMap.get(rawTicker) || {
             id: conf.symbol,
             name: conf.name || conf.symbol,
             symbol: conf.symbol,
@@ -395,23 +421,23 @@ export class WatchlistProvider
             changePercent: 0,
           };
 
-        const node = new StockItem(found, groupName, conf.symbol, this.maskMode, this.colorNeutral);
-        this.stockMap.set(key, node);
-        this.stockMap.set(conf.symbol, node);
-        this.stockMap.set(keyClean, node);
-        this.stockMap.set(rawTicker, node);
-        if (key.startsWith("us") || conf.type === "US_STOCK") {
-          this.stockMap.set("us" + rawTicker, node);
-          this.stockMap.set("us." + rawTicker, node);
-          this.stockMap.set("us_" + rawTicker, node);
-          this.stockMap.set("." + rawTicker, node);
+        const node = new StockItem(found, groupName, conf.symbol, this.isMasked(), this.colorNeutral);
+        // 使用规范化 key 存储，辅以原始 conf.symbol 索引，支持同一标的在不同分组中均能刷新
+        const registerKey = (k?: string) => {
+          if (!k) return;
+          if (!this.stockMap.has(k)) {
+            this.stockMap.set(k, []);
+          }
+          this.stockMap.get(k)!.push(node);
+        };
+
+        registerKey(normKey);
+        if (conf.symbol !== normKey) {
+          registerKey(conf.symbol);
+          registerKey(conf.symbol.toLowerCase());
         }
-        if (key.startsWith("hk") || conf.type === "HK_STOCK") {
-          this.stockMap.set("hk" + rawTicker, node);
-          this.stockMap.set(rawTicker.replace(/^0+/, ""), node);
-        }
-        if (found.id) {
-          this.stockMap.set(found.id.toLowerCase(), node);
+        if (found.id && found.id !== conf.symbol) {
+          registerKey(normalizeSymbolKey(found.id));
         }
         return node;
       });
@@ -423,46 +449,69 @@ export class WatchlistProvider
 
   applyQuotes(quotes: MarketItem[]): void {
     for (const q of quotes) {
-      const id = q.id?.toLowerCase() || "";
-      const sym = q.symbol?.toLowerCase() || "";
       const candidates = [
-        id,
-        sym,
-        id.replace(/[\._\-]/g, ""),
-        sym.replace(/[\._\-]/g, ""),
-        q.id,
+        normalizeSymbolKey(q.symbol),
+        normalizeSymbolKey(q.id),
         q.symbol,
+        q.id,
+        q.symbol?.toLowerCase(),
+        q.id?.toLowerCase(),
       ];
-      if (id.startsWith("us") || q.type === "US_STOCK") {
-        candidates.push("us." + sym, "us_" + sym, "us" + sym, "." + sym);
-      }
-      if (id.startsWith("hk") || q.type === "HK_STOCK") {
-        candidates.push("hk" + sym, sym.replace(/^0+/, ""));
-      }
 
       for (const key of candidates.filter(Boolean)) {
-        const node = this.stockMap.get(key);
-        if (node) {
-          node.refresh(q, this.maskMode, this.colorNeutral);
-          this._onDidChangeTreeData.fire(node);
+        const nodes = this.stockMap.get(key as string);
+        if (nodes && nodes.length > 0) {
+          for (const node of nodes) {
+            node.refresh(q, this.isMasked(), this.colorNeutral);
+          }
           break;
         }
       }
     }
+    // 性能优化：循环内不逐个触发 49 次 IPC 重绘，统一在批量刷新完成后原子性触发 1 次刷新
+    this._onDidChangeTreeData.fire();
+  }
+
+  private getAllUniqueNodes(): StockItem[] {
+    const set = new Set<StockItem>();
+    for (const list of this.stockMap.values()) {
+      for (const node of list) {
+        set.add(node);
+      }
+    }
+    return Array.from(set);
+  }
+
+  private bossKeyActive = false;
+
+  setBossKey(active: boolean): void {
+    this.bossKeyActive = active;
+    for (const node of this.getAllUniqueNodes()) {
+      node.refresh(node.item, this.isMasked(), this.colorNeutral);
+    }
+    this._onDidChangeTreeData.fire();
+  }
+
+  isBossKeyActive(): boolean {
+    return this.bossKeyActive;
+  }
+
+  private isMasked(): boolean {
+    return isDisplayMasked(this.bossKeyActive, this.maskMode);
   }
 
   setMaskMode(enabled: boolean): void {
     this.maskMode = enabled;
-    for (const node of this.stockMap.values()) {
-      node.refresh(node.item, this.maskMode, this.colorNeutral);
+    for (const node of this.getAllUniqueNodes()) {
+      node.refresh(node.item, this.isMasked(), this.colorNeutral);
     }
     this._onDidChangeTreeData.fire();
   }
 
   setColorNeutral(enabled: boolean): void {
     this.colorNeutral = enabled;
-    for (const node of this.stockMap.values()) {
-      node.refresh(node.item, this.maskMode, this.colorNeutral);
+    for (const node of this.getAllUniqueNodes()) {
+      node.refresh(node.item, this.isMasked(), this.colorNeutral);
     }
     this._onDidChangeTreeData.fire();
   }

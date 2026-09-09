@@ -6,6 +6,7 @@ import { USStockService } from "./usStockService";
 import { BinanceService } from "./binanceService";
 import { DexScreenerService } from "./dexScreenerService";
 import { CryptoNetworkOptions } from "./network";
+import { logger } from "../utils/logger";
 
 export interface PollTargets {
   aShares?: string[];
@@ -30,6 +31,10 @@ export class MarketManager {
     this.dexScreenerService = new DexScreenerService();
   }
 
+  public clearBinanceInvalidCache(): void {
+    this.binanceService.clearInvalidCache();
+  }
+
   /**
    * 统一调度方法：并行抓取 A股、港股、美股、主流加密货币、Alpha 链上代币五类资产并聚合输出
    */
@@ -38,8 +43,8 @@ export class MarketManager {
     aShareOptions: CryptoNetworkOptions = { mode: "direct" },
     hkStockOptions: CryptoNetworkOptions = { mode: "direct" },
     usStockOptions: CryptoNetworkOptions = { mode: "direct" },
-    binanceOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" },
-    alphaOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" }
+    binanceOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:7890" },
+    alphaOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:7890" }
   ): Promise<MarketItem[]> {
     const { aShares = [], hkStocks = [], usStocks = [], cryptos = [], bscTokens = [] } = targets;
 
@@ -56,31 +61,31 @@ export class MarketManager {
     if (aShareRes.status === "fulfilled") {
       aggregated.push(...aShareRes.value);
     } else {
-      console.error("[MarketManager] AShare fetch failed:", aShareRes.reason);
+      logger.error("[MarketManager] AShare fetch failed:", aShareRes.reason);
     }
 
     if (hkRes.status === "fulfilled") {
       aggregated.push(...hkRes.value);
     } else {
-      console.error("[MarketManager] HKStock fetch failed:", hkRes.reason);
+      logger.error("[MarketManager] HKStock fetch failed:", hkRes.reason);
     }
 
     if (usRes.status === "fulfilled") {
       aggregated.push(...usRes.value);
     } else {
-      console.error("[MarketManager] USStock fetch failed:", usRes.reason);
+      logger.error("[MarketManager] USStock fetch failed:", usRes.reason);
     }
 
     if (cryptoRes.status === "fulfilled") {
       aggregated.push(...cryptoRes.value);
     } else {
-      console.error("[MarketManager] Crypto fetch failed:", cryptoRes.reason);
+      logger.error("[MarketManager] Crypto fetch failed:", cryptoRes.reason);
     }
 
     if (bscRes.status === "fulfilled") {
       aggregated.push(...bscRes.value);
     } else {
-      console.error("[MarketManager] Alpha token fetch failed:", bscRes.reason);
+      logger.error("[MarketManager] Alpha token fetch failed:", bscRes.reason);
     }
 
     return aggregated;

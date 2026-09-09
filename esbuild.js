@@ -1,4 +1,6 @@
 // @ts-check
+const fs = require("fs");
+const path = require("path");
 const esbuild = require("esbuild");
 
 const isProduction = process.argv.includes("--production");
@@ -19,6 +21,15 @@ const buildOptions = {
 };
 
 async function main() {
+  if (isProduction) {
+    const mapPath = path.join(__dirname, "dist", "extension.js.map");
+    if (fs.existsSync(mapPath)) {
+      try {
+        fs.unlinkSync(mapPath);
+      } catch (_) {}
+    }
+  }
+
   if (isWatch) {
     const ctx = await esbuild.context(buildOptions);
     await ctx.watch();

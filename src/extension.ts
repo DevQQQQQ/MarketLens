@@ -1,227 +1,23 @@
 // src/extension.ts
 import * as vscode from "vscode";
 import { MarketManager } from "./services/marketManager";
-import { WatchlistProvider, GroupItem, StockItem } from "./ui/watchlistProvider";
+import { WatchlistProvider } from "./ui/watchlistProvider";
 import { StatusBar } from "./ui/statusBar";
-import { SettingsWebviewPanel } from "./ui/settingsWebview";
-import { MarketLensConfig, MarketItem } from "./types";
-import { isSameSymbol } from "./utils/symbolHelper";
+import { logger } from "./utils/logger";
+import { resetProxyCache } from "./services/network";
+import { readConfig, getWatchlistFingerprint } from "./utils/config";
+import { RefreshScheduler } from "./scheduler";
+import { WatchlistOps } from "./watchlistOps";
+import { registerCommands } from "./commands";
 
 // ── 模块级句柄：让 deactivate() 可以显式清理，防止热重载内存泄漏 ──
-let _timer: ReturnType<typeof setInterval> | undefined;
+let _scheduler: RefreshScheduler | undefined;
 let _statusBar: StatusBar | undefined;
-let hasLoadedInitialQuotes = false;
 
-// ────────────────────────────────────────────────────────────────
-//  配置读取
-// ────────────────────────────────────────────────────────────────
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  logger.init(context);
+  logger.info("MarketLens 正在激活...");
 
-function readConfig(): MarketLensConfig {
-  const cfg = vscode.workspace.getConfiguration("marketlens");
-  const legacyProxyMode = cfg.get<"proxy" | "direct">("cryptoProxyMode", "proxy");
-  const legacyProxyUrl  = cfg.get<string>("cryptoProxyUrl", "http://127.0.0.1:10808");
-
-  return {
-    autoRefresh:     cfg.get<boolean>("autoRefresh", true),
-    refreshInterval: cfg.get<number>("refreshInterval", 5000),
-    maskMode:        cfg.get<boolean>("maskMode", false),
-    colorNeutral:    cfg.get<boolean>("colorNeutral", false),
-
-    statusBar: {
-      enabled: cfg.get<boolean>("statusBar.enabled", true),
-    },
-
-    aShare: {
-      enabled:            cfg.get<boolean>("aShare.enabled", true),
-      statusBar:          cfg.get<boolean>("aShare.statusBar", true),
-      networkMode:        cfg.get<"proxy" | "direct">("aShare.networkMode", "direct"),
-      proxyUrl:           cfg.get<string>("aShare.proxyUrl", "http://127.0.0.1:10808"),
-      stopOnMarketClosed: cfg.get<boolean>("aShare.stopOnMarketClosed", true),
-    },
-    hkStock: {
-      enabled:            cfg.get<boolean>("hkStock.enabled", true),
-      statusBar:          cfg.get<boolean>("hkStock.statusBar", true),
-      networkMode:        cfg.get<"proxy" | "direct">("hkStock.networkMode", "direct"),
-      proxyUrl:           cfg.get<string>("hkStock.proxyUrl", "http://127.0.0.1:10808"),
-      stopOnMarketClosed: cfg.get<boolean>("hkStock.stopOnMarketClosed", true),
-    },
-    usStock: {
-      enabled:            cfg.get<boolean>("usStock.enabled", true),
-      statusBar:          cfg.get<boolean>("usStock.statusBar", true),
-      networkMode:        cfg.get<"proxy" | "direct">("usStock.networkMode", "direct"),
-      proxyUrl:           cfg.get<string>("usStock.proxyUrl", "http://127.0.0.1:10808"),
-      stopOnMarketClosed: cfg.get<boolean>("usStock.stopOnMarketClosed", true),
-    },
-    binance: {
-      enabled:     cfg.get<boolean>("binance.enabled", true),
-      statusBar:   cfg.get<boolean>("binance.statusBar", true),
-      networkMode: cfg.get<"proxy" | "direct">("binance.networkMode", legacyProxyMode),
-      proxyUrl:    cfg.get<string>("binance.proxyUrl", legacyProxyUrl),
-    },
-    alpha: {
-      enabled:     cfg.get<boolean>("alpha.enabled", true),
-      statusBar:   cfg.get<boolean>("alpha.statusBar", true),
-      networkMode: cfg.get<"proxy" | "direct">("alpha.networkMode", legacyProxyMode),
-      proxyUrl:    cfg.get<string>("alpha.proxyUrl", legacyProxyUrl),
-    },
-
-    watchlist: cfg.get("watchlist", {}),
-  };
-}
-
-/**
- * 校验当前是否处于 A 股交易时段：
- * - 周一至周五 9:15 ~ 11:30, 13:00 ~ 15:05
- */
-export function isAShareMarketOpen(): boolean {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) { return false; }
-  const totalMinutes = now.getHours() * 60 + now.getMinutes();
-  const isMorning   = totalMinutes >= 9 * 60 + 15 && totalMinutes <= 11 * 60 + 30;
-  const isAfternoon = totalMinutes >= 13 * 60 && totalMinutes <= 15 * 60 + 5;
-  return isMorning || isAfternoon;
-}
-
-/**
- * 校验当前是否处于港股交易时段：
- * - 周一至周五 9:30 ~ 12:00, 13:00 ~ 16:10
- */
-export function isHKMarketOpen(): boolean {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) { return false; }
-  const totalMinutes = now.getHours() * 60 + now.getMinutes();
-  const isMorning   = totalMinutes >= 9 * 60 + 30 && totalMinutes <= 12 * 60;
-  const isAfternoon = totalMinutes >= 13 * 60 && totalMinutes <= 16 * 60 + 10;
-  return isMorning || isAfternoon;
-}
-
-/**
- * 校验当前是否处于美股交易时段（含盘前盘后简易覆盖）：
- * - 北京时间工作日晚上 21:00 至次日凌晨 05:00
- */
-export function isUSMarketOpen(): boolean {
-  const now = new Date();
-  const day = now.getDay();
-  const totalMinutes = now.getHours() * 60 + now.getMinutes();
-  // 周六早晨 05:00 之前仍属于美股周五交易日收尾
-  if (day === 6 && totalMinutes <= 5 * 60) { return true; }
-  if (day === 0 || day === 6) { return false; }
-  // 周一早晨无美股
-  if (day === 1 && totalMinutes < 21 * 60) { return false; }
-
-  const isNight = totalMinutes >= 21 * 60;
-  const isEarlyMorning = totalMinutes <= 5 * 60;
-  return isNight || isEarlyMorning;
-}
-
-function isContractAddress(str: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(str) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(str);
-}
-
-/**
- * 将 watchlist 配置分类为五种抓取目标（受板块启用状态控制）
- */
-function extractTargets(
-  config: MarketLensConfig,
-  specificGroupName?: string,
-  forceAll: boolean = false
-) {
-  const aShares:  string[] = [];
-  const hkStocks: string[] = [];
-  const usStocks: string[] = [];
-  const cryptos:  string[] = [];
-  const bscTokens: string[] = [];
-
-  for (const [groupName, items] of Object.entries(config.watchlist)) {
-    if (specificGroupName && groupName !== specificGroupName) { continue; }
-
-    const lowerGroup = groupName.toLowerCase();
-
-    for (const item of items ?? []) {
-      const sym  = item.symbol;
-      const type = item.type;
-      if (!sym) { continue; }
-
-      const isHK =
-        type === "HK_STOCK" ||
-        groupName.includes("港股") ||
-        /^hk/i.test(sym) ||
-        (/^\d{5}$/.test(sym) && !/^\d{6}$/.test(sym));
-
-      const isUS =
-        type === "US_STOCK" ||
-        groupName.includes("美股") ||
-        /^us/i.test(sym) ||
-        sym.startsWith(".");
-
-      const isAShare =
-        type === "A_SHARE" ||
-        groupName.includes("A股") ||
-        /^(sh|sz|bj|\d{6})/i.test(sym);
-
-      const isAlpha =
-        type === "ALPHA_TOKEN" ||
-        type === "BSC_TOKEN" ||
-        lowerGroup.includes("alpha") ||
-        lowerGroup.includes("bsc") ||
-        isContractAddress(sym);
-
-      const isCrypto =
-        type === "CRYPTO" ||
-        lowerGroup.includes("binance") ||
-        lowerGroup.includes("crypto");
-
-      if (isHK) {
-        const canSkipByMarketClosed = config.hkStock.stopOnMarketClosed && !isHKMarketOpen() && hasLoadedInitialQuotes && !forceAll && !specificGroupName;
-        if (config.hkStock.enabled && !canSkipByMarketClosed) {
-          hkStocks.push(sym);
-        }
-      } else if (isUS) {
-        const canSkipByMarketClosed = config.usStock.stopOnMarketClosed && !isUSMarketOpen() && hasLoadedInitialQuotes && !forceAll && !specificGroupName;
-        if (config.usStock.enabled && !canSkipByMarketClosed) {
-          usStocks.push(sym);
-        }
-      } else if (isAShare) {
-        const canSkipByMarketClosed = config.aShare.stopOnMarketClosed && !isAShareMarketOpen() && hasLoadedInitialQuotes && !forceAll && !specificGroupName;
-        if (config.aShare.enabled && !canSkipByMarketClosed) {
-          aShares.push(sym);
-        }
-      } else if (isAlpha) {
-        if (config.alpha.enabled) { bscTokens.push(sym); }
-      } else if (isCrypto) {
-        if (config.binance.enabled) { cryptos.push(sym); }
-      } else {
-        if (isContractAddress(sym) && config.alpha.enabled) {
-          bscTokens.push(sym);
-        } else if (/^\d{5}$/.test(sym) && config.hkStock.enabled) {
-          hkStocks.push(sym);
-        } else if (/^\d{6}$/.test(sym) && config.aShare.enabled) {
-          aShares.push(sym);
-        } else if (config.binance.enabled) {
-          cryptos.push(sym);
-        }
-      }
-    }
-  }
-
-  return {
-    aShares:   [...new Set(aShares)],
-    hkStocks:  [...new Set(hkStocks)],
-    usStocks:  [...new Set(usStocks)],
-    cryptos:   [...new Set(cryptos)],
-    bscTokens: [...new Set(bscTokens)],
-  };
-}
-
-// ────────────────────────────────────────────────────────────────
-//  activate
-// ────────────────────────────────────────────────────────────────
-
-export async function activate(
-  context: vscode.ExtensionContext
-): Promise<void> {
   let config = readConfig();
 
   const marketManager = new MarketManager();
@@ -240,830 +36,103 @@ export async function activate(
   const treeView = vscode.window.createTreeView("marketlens.watchlist", {
     treeDataProvider: treeProvider,
     dragAndDropController: treeProvider,
-    showCollapseAll:  true,
+    showCollapseAll: true,
   });
 
-  const quoteCache = new Map<string, MarketItem>();
-  let isRefreshing  = false; // 防止定时器并发触发多次 doRefresh
+  const scheduler = new RefreshScheduler({
+    marketManager,
+    treeProvider,
+    statusBar,
+    treeView,
+  });
+  _scheduler = scheduler;
+
+  const watchlistOps = new WatchlistOps({
+    quoteCache: scheduler.quoteCache,
+    rebuildTree: (customWatchlist) => scheduler.rebuildTree(customWatchlist),
+  });
 
   // 绑定拖拽排序回调
-  treeProvider.onReorderCallback = async (
-    sourceGroup: string,
-    sourceSymbol: string,
-    targetGroup: string,
-    targetSymbol?: string
-  ) => {
-    const cfg = readConfig();
-    const watchlist = { ...cfg.watchlist };
-
-    if (!watchlist[sourceGroup] || !watchlist[targetGroup]) {
-      return;
-    }
-
-    if (sourceGroup === targetGroup) {
-      const items = [...watchlist[sourceGroup]];
-      const origDragIndex = items.findIndex((it) =>
-        isSameSymbol(it.symbol, sourceSymbol) || it.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
-      );
-      if (origDragIndex === -1) {
-        return;
-      }
-
-      if (targetSymbol) {
-        const origTargetIndex = items.findIndex((it) =>
-          isSameSymbol(it.symbol, targetSymbol) || it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
-        );
-        if (origTargetIndex === -1 || origTargetIndex === origDragIndex) {
-          return;
-        }
-
-        const [draggedItem] = items.splice(origDragIndex, 1);
-        const newTargetIndex = items.findIndex((it) =>
-          isSameSymbol(it.symbol, targetSymbol) || it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
-        );
-        if (newTargetIndex !== -1) {
-          if (origDragIndex < origTargetIndex) {
-            items.splice(newTargetIndex + 1, 0, draggedItem);
-          } else {
-            items.splice(newTargetIndex, 0, draggedItem);
-          }
-        } else {
-          items.push(draggedItem);
-        }
-      } else {
-        // 拖拽到组名上时放到最顶部
-        const [draggedItem] = items.splice(origDragIndex, 1);
-        items.unshift(draggedItem);
-      }
-
-      watchlist[sourceGroup] = items;
-    } else {
-      // 跨组移动
-      const sourceItems = [...watchlist[sourceGroup]];
-      const targetItems = [...watchlist[targetGroup]];
-
-      const dragIndex = sourceItems.findIndex((it) =>
-        isSameSymbol(it.symbol, sourceSymbol) || it.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
-      );
-      if (dragIndex === -1) {
-        return;
-      }
-
-      const [draggedItem] = sourceItems.splice(dragIndex, 1);
-      watchlist[sourceGroup] = sourceItems;
-
-      if (targetSymbol) {
-        const targetIndex = targetItems.findIndex((it) =>
-          isSameSymbol(it.symbol, targetSymbol) || it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
-        );
-        if (targetIndex !== -1) {
-          targetItems.splice(targetIndex, 0, draggedItem);
-        } else {
-          targetItems.push(draggedItem);
-        }
-      } else {
-        targetItems.push(draggedItem);
-      }
-
-      watchlist[targetGroup] = targetItems;
-    }
-
-    try {
-      await vscode.workspace
-        .getConfiguration("marketlens")
-        .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
-
-      treeProvider.buildTree(watchlist, quoteCache, {
-        aShare: cfg.aShare.enabled,
-        hkStock: cfg.hkStock.enabled,
-        usStock: cfg.usStock.enabled,
-        binance: cfg.binance.enabled,
-        alpha: cfg.alpha.enabled,
-      });
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`调整标的顺序失败: ${err?.message || err}`);
-    }
-  };
+  treeProvider.onReorderCallback = (sourceGroup, sourceSymbol, targetGroup, targetSymbol) =>
+    watchlistOps.handleReorder(sourceGroup, sourceSymbol, targetGroup, targetSymbol);
 
   // 立即构建初版树骨架（展示配置中的所有分组和标的，无需等待首次网络请求返回）
-  treeProvider.buildTree(config.watchlist, quoteCache, {
-    aShare: config.aShare.enabled,
-    hkStock: config.hkStock.enabled,
-    usStock: config.usStock.enabled,
-    binance: config.binance.enabled,
-    alpha: config.alpha.enabled,
+  scheduler.rebuildTree();
+
+  // 当用户展开侧边栏视图时，立即唤醒刷新一次保证最新数据
+  context.subscriptions.push(
+    treeView.onDidChangeVisibility((e) => {
+      if (e.visible) {
+        void scheduler.refresh(true);
+      }
+    })
+  );
+
+  // 注册所有命令
+  registerCommands(context, {
+    scheduler,
+    watchlistOps,
+    statusBar,
+    treeProvider,
   });
 
-  function saveToQuoteCache(cache: Map<string, MarketItem>, q: MarketItem): void {
-    if (q.id) {
-      const idLow = q.id.toLowerCase();
-      cache.set(idLow, q);
-      cache.set(idLow.replace(/[\._\-]/g, ""), q);
-      if (idLow.startsWith("us")) {
-        const ticker = idLow.slice(2).replace(/[\._\-]/g, "");
-        cache.set("us." + ticker, q);
-        cache.set("us_" + ticker, q);
-        cache.set("." + ticker, q);
-      }
-    }
-    if (q.symbol) {
-      const symLow = q.symbol.toLowerCase();
-      cache.set(symLow, q);
-      cache.set(symLow.replace(/[\._\-]/g, ""), q);
-      if (q.type === "US_STOCK") {
-        cache.set("us" + symLow, q);
-        cache.set("us." + symLow, q);
-        cache.set("us_" + symLow, q);
-        cache.set("." + symLow, q);
-      } else if (q.type === "HK_STOCK") {
-        cache.set("hk" + symLow, q);
-        cache.set(symLow.replace(/^0+/, ""), q);
-        cache.set("hk" + symLow.replace(/^0+/, ""), q);
-      } else if (q.type === "A_SHARE") {
-        cache.set(symLow.replace(/^(sh|sz|bj)/, ""), q);
-      }
-    }
-  }
-
-  // ── 全量刷新 ────────────────────────────────────────────────────
-
-  async function doRefresh(forceRefreshAll: boolean = false): Promise<void> {
-    if (isRefreshing) {
-      if (forceRefreshAll) {
-        // 若当前已有刷新在执行，延迟 300ms 再次触发，确保强制刷新不丢失
-        setTimeout(() => void doRefresh(true), 300);
-      }
-      return;
-    }
-    isRefreshing = true;
-    try {
-      // 首次加载或明确要求强制刷新时，确保必定拉取
-      const forceAll = forceRefreshAll || !hasLoadedInitialQuotes;
-      const targets = extractTargets(config, undefined, forceAll);
-      const quotes  = await marketManager.pollAll(
-        targets,
-        { mode: config.aShare.networkMode, proxyUrl: config.aShare.proxyUrl },
-        { mode: config.hkStock.networkMode, proxyUrl: config.hkStock.proxyUrl },
-        { mode: config.usStock.networkMode, proxyUrl: config.usStock.proxyUrl },
-        { mode: config.binance.networkMode, proxyUrl: config.binance.proxyUrl },
-        { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl }
-      );
-
-      for (const q of quotes) {
-        saveToQuoteCache(quoteCache, q);
-      }
-
-      const wasFirstLoad = !hasLoadedInitialQuotes;
-      if (quotes.length > 0 || hasLoadedInitialQuotes) {
-        hasLoadedInitialQuotes = true;
-      }
-
-      if (treeProvider.isEmpty() || wasFirstLoad || forceRefreshAll) {
-        treeProvider.buildTree(config.watchlist, quoteCache, {
-          aShare: config.aShare.enabled,
-          hkStock: config.hkStock.enabled,
-          usStock: config.usStock.enabled,
-          binance: config.binance.enabled,
-          alpha: config.alpha.enabled,
-        });
-      } else {
-        treeProvider.applyQuotes(quotes);
-      }
-
-      if (config.statusBar?.enabled === false) {
-        statusBar.hide();
-      } else {
-        const filteredQuotes = quotes.filter((q) => {
-          if (q.type === "A_SHARE") return config.aShare.statusBar !== false;
-          if (q.type === "HK_STOCK") return config.hkStock.statusBar !== false;
-          if (q.type === "US_STOCK") return config.usStock.statusBar !== false;
-          if (q.type === "CRYPTO") return config.binance.statusBar !== false;
-          if (q.type === "BSC_TOKEN" || q.type === "ALPHA_TOKEN") return config.alpha.statusBar !== false;
-          return true;
-        });
-        statusBar.setQuotes(filteredQuotes);
-        statusBar.show();
-      }
-    } catch (err) {
-      // 静默降级：仅写日志，绝不弹窗打断用户编码
-      console.error("[MarketLens] refresh error:", err);
-    } finally {
-      isRefreshing = false;
-    }
-  }
-
-  // ── 分类刷新 ────────────────────────────────────────────────────
-
-  async function doRefreshGroup(group: GroupItem): Promise<void> {
-    try {
-      const targets = extractTargets(config, group.groupName);
-      const quotes  = await marketManager.pollAll(
-        targets,
-        { mode: config.aShare.networkMode, proxyUrl: config.aShare.proxyUrl },
-        { mode: config.hkStock.networkMode, proxyUrl: config.hkStock.proxyUrl },
-        { mode: config.usStock.networkMode, proxyUrl: config.usStock.proxyUrl },
-        { mode: config.binance.networkMode, proxyUrl: config.binance.proxyUrl },
-        { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl }
-      );
-
-      for (const q of quotes) {
-        saveToQuoteCache(quoteCache, q);
-      }
-
-      treeProvider.applyQuotes(quotes);
-    } catch (err) {
-      console.error(`[MarketLens] refresh group '${group.groupName}' error:`, err);
-    }
-  }
-
-  // ── 定时器 ──────────────────────────────────────────────────────
-
-  function startTimer(): void {
-    stopTimer();
-    // 首次启动时无条件强制刷新一次，确保即使处于闭市/休市/周末也能看到最新收盘数据
-    void doRefresh(true);
-
-    // 如果关闭了自动刷新，则不挂载 setInterval
-    if (!config.autoRefresh) {
-      return;
-    }
-
-    const interval = Math.max(1000, config.refreshInterval || 5000);
-    _timer = setInterval(() => void doRefresh(), interval);
-  }
-
-  function stopTimer(): void {
-    if (_timer !== undefined) {
-      clearInterval(_timer);
-      _timer = undefined;
-    }
-  }
-
-  // ── 格式校验与智能识别函数 ────────────────────────────────────
-  interface ParsedItemInput {
-    symbol: string;
-    type: "A_SHARE" | "HK_STOCK" | "US_STOCK" | "CRYPTO" | "ALPHA_TOKEN";
-    defaultGroup: string;
-    hint: string;
-    alternativeGroup?: string;
-    alternativeType?: "A_SHARE" | "HK_STOCK" | "US_STOCK" | "CRYPTO" | "ALPHA_TOKEN";
-  }
-
-  function validateAndParseInput(input: string): { error?: string; parsed?: ParsedItemInput } {
-    const trimmed = input.trim();
-    if (!trimmed) {
-      return { error: "代码不能为空" };
-    }
-
-    // 1. 链上 DEX / Alpha 合约地址 (EVM 0x... 42位, 或 Solana Mint 32~44位)
-    if (isContractAddress(trimmed)) {
-      return {
-        parsed: {
-          symbol: trimmed,
-          type: "ALPHA_TOKEN",
-          defaultGroup: "Alpha",
-          hint: "链上 DEX / Alpha 合约",
-        },
-      };
-    }
-
-    // 2. 港股代码校验（支持 5 位纯数字如 00700，或 hk00700 / r_hk00700）
-    const hkMatch = trimmed.match(/^(?:r_)?hk(\d{1,5})$/i) || (trimmed.length <= 5 && /^\d{3,5}$/.test(trimmed) ? [null, trimmed] : null);
-    if (hkMatch && hkMatch[1]) {
-      const code = hkMatch[1].padStart(5, "0");
-      return {
-        parsed: {
-          symbol: `hk${code}`,
-          type: "HK_STOCK",
-          defaultGroup: "港股",
-          hint: `港股代码 (hk${code})`,
-        },
-      };
-    }
-
-    // 3. A 股代码校验 (支持 6 位数字，如 600519，或带前缀 sh600519 / sz000001 / bj830001)
-    const aShareMatch = trimmed.match(/^(sh|sz|bj)?(\d{6})$/i);
-    if (aShareMatch) {
-      const prefix = aShareMatch[1] ? aShareMatch[1].toLowerCase() : "";
-      const code = aShareMatch[2];
-      const fullSymbol = prefix ? `${prefix}${code}` : (/^[69]/.test(code) ? `sh${code}` : (/^[03]/.test(code) ? `sz${code}` : `bj${code}`));
-      return {
-        parsed: {
-          symbol: fullSymbol,
-          type: "A_SHARE",
-          defaultGroup: "A股",
-          hint: `A股代码 (${fullSymbol})`,
-        },
-      };
-    }
-
-    // 4. 美股显式前缀或指数（如 usAAPL, usTSLA, .IXIC, .DJI）
-    if (/^us[a-zA-Z\.]+$/i.test(trimmed) || trimmed.startsWith(".")) {
-      const sym = trimmed.toUpperCase();
-      return {
-        parsed: {
-          symbol: sym,
-          type: "US_STOCK",
-          defaultGroup: "美股",
-          hint: `美股资产 (${sym})`,
-        },
-      };
-    }
-
-    // 如果纯数字但不是 5/6 位，明确报错拦截
-    if (/^\d+$/.test(trimmed)) {
-      return {
-        error: `⚠️ 纯数字仅支持 5位港股（如 00700）或 6位A股股票代码（如 600519），当前输入为 ${trimmed.length} 位数字`,
-      };
-    }
-
-    // 5. 字母代码：支持加密币（如 BTCUSDT, ETH, DOGE）或美股个股（如 AAPL, TSLA, NVDA）
-    const cryptoMatch = trimmed.match(/^([a-zA-Z]{1,10})([\/\-_]?([a-zA-Z]{2,10}))?$/);
-    if (cryptoMatch) {
-      const cleanUpper = trimmed.toUpperCase().replace(/[\/\-_]/g, "");
-      // 如果包含计价货币尾缀（如 USDT / USDC / BUSD），肯定是加密货币
-      if (cleanUpper.endsWith("USDT") || cleanUpper.endsWith("USDC") || cleanUpper.endsWith("BUSD")) {
-        return {
-          parsed: {
-            symbol: cleanUpper,
-            type: "CRYPTO",
-            defaultGroup: "Binance",
-            hint: `加密货币币对 (${cleanUpper})`,
-          },
-        };
-      }
-
-      // 如果是 1~5 位纯字母（如 AAPL, TSLA, NVDA），可能是美股也可以是单币
-      return {
-        parsed: {
-          symbol: cleanUpper,
-          type: "US_STOCK",
-          defaultGroup: "美股",
-          hint: `美股代码 (${cleanUpper})，亦可作为加密币加入 Binance`,
-          alternativeGroup: "Binance",
-          alternativeType: "CRYPTO",
-        },
-      };
-    }
-
-    return {
-      error: "⚠️ 格式不合法！请输入：A股(6位)、港股(5位)、美股代码(如 AAPL)、币对(如 BTCUSDT) 或 链上合约地址(0x...)",
-    };
-  }
-
-  // ── 命令注册 ────────────────────────────────────────────────────
-
+  // 配置变更监听
   context.subscriptions.push(
-    // 打开设置界面（专属 Webview 控制台面板）
-    vscode.commands.registerCommand("marketlens.openSettings", () => {
-      const extVersion = context.extension?.packageJSON?.version || "1.1.2";
-      SettingsWebviewPanel.createOrShow(context.extensionUri, extVersion);
-    }),
-
-    // 全量刷新（手动点击无论是否闭市都重新获取最新收盘/盘中数据）
-    vscode.commands.registerCommand("marketlens.refresh", () => {
-      void doRefresh(true);
-    }),
-
-    // 分类刷新（分组节点 inline 按钮）
-    vscode.commands.registerCommand(
-      "marketlens.refreshGroup",
-      async (group: GroupItem) => {
-        if (group) { await doRefreshGroup(group); }
-      }
-    ),
-
-    // 老板键 — 一键隐藏 / 恢复（侧边栏、状态栏、设置窗口联动）
-    vscode.commands.registerCommand("marketlens.toggleBossKey", async () => {
-      const isHidden = statusBar.toggleBossKey();
-
-      if (isHidden) {
-        // 1. 关闭左侧侧边栏（如果处于开启状态）
-        try {
-          await vscode.commands.executeCommand("workbench.action.closeSidebar");
-        } catch (_) {}
-
-        // 2. 将自选树视图打码脱敏
-        treeProvider.setMaskMode(true);
-
-        // 3. 关闭正在打开的设置 Webview
-        SettingsWebviewPanel.currentPanel?.dispose();
-
-        // 4. 底部微弱状态提示
-        vscode.window.setStatusBarMessage("$(eye-closed) MarketLens 已隐蔽 (再次按下快捷键恢复)", 3500);
-      } else {
-        // 1. 恢复自选树视图原配置
-        treeProvider.setMaskMode(config.maskMode);
-
-        // 2. 重新唤醒并展开左侧自选侧边栏
-        try {
-          await vscode.commands.executeCommand("workbench.view.extension.marketlens-container");
-        } catch (_) {}
-
-        // 3. 底部状态提示
-        vscode.window.setStatusBarMessage("$(eye) MarketLens 行情已恢复", 3000);
-      }
-    }),
-
-    // 伪装摸鱼模式开关
-    vscode.commands.registerCommand("marketlens.toggleMask", async () => {
-      const next = !config.maskMode;
-      await vscode.workspace
-        .getConfiguration("marketlens")
-        .update("maskMode", next, vscode.ConfigurationTarget.Global);
-      vscode.window.setStatusBarMessage(
-        next ? "$(git-branch) MarketLens: 伪装摸鱼模式已开启" : "$(eye) MarketLens: 伪装摸鱼模式已关闭",
-        2500
-      );
-    }),
-
-    // 颜色脱敏开关
-    vscode.commands.registerCommand("marketlens.toggleColorNeutral", async () => {
-      const next = !config.colorNeutral;
-      await vscode.workspace
-        .getConfiguration("marketlens")
-        .update("colorNeutral", next, vscode.ConfigurationTarget.Global);
-      vscode.window.setStatusBarMessage(
-        next ? "$(paintcan) MarketLens: 颜色脱敏已开启 (无红绿视觉刺激)" : "$(paintcan) MarketLens: 颜色脱敏已关闭 (恢复红绿涨跌)",
-        2500
-      );
-    }),
-
-    // 自定义快捷键
-    vscode.commands.registerCommand("marketlens.openKeybindings", async () => {
-      await vscode.commands.executeCommand(
-        "workbench.action.openGlobalKeybindings",
-        "marketlens"
-      );
-    }),
-
-    // 添加自选（带实时严格校验）
-    vscode.commands.registerCommand("marketlens.addItem", async () => {
-      // ── Step 1: 获取用户输入并实时校验 ────────────────────────────
-      const input = await vscode.window.showInputBox({
-        prompt: "输入股票代码 / 币对 / 合约地址",
-        placeHolder: "如：600519 / BTCUSDT / 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
-        validateInput: (v) => {
-          const res = validateAndParseInput(v);
-          return res.error ? res.error : undefined;
-        },
-      });
-      if (!input) { return; }
-
-      const validation = validateAndParseInput(input);
-      if (validation.error || !validation.parsed) {
-        vscode.window.showErrorMessage(validation.error || "输入格式不合法");
-        return;
-      }
-      const detected = validation.parsed;
-      const sym = detected.symbol;
-
-      // ── Step 2: 读取当前 watchlist，让用户选择目标分组 ───────────
-      const watchlist: Record<string, any[]> =
-        vscode.workspace.getConfiguration("marketlens").get("watchlist", {});
-
-      const existingGroups = Object.keys(watchlist);
-      const sortedGroups = [
-        detected.defaultGroup,
-        ...existingGroups.filter((g) => g !== detected.defaultGroup),
-        "➕ 新建分组…",
-      ];
-
-      const pickedGroup = await vscode.window.showQuickPick(sortedGroups, {
-        title: `添加 "${sym}" (${detected.hint}) 到哪个分组？`,
-        placeHolder: `自动识别：${detected.defaultGroup}（按 Enter 确认）`,
-      });
-      if (!pickedGroup) { return; }
-
-      let targetGroup = pickedGroup;
-      if (pickedGroup === "➕ 新建分组…") {
-        const newGroup = await vscode.window.showInputBox({
-          prompt: "输入新分组名称",
-          placeHolder: "如：海外股票",
-          validateInput: (v) => v.trim() ? undefined : "不能为空",
-        });
-        if (!newGroup) { return; }
-        targetGroup = newGroup.trim();
-      }
-
-      // ── Step 3: 检查是否已存在（去重）───────────────────────────
-      const groupItems: any[] = watchlist[targetGroup] ?? [];
-      const alreadyExists = groupItems.some(
-        (item) => item.symbol?.toLowerCase() === sym.toLowerCase()
-      );
-      if (alreadyExists) {
-        vscode.window.showWarningMessage(
-          `MarketLens: "${sym}" 已在分组 "${targetGroup}" 中`
-        );
-        return;
-      }
-
-      // ── Step 4: 写入 settings.json ───────────────────────────────
-      let finalType = detected.type;
-      if (detected.alternativeType) {
-        if (detected.alternativeGroup && targetGroup.toLowerCase().includes(detected.alternativeGroup.toLowerCase())) {
-          finalType = detected.alternativeType;
-        } else if (targetGroup.includes("港股") || targetGroup.toLowerCase().includes("hk")) {
-          finalType = "HK_STOCK";
-        } else if (targetGroup.includes("美股") || targetGroup.toLowerCase().includes("us")) {
-          finalType = "US_STOCK";
-        }
-      }
-
-      const updated = {
-        ...watchlist,
-        [targetGroup]: [
-          ...groupItems,
-          { symbol: sym, name: sym, type: finalType },
-        ],
-      };
-
-      try {
-        await vscode.workspace
-          .getConfiguration("marketlens")
-          .update("watchlist", updated, vscode.ConfigurationTarget.Global);
-
-        vscode.window.showInformationMessage(
-          `✅ 已添加 "${sym}" 到 ${targetGroup}`
-        );
-        void doRefresh();
-      } catch (err: any) {
-        vscode.window.showErrorMessage(
-          `无法写入用户设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
-        );
-      }
-    }),
-
-    // 置顶标的（点击图钉图标或命令触发）
-    vscode.commands.registerCommand(
-      "marketlens.pinToTop",
-      async (node?: StockItem) => {
-        const cfg = readConfig();
-        const watchlist = { ...cfg.watchlist };
-
-        let targetSymbol: string | undefined;
-        let targetGroup: string | undefined;
-        let targetName: string | undefined;
-
-        if (node) {
-          targetSymbol = node.confSymbol || node.item?.symbol || node.item?.id;
-          targetGroup  = node.groupName;
-          targetName   = node.item?.name || targetSymbol;
-        } else {
-          const allItems: { label: string; description: string; group: string; symbol: string }[] = [];
-          for (const [grp, items] of Object.entries(watchlist)) {
-            for (const it of items ?? []) {
-              allItems.push({
-                label: it.name || it.symbol,
-                description: `分组: ${grp} · 代码: ${it.symbol}`,
-                group: grp,
-                symbol: it.symbol,
-              });
-            }
-          }
-
-          if (allItems.length === 0) {
-            vscode.window.showInformationMessage("MarketLens: 当前自选列表为空");
-            return;
-          }
-
-          const picked = await vscode.window.showQuickPick(allItems, {
-            title: "选择要置顶的标的",
-            placeHolder: "搜索股票、币对或合约地址",
-          });
-          if (!picked) { return; }
-          targetSymbol = picked.symbol;
-          targetGroup  = picked.group;
-          targetName   = picked.label;
-        }
-
-        if (!targetSymbol) { return; }
-
-        if (!targetGroup) {
-          for (const [grp, items] of Object.entries(watchlist)) {
-            if (items?.some((it) => isSameSymbol(it.symbol, targetSymbol))) {
-              targetGroup = grp;
-              break;
-            }
-          }
-        }
-
-        if (!targetGroup || !watchlist[targetGroup]) { return; }
-
-        const items = [...watchlist[targetGroup]];
-        const index = items.findIndex(
-          (it) =>
-            isSameSymbol(it.symbol, targetSymbol) ||
-            it.symbol?.toLowerCase() === targetSymbol!.toLowerCase() ||
-            (node?.item?.id && isSameSymbol(it.symbol, node.item.id)) ||
-            (node?.item?.symbol && isSameSymbol(it.symbol, node.item.symbol))
-        );
-
-        if (index === -1) {
-          return;
-        }
-        if (index === 0) {
-          vscode.window.showInformationMessage(`MarketLens: "${targetName || targetSymbol}" 已在最顶部`);
-          return;
-        }
-
-        const [pinnedItem] = items.splice(index, 1);
-        items.unshift(pinnedItem);
-        watchlist[targetGroup] = items;
-
-        try {
-          await vscode.workspace
-            .getConfiguration("marketlens")
-            .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
-
-          treeProvider.buildTree(watchlist, quoteCache, {
-            aShare: cfg.aShare.enabled,
-            hkStock: cfg.hkStock.enabled,
-            usStock: cfg.usStock.enabled,
-            binance: cfg.binance.enabled,
-            alpha: cfg.alpha.enabled,
-          });
-
-          vscode.window.showInformationMessage(`📌 已将 "${targetName || targetSymbol}" 置顶`);
-        } catch (err: any) {
-          vscode.window.showErrorMessage(
-            `无法更新设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
-          );
-        }
-      }
-    ),
-
-    // 删除自选（点击垃圾桶图标或命令触发）
-    vscode.commands.registerCommand(
-      "marketlens.removeItem",
-      async (node?: StockItem) => {
-        const cfg = readConfig();
-        const watchlist = { ...cfg.watchlist };
-
-        let targetSymbol: string | undefined;
-        let targetGroup: string | undefined;
-        let targetName: string | undefined;
-
-        if (node) {
-          targetSymbol = node.confSymbol || node.item?.symbol || node.item?.id;
-          targetGroup  = node.groupName;
-          targetName   = node.item?.name || targetSymbol;
-        } else {
-          // 未传 node 时弹窗供用户选择
-          const allItems: { label: string; description: string; group: string; symbol: string }[] = [];
-          for (const [grp, items] of Object.entries(watchlist)) {
-            for (const it of items ?? []) {
-              allItems.push({
-                label: it.name || it.symbol,
-                description: `分组: ${grp} · 代码: ${it.symbol}`,
-                group: grp,
-                symbol: it.symbol,
-              });
-            }
-          }
-
-          if (allItems.length === 0) {
-            vscode.window.showInformationMessage("MarketLens: 当前自选列表为空");
-            return;
-          }
-
-          const picked = await vscode.window.showQuickPick(allItems, {
-            title: "选择要删除的自选项目",
-            placeHolder: "搜索股票、币对或合约地址",
-          });
-          if (!picked) { return; }
-          targetSymbol = picked.symbol;
-          targetGroup  = picked.group;
-          targetName   = picked.label;
-        }
-
-        if (!targetSymbol) { return; }
-
-        // 二次确认，防止手滑误删
-        const confirm = await vscode.window.showWarningMessage(
-          `确定要从自选中删除 "${targetName || targetSymbol}" 吗？`,
-          { modal: true },
-          "删除",
-          "取消"
-        );
-        if (confirm !== "删除") { return; }
-
-        const matchItem = (it: { symbol?: string; name?: string }): boolean => {
-          if (!targetSymbol) return false;
-          if (it.symbol && isSameSymbol(it.symbol, targetSymbol)) return true;
-          if (it.name && targetName && it.name.toLowerCase() === targetName.toLowerCase()) return true;
-          if (node?.item?.id && it.symbol && isSameSymbol(it.symbol, node.item.id)) return true;
-          if (node?.item?.symbol && it.symbol && isSameSymbol(it.symbol, node.item.symbol)) return true;
-          return false;
-        };
-
-        // 从分组中移除该项
-        let removed = false;
-        for (const [grp, items] of Object.entries(watchlist)) {
-          if (targetGroup && grp !== targetGroup) { continue; }
-          const beforeLen = items.length;
-          const filtered = items.filter((it) => !matchItem(it));
-          if (filtered.length !== beforeLen) {
-            watchlist[grp] = filtered;
-            removed = true;
-          }
-        }
-
-        // 若特定分组未匹配，进行全局清理兜底
-        if (!removed) {
-          for (const [grp, items] of Object.entries(watchlist)) {
-            const beforeLen = items.length;
-            const filtered = items.filter((it) => !matchItem(it));
-            if (filtered.length !== beforeLen) {
-              watchlist[grp] = filtered;
-              removed = true;
-            }
-          }
-        }
-
-        // 保存更新到全局配置
-        try {
-          await vscode.workspace
-            .getConfiguration("marketlens")
-            .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
-
-          // 清理缓存
-          if (targetSymbol) {
-            quoteCache.delete(targetSymbol.toLowerCase());
-            quoteCache.delete(targetSymbol.toLowerCase().replace(/[\._\-]/g, ""));
-          }
-          if (node?.item?.id) {
-            quoteCache.delete(node.item.id.toLowerCase());
-          }
-          if (node?.item?.symbol) {
-            quoteCache.delete(node.item.symbol.toLowerCase());
-          }
-
-          // 重新构建树视图
-          treeProvider.buildTree(watchlist, quoteCache, {
-            aShare: cfg.aShare.enabled,
-            hkStock: cfg.hkStock.enabled,
-            usStock: cfg.usStock.enabled,
-            binance: cfg.binance.enabled,
-            alpha: cfg.alpha.enabled,
-          });
-
-          vscode.window.showInformationMessage(`✅ 已删除 "${targetName || targetSymbol}"`);
-        } catch (err: any) {
-          vscode.window.showErrorMessage(
-            `无法更新设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
-          );
-        }
-      }
-    ),
-
-    vscode.commands.registerCommand("marketlens.restoreDefaults", async () => {
-      await SettingsWebviewPanel.restoreDefaults();
-    }),
-
-    vscode.commands.registerCommand("marketlens.clearWatchlist", async () => {
-      await SettingsWebviewPanel.clearWatchlist();
-    }),
-
-    // 配置变更监听
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("marketlens")) {
+        const prevFingerprint = getWatchlistFingerprint(config.watchlist);
         config = readConfig();
+
+        const isBossActive = statusBar.isBossKeyActive();
+        treeProvider.setBossKey(isBossActive);
         treeProvider.setMaskMode(config.maskMode);
         treeProvider.setColorNeutral(config.colorNeutral);
         statusBar.setMaskMode(config.maskMode);
         statusBar.setColorNeutral(config.colorNeutral);
+
         if (config.statusBar?.enabled === false) {
           statusBar.hide();
         } else {
           statusBar.show();
         }
-        treeProvider.buildTree(config.watchlist, quoteCache, {
-          aShare: config.aShare.enabled,
-          hkStock: config.hkStock.enabled,
-          usStock: config.usStock.enabled,
-          binance: config.binance.enabled,
-          alpha: config.alpha.enabled,
-        });
-        startTimer();
+
+        scheduler.rebuildTree();
+
+        // 仅在网络/轮询周期/板块开关变动，或自选列表发生实际标的增删时才重启定时器并触发网络拉取
+        // 纯 UI 配置（如 maskMode, colorNeutral, statusBar）或同组拖拽、跨组移动完全不重复打全量网络（标的报价已在内存缓存中）
+        const affectsNetwork =
+          e.affectsConfiguration("marketlens.autoRefresh") ||
+          e.affectsConfiguration("marketlens.refreshInterval") ||
+          e.affectsConfiguration("marketlens.aShare") ||
+          e.affectsConfiguration("marketlens.hkStock") ||
+          e.affectsConfiguration("marketlens.usStock") ||
+          e.affectsConfiguration("marketlens.binance") ||
+          e.affectsConfiguration("marketlens.alpha");
+
+        const watchlistContentChanged = prevFingerprint !== getWatchlistFingerprint(config.watchlist);
+
+        if (affectsNetwork || watchlistContentChanged) {
+          resetProxyCache();
+          marketManager.clearBinanceInvalidCache();
+          scheduler.start();
+        }
       }
     })
   );
 
-  context.subscriptions.push(statusBar, treeView, { dispose: stopTimer });
+  // 注册生命周期清理：statusBar, treeView, treeProvider, 调度器释放
+  context.subscriptions.push(statusBar, treeView, treeProvider, scheduler);
 
-  startTimer();
-  console.log("[MarketLens] activated ✓");
+  scheduler.start();
+  logger.info("activated ✓");
 }
 
 export function deactivate(): void {
-  // 显式清理轮询定时器（防止热重载时遗留 setInterval 泄漏）
-  if (_timer !== undefined) {
-    clearInterval(_timer);
-    _timer = undefined;
-  }
-  // 显式清理状态栏轮播定时器
+  _scheduler?.dispose();
+  _scheduler = undefined;
+
   _statusBar?.dispose();
   _statusBar = undefined;
-  console.log("[MarketLens] deactivated");
+
+  logger.info("deactivated");
 }

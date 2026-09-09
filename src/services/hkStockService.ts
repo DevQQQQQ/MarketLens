@@ -1,6 +1,7 @@
 // src/services/hkStockService.ts
 import { MarketItem } from "../types";
-import { directGet } from "./network";
+import { smartNetworkGet } from "./network";
+import { logger } from "../utils/logger";
 
 /**
  * 腾讯港股行情 API 字段索引
@@ -49,10 +50,9 @@ export class HKStockService {
     const url = `https://qt.gtimg.cn/q=${normalizedCodes.join(",")}`;
 
     try {
-      const response = await directGet<ArrayBuffer>(url, {
+      const response = await smartNetworkGet<ArrayBuffer>(url, options, {
         responseType: "arraybuffer",
         timeout: 5000,
-        proxy: options.mode === "proxy" ? undefined : false,
       });
 
       const text = new TextDecoder("gbk").decode(response.data);
@@ -102,7 +102,7 @@ export class HKStockService {
 
       return items;
     } catch (err) {
-      console.error("[HKStockService] fetchQuotes error:", err);
+      logger.error("[HKStockService] fetchQuotes error:", err);
       return [];
     }
   }

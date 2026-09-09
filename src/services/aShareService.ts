@@ -1,6 +1,7 @@
 // src/services/aShareService.ts
 import { MarketItem } from "../types";
-import { directGet } from "./network";
+import { smartNetworkGet } from "./network";
+import { logger } from "../utils/logger";
 
 /**
  * 腾讯行情 API 字段索引（经验证）
@@ -40,10 +41,9 @@ export class AShareService {
     const url = `https://qt.gtimg.cn/q=${normalizedCodes.join(",")}`;
 
     try {
-      const response = await directGet<ArrayBuffer>(url, {
+      const response = await smartNetworkGet<ArrayBuffer>(url, options, {
         responseType: "arraybuffer",
         timeout: 5000,
-        proxy: options.mode === "proxy" ? undefined : false, // 由 network 层处理
       });
 
       const text = new TextDecoder("gbk").decode(response.data);
@@ -89,7 +89,7 @@ export class AShareService {
 
       return items;
     } catch (err) {
-      console.error("[AShareService] fetchQuotes error:", err);
+      logger.error("[AShareService] fetchQuotes error:", err);
       return [];
     }
   }

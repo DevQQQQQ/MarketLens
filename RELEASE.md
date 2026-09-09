@@ -22,14 +22,14 @@ npm run build
 
 本项目通过官方 `@vscode/vsce` 工具打包。
 
-### 方式一：快捷指令打包（推荐）
+### 方式一：npm 脚本一键打包（最便捷）
 ```powershell
-npx @vscode/vsce package --allow-missing-repository --no-dependencies
+npm run package
 ```
 
 ### 方式二：指定输出版本文件名
 ```powershell
-npx @vscode/vsce package -o marketlens-1.1.0.vsix --allow-missing-repository --no-dependencies
+npx @vscode/vsce package -o marketlens-1.1.1.vsix --allow-missing-repository --no-dependencies
 ```
 
 > **参数解析**：
@@ -44,7 +44,7 @@ npx @vscode/vsce package -o marketlens-1.1.0.vsix --allow-missing-repository --n
 
 ### 终端一键强制安装
 ```powershell
-code --install-extension marketlens-1.1.0.vsix --force
+code --install-extension marketlens-1.1.1.vsix --force
 ```
 
 ### VS Code 图形界面安装

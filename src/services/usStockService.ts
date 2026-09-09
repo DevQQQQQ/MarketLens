@@ -1,6 +1,8 @@
 // src/services/usStockService.ts
 import { MarketItem } from "../types";
-import { directGet } from "./network";
+import { smartNetworkGet } from "./network";
+import { logger } from "../utils/logger";
+import { normalizeUSCode } from "../utils/symbolHelper";
 
 /**
  * 腾讯美股行情 API 字段索引
@@ -25,16 +27,7 @@ export class USStockService {
    * 规范化美股代码，例如 "AAPL" -> "usAAPL", "usAAPL" -> "usAAPL", "us.IXIC" -> "usIXIC", ".IXIC" -> "usIXIC"
    */
   public normalizeCode(raw: string): string {
-    const clean = raw.trim().replace(/^r_/, "");
-    // 如果带 us 前缀（兼容 us. us_ 等），去除符号并保留 ticker
-    if (/^us[\._\-]?/i.test(clean)) {
-      const ticker = clean.replace(/^us[\._\-]?/i, "").toUpperCase();
-      return `us${ticker}`;
-    }
-    if (clean.startsWith(".")) {
-      return `us${clean.slice(1).toUpperCase()}`;
-    }
-    return `us${clean.toUpperCase()}`;
+    return normalizeUSCode(raw);
   }
 
   async fetchQuotes(
@@ -47,10 +40,9 @@ export class USStockService {
     const url = `https://qt.gtimg.cn/q=${normalizedCodes.join(",")}`;
 
     try {
-      const response = await directGet<ArrayBuffer>(url, {
+      const response = await smartNetworkGet<ArrayBuffer>(url, options, {
         responseType: "arraybuffer",
         timeout: 5000,
-        proxy: options.mode === "proxy" ? undefined : false,
       });
 
       const text = new TextDecoder("gbk").decode(response.data);
@@ -108,7 +100,7 @@ export class USStockService {
 
       return items;
     } catch (err) {
-      console.error("[USStockService] fetchQuotes error:", err);
+      logger.error("[USStockService] fetchQuotes error:", err);
       return [];
     }
   }

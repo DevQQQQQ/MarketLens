@@ -7,4 +7,9 @@ esbuild.js
 *.map
 **/*.map
 *.vsix
-
+.workbuddy/**
+test/**
+.eslintrc.json
+.github/**
+node_modules/**
+RELEASE.md

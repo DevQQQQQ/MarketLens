@@ -99,6 +99,9 @@ export class StatusBar implements vscode.Disposable {
     } else if (this.carouselIndex >= this.quotes.length) {
       this.carouselIndex = this.carouselIndex % this.quotes.length;
     }
+    if (this.bossKeyActive) {
+      return;
+    }
     this.restartCarousel();
     this.render();
   }
@@ -135,10 +138,12 @@ export class StatusBar implements vscode.Disposable {
   toggleBossKey(forceState?: boolean): boolean {
     this.bossKeyActive = forceState !== undefined ? forceState : !this.bossKeyActive;
     if (this.bossKeyActive) {
+      this.stopCarousel();
       this.barItem.text = "";
       this.barItem.hide();
     } else {
       this.barItem.show();
+      this.restartCarousel();
       this.render();
     }
     return this.bossKeyActive;
@@ -148,9 +153,18 @@ export class StatusBar implements vscode.Disposable {
     return this.bossKeyActive;
   }
 
+  /** 检查轮播定时器是否处于活跃运行状态（供单元测试和状态检查使用） */
+  isCarouselRunning(): boolean {
+    return this.carouselTimer !== undefined;
+  }
+
   // ── 轮播 ────────────────────────────────────────────────────────
 
   private restartCarousel(): void {
+    if (this.bossKeyActive) {
+      this.stopCarousel();
+      return;
+    }
     if (this.quotes.length > StatusBar.INLINE_MAX) {
       if (!this.carouselTimer) {
         this.carouselTimer = setInterval(() => {

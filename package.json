@@ -2,7 +2,7 @@
 	"name": "marketlens",
 	"displayName": "MarketLens - 全球行情看板 (A股/港股/美股/加密货币)",
 	"description": "专为开发者打造的行情看板与效率工具，实时查看 A股、港股、美股、主流加密货币、DEX 资产，支持快捷键隐藏、简洁模式及网络代理配置。",
-	"version": "1.1.1",
+	"version": "1.1.2",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
@@ -117,31 +117,16 @@
 				"mac": "cmd+alt+m"
 			},
 			{
-				"command": "marketlens.toggleBossKey",
-				"key": "alt+m",
-				"win": "alt+m"
-			},
-			{
 				"command": "marketlens.toggleMask",
 				"key": "ctrl+alt+k",
 				"win": "ctrl+alt+k",
 				"mac": "cmd+alt+k"
 			},
 			{
-				"command": "marketlens.toggleMask",
-				"key": "alt+k",
-				"win": "alt+k"
-			},
-			{
 				"command": "marketlens.toggleColorNeutral",
 				"key": "ctrl+alt+c",
 				"win": "ctrl+alt+c",
 				"mac": "cmd+alt+c"
-			},
-			{
-				"command": "marketlens.toggleColorNeutral",
-				"key": "alt+c",
-				"win": "alt+c"
 			}
 		],
 		"menus": {
@@ -247,7 +232,7 @@
 				},
 				"marketlens.aShare.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:10808",
+					"default": "http://127.0.0.1:7890",
 					"order": 12,
 					"description": "【A股板块】代理地址"
 				},
@@ -266,7 +251,7 @@
 				"marketlens.hkStock.enabled": {
 					"type": "boolean",
 					"default": true,
-					"order": 14,
+					"order": 20,
 					"description": "【港股板块】是否启用港股行情（取消勾选则在自选列表中隐藏港股）"
 				},
 				"marketlens.hkStock.networkMode": {
@@ -280,31 +265,31 @@
 						"强制走代理"
 					],
 					"default": "direct",
-					"order": 15,
+					"order": 21,
 					"description": "【港股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
 				},
 				"marketlens.hkStock.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:10808",
-					"order": 16,
+					"default": "http://127.0.0.1:7890",
+					"order": 22,
 					"description": "【港股板块】代理地址"
 				},
 				"marketlens.hkStock.stopOnMarketClosed": {
 					"type": "boolean",
 					"default": true,
-					"order": 17,
+					"order": 23,
 					"description": "【港股板块】闭市期间停止轮询（开启后仅在港股交易时段 9:30-12:00, 13:00-16:10 请求数据）"
 				},
 				"marketlens.hkStock.statusBar": {
 					"type": "boolean",
 					"default": true,
-					"order": 18,
+					"order": 24,
 					"description": "【港股板块】港股标的是否参与底部状态栏轮播"
 				},
 				"marketlens.usStock.enabled": {
 					"type": "boolean",
 					"default": true,
-					"order": 18,
+					"order": 30,
 					"description": "【美股板块】是否启用美股行情（取消勾选则在自选列表中隐藏美股）"
 				},
 				"marketlens.usStock.networkMode": {
@@ -318,31 +303,31 @@
 						"强制走代理"
 					],
 					"default": "direct",
-					"order": 19,
+					"order": 31,
 					"description": "【美股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
 				},
 				"marketlens.usStock.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:10808",
-					"order": 20,
+					"default": "http://127.0.0.1:7890",
+					"order": 32,
 					"description": "【美股板块】代理地址"
 				},
 				"marketlens.usStock.stopOnMarketClosed": {
 					"type": "boolean",
 					"default": true,
-					"order": 21,
+					"order": 33,
 					"description": "【美股板块】闭市期间停止轮询（开启后仅在美股交易时段工作日 21:00 至次日 05:00 请求数据）"
 				},
 				"marketlens.usStock.statusBar": {
 					"type": "boolean",
 					"default": true,
-					"order": 22,
+					"order": 34,
 					"description": "【美股板块】美股标的是否参与底部状态栏轮播"
 				},
 				"marketlens.binance.enabled": {
 					"type": "boolean",
 					"default": true,
-					"order": 20,
+					"order": 40,
 					"description": "【Binance板块】是否启用 Binance 主流加密货币行情"
 				},
 				"marketlens.binance.networkMode": {
@@ -356,25 +341,25 @@
 						"直连访问，不走代理"
 					],
 					"default": "proxy",
-					"order": 21,
+					"order": 41,
 					"description": "【Binance板块】网络访问模式：proxy (走代理) 或 direct (直连)"
 				},
 				"marketlens.binance.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:10808",
-					"order": 22,
-					"description": "【Binance板块】代理地址（支持自动探测 10808, 10809, 7890, 7897, 2080, 1080 等本地端口）"
+					"default": "http://127.0.0.1:7890",
+					"order": 42,
+					"description": "【Binance板块】代理地址（支持自动探测 7890, 7897, 10809, 10808, 2080 等本地端口）"
 				},
 				"marketlens.binance.statusBar": {
 					"type": "boolean",
 					"default": true,
-					"order": 23,
+					"order": 43,
 					"description": "【Binance板块】Binance标的是否参与底部状态栏轮播"
 				},
 				"marketlens.alpha.enabled": {
 					"type": "boolean",
 					"default": true,
-					"order": 30,
+					"order": 50,
 					"description": "【Alpha板块】是否启用 Alpha 链上代币行情（BSC、Solana、Base 等全链 DEX）"
 				},
 				"marketlens.alpha.networkMode": {
@@ -388,19 +373,19 @@
 						"直连访问，不走代理"
 					],
 					"default": "proxy",
-					"order": 31,
+					"order": 51,
 					"description": "【Alpha板块】网络访问模式：proxy (走代理) 或 direct (直连)"
 				},
 				"marketlens.alpha.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:10808",
-					"order": 32,
+					"default": "http://127.0.0.1:7890",
+					"order": 52,
 					"description": "【Alpha板块】代理地址（支持自动探测主流代理客户端端口）"
 				},
 				"marketlens.alpha.statusBar": {
 					"type": "boolean",
 					"default": true,
-					"order": 33,
+					"order": 53,
 					"description": "【Alpha板块】Alpha标的是否参与底部状态栏轮播"
 				},
 				"marketlens.watchlist": {
@@ -673,13 +658,16 @@
 		"build": "node esbuild.js --production",
 		"dev": "node esbuild.js --watch",
 		"package": "vsce package --allow-missing-repository --no-dependencies",
-		"lint": "eslint src --ext ts"
+		"lint": "eslint src --ext ts",
+		"typecheck": "tsc --noEmit",
+		"test": "node --experimental-strip-types --no-warnings --test test/unit.test.ts"
 	},
 	"devDependencies": {
 		"@types/node": "^20.11.0",
 		"@types/vscode": "^1.85.0",
 		"@typescript-eslint/eslint-plugin": "^6.19.0",
 		"@typescript-eslint/parser": "^6.19.0",
+		"@vscode/vsce": "^3.9.2",
 		"esbuild": "^0.20.0",
 		"eslint": "^8.56.0",
 		"typescript": "^5.3.3"
