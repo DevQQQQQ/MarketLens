@@ -73,7 +73,7 @@ export function getSettingsWebviewHtml(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'nonce-${nonce}' 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data: blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data: blob:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline' 'unsafe-eval';">
   <title>MarketLens 设置</title>
   <style>
     :root {
@@ -373,7 +373,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">恢复出厂默认设置</div>
             <div class="card-desc">将所有自选标的列表（A股、港股、美股、Binance、Alpha）恢复为首次安装时的初始预设，并还原所有配置项。</div>
           </div>
-          <button class="btn-restore" id="btnRestoreDefaults" onclick="postCmd('restoreDefaults')">🔄 恢复默认设置</button>
+          <button class="btn-restore" id="btnRestoreDefaults">🔄 恢复默认设置</button>
         </div>
 
         <div class="card">
@@ -381,7 +381,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">一键清空自选标的</div>
             <div class="card-desc">一键清空当前所有板块（A股、港股、美股、Binance、Alpha）的自选标的，保留板块分类，方便您从零开始自定义添加喜欢的资产。</div>
           </div>
-          <button class="btn-clear" id="btnClearWatchlist" onclick="postCmd('clearWatchlist')">🗑️ 一键清空标的</button>
+          <button class="btn-clear" id="btnClearWatchlist">🗑️ 一键清空标的</button>
         </div>
 
         <div class="card">
@@ -417,7 +417,7 @@ export function getSettingsWebviewHtml(
             <div class="card-desc">开启后状态栏伪装为 Git 分支及构建日志（如 <code>git:(main) build: 65.2k</code>），彻底隐蔽。</div>
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
-            <button class="btn-shortcut" id="btnKeybindMask" onclick="postCmd('openKeybindings', { query: 'marketlens.toggleMask' })" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
+            <button class="btn-shortcut" id="btnKeybindMask" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
             <label class="switch"><input type="checkbox" id="maskMode" ${d.maskMode ? "checked" : ""}><span class="slider"></span></label>
           </div>
         </div>
@@ -431,7 +431,7 @@ export function getSettingsWebviewHtml(
             <div class="card-desc">开启后所有涨跌数值使用编辑器默认中性颜色，关闭红绿配色刺激，防止旁观者察觉。</div>
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
-            <button class="btn-shortcut" id="btnKeybindColor" onclick="postCmd('openKeybindings', { query: 'marketlens.toggleColorNeutral' })" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
+            <button class="btn-shortcut" id="btnKeybindColor" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
             <label class="switch"><input type="checkbox" id="colorNeutral" ${d.colorNeutral ? "checked" : ""}><span class="slider"></span></label>
           </div>
         </div>
@@ -490,7 +490,7 @@ export function getSettingsWebviewHtml(
           </div>
           <div class="proxy-input-box">
             <input type="text" id="aShareProxyUrl" value="${d.aShareProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectAshare" onclick="triggerDetect('aShare')">⚡ 探测代理</button>
+            <button class="btn-detect" id="btnDetectAshare">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -548,7 +548,7 @@ export function getSettingsWebviewHtml(
           </div>
           <div class="proxy-input-box">
             <input type="text" id="hkStockProxyUrl" value="${d.hkStockProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectHkStock" onclick="triggerDetect('hkStock')">⚡ 探测代理</button>
+            <button class="btn-detect" id="btnDetectHkStock">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -606,7 +606,7 @@ export function getSettingsWebviewHtml(
           </div>
           <div class="proxy-input-box">
             <input type="text" id="usStockProxyUrl" value="${d.usStockProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectUsStock" onclick="triggerDetect('usStock')">⚡ 探测代理</button>
+            <button class="btn-detect" id="btnDetectUsStock">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -656,7 +656,7 @@ export function getSettingsWebviewHtml(
           </div>
           <div class="proxy-input-box">
             <input type="text" id="binanceProxyUrl" value="${d.binanceProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectBinance" onclick="triggerDetect('binance')">⚡ 探测代理</button>
+            <button class="btn-detect" id="btnDetectBinance">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -706,7 +706,7 @@ export function getSettingsWebviewHtml(
           </div>
           <div class="proxy-input-box">
             <input type="text" id="alphaProxyUrl" value="${d.alphaProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectAlpha" onclick="triggerDetect('alpha')">⚡ 探测代理</button>
+            <button class="btn-detect" id="btnDetectAlpha">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -729,7 +729,7 @@ export function getSettingsWebviewHtml(
               • <b>悬停详情卡片</b>: 鼠标放至任意资产上，即可查看今开、昨收、高低、涨跌与成交额。
             </div>
           </div>
-          <button class="btn-shortcut" id="btnKeybindAll" onclick="postCmd('openKeybindings', { query: 'marketlens' })">⌨️ 打开全局快捷键设置</button>
+          <button class="btn-shortcut" id="btnKeybindAll">⌨️ 打开全局快捷键设置</button>
         </div>
         <div class="card">
           <div class="card-info">
@@ -738,12 +738,12 @@ export function getSettingsWebviewHtml(
           </div>
           <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="btn-telegram" id="btnJoinTelegram" onclick="postCmd('openExternal', { url: 'https://t.me/+-eZR0R--jyUwN2Nl' })" style="width: 175px; justify-content: center;">✈️ 进入 Telegram 交流群</button>
-              <button class="btn-shortcut" id="btnCopyTelegram" onclick="copyText('https://t.me/+-eZR0R--jyUwN2Nl', '已复制 Telegram 群链接')" title="复制群链接到剪贴板">📋 复制链接</button>
+              <button class="btn-telegram" id="btnJoinTelegram" style="width: 175px; justify-content: center;">✈️ 进入 Telegram 交流群</button>
+              <button class="btn-shortcut" id="btnCopyTelegram" title="复制群链接到剪贴板">📋 复制链接</button>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="btn-telegram" id="btnJoinPersonalTelegram" onclick="postCmd('openExternal', { url: 'https://t.me/Dev_QQQQQ' })" style="width: 175px; justify-content: center; background: #2AABEE; border-color: #2AABEE;">💬 联系作者个人 TG</button>
-              <button class="btn-shortcut" id="btnCopyPersonalTelegram" onclick="copyText('https://t.me/Dev_QQQQQ', '已复制作者个人 TG 链接')" title="复制个人链接到剪贴板">📋 复制链接</button>
+              <button class="btn-telegram" id="btnJoinPersonalTelegram" style="width: 175px; justify-content: center; background: #2AABEE; border-color: #2AABEE;">💬 联系作者个人 TG</button>
+              <button class="btn-shortcut" id="btnCopyPersonalTelegram" title="复制个人链接到剪贴板">📋 复制链接</button>
             </div>
           </div>
         </div>
@@ -762,45 +762,86 @@ export function getSettingsWebviewHtml(
 
   <div id="toast" class="toast"></div>
 
-  <script nonce="${nonce}">
+  <script>
     (function() {
-      // 全局错误捕获
+      // ── Toast 提示系统（优先初始化，供全局使用） ──
+      function showToast(msg) {
+        try {
+          var t = document.getElementById('toast');
+          if (!t) return;
+          t.innerText = msg;
+          t.classList.add('show');
+          setTimeout(function() { t.classList.remove('show'); }, 2500);
+        } catch (e) {
+          console.log('[MarketLens Toast]', msg);
+        }
+      }
+      window.showToast = showToast;
+
+      // ── 全局错误捕获 ──
       window.onerror = function(msg, url, lineNo, columnNo, error) {
         console.error('MarketLens Webview Error:', msg, lineNo, error);
-        showToast('⚠️ Webview 错误: ' + msg);
+        showToast('⚠️ 界面异常: ' + msg);
       };
 
-      var vscode = null;
-      try {
-        vscode = acquireVsCodeApi();
-      } catch (err) {
-        console.error('acquireVsCodeApi error:', err);
-      }
-
-      // ── 通用指令下发（支持内联与函数调用双重保障） ──
-      function postCmd(cmd, payload) {
-        if (vscode) {
-          var msg = Object.assign({ command: cmd }, payload || {});
-          vscode.postMessage(msg);
+      // ── VS Code API 安全获取与缓存 ──
+      var vscode = (function() {
+        try {
+          if (window.__vscodeApi) return window.__vscodeApi;
+          if (typeof acquireVsCodeApi === 'function') {
+            window.__vscodeApi = acquireVsCodeApi();
+            return window.__vscodeApi;
+          }
+        } catch (err) {
+          console.warn('acquireVsCodeApi notice:', err);
         }
+        return window.__vscodeApi || null;
+      })();
+
+      // ── 通用指令下发 ──
+      function postCmd(cmd, payload) {
+        try {
+          var api = vscode || window.__vscodeApi;
+          if (!api && typeof acquireVsCodeApi === 'function') {
+            try {
+              window.__vscodeApi = acquireVsCodeApi();
+              api = window.__vscodeApi;
+              vscode = api;
+            } catch (e) {}
+          }
+          if (api && typeof api.postMessage === 'function') {
+            var msg = Object.assign({ command: cmd }, payload || {});
+            api.postMessage(msg);
+            return true;
+          } else {
+            console.warn('postCmd: VS Code API not available for', cmd);
+          }
+        } catch (err) {
+          console.error('postCmd error:', err);
+        }
+        return false;
       }
       window.postCmd = postCmd;
 
-      // ── 复制剪贴板 ──
+      // ── 快捷通信与辅助 ──
+      function sendUpdate(key, value) {
+        postCmd('updateSetting', { key: key, value: value });
+      }
+      window.sendUpdate = sendUpdate;
+
       function copyText(text, toastMsg) {
         postCmd('copyToClipboard', { text: text });
         showToast(toastMsg || '📋 已复制到剪贴板');
       }
       window.copyText = copyText;
 
-      // ── 代理端口探测 ──
       function triggerDetect(target) {
         showToast('正在探测本机活跃代理端口...');
         postCmd('detectProxy', { target: target });
       }
       window.triggerDetect = triggerDetect;
 
-      // ── Tab 切换逻辑（联动 CSS Radio，双向双保） ──
+      // ── Tab 切换逻辑（联动 CSS Radio） ──
       var TAB_RADIOS = {
         'tab-general': 'tab-r-general',
         'tab-ashare':  'tab-r-ashare',
@@ -820,23 +861,7 @@ export function getSettingsWebviewHtml(
           }
         }
       }
-
       window.switchTab = switchTab;
-
-      // ── Toast 提示 ──
-      function showToast(msg) {
-        var t = document.getElementById('toast');
-        if (!t) return;
-        t.innerText = msg;
-        t.classList.add('show');
-        setTimeout(function() { t.classList.remove('show'); }, 2500);
-      }
-
-      // ── 通信函数 ──
-      function sendUpdate(key, value) {
-        postCmd('updateSetting', { key: key, value: value });
-      }
-      window.sendUpdate = sendUpdate;
 
       // ── 代理卡片显隐控制 ──
       function applyProxyCardVisibility(section, mode) {
@@ -860,99 +885,8 @@ export function getSettingsWebviewHtml(
       function handleNetChange(section, mode) {
         sendUpdate(section + '.networkMode', mode);
         applyProxyCardVisibility(section, mode);
+        showToast(mode === 'direct' ? '⚡ 已切换为直连模式' : '🛡️ 已切换为代理模式');
       }
-
-      // ── 事件绑定辅助 ──
-      function on(id, evt, fn) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener(evt, fn);
-      }
-
-      // 通用
-      on('btnRestoreDefaults', 'click', function() {
-        vscode.postMessage({ command: 'restoreDefaults' });
-      });
-      on('btnClearWatchlist', 'click', function() {
-        vscode.postMessage({ command: 'clearWatchlist' });
-      });
-      on('autoRefresh', 'change', function() { sendUpdate('autoRefresh', this.checked); });
-      on('refreshInterval', 'change', function() {
-        var val = parseInt(this.value, 10);
-        if (!isNaN(val) && val >= 1000) sendUpdate('refreshInterval', val);
-      });
-      on('maskMode', 'change', function() { sendUpdate('maskMode', this.checked); });
-      on('colorNeutral', 'change', function() { sendUpdate('colorNeutral', this.checked); });
-      on('statusBarEnabled', 'change', function() { sendUpdate('statusBar.enabled', this.checked); });
-
-      // 自定义快捷键跳转
-      on('btnKeybindMask', 'click', function() {
-        vscode.postMessage({ command: 'openKeybindings', query: 'marketlens.toggleMask' });
-      });
-      on('btnKeybindColor', 'click', function() {
-        vscode.postMessage({ command: 'openKeybindings', query: 'marketlens.toggleColorNeutral' });
-      });
-      on('btnKeybindAll', 'click', function() {
-        vscode.postMessage({ command: 'openKeybindings', query: 'marketlens' });
-      });
-
-      // Telegram 社区交流与反馈
-      on('btnJoinTelegram', 'click', function() {
-        vscode.postMessage({ command: 'openExternal', url: 'https://t.me/+-eZR0R--jyUwN2Nl' });
-      });
-      on('btnCopyTelegram', 'click', function() {
-        vscode.postMessage({ command: 'copyToClipboard', text: 'https://t.me/+-eZR0R--jyUwN2Nl' });
-        showToast('📋 已复制 Telegram 群链接');
-      });
-      on('btnJoinPersonalTelegram', 'click', function() {
-        vscode.postMessage({ command: 'openExternal', url: 'https://t.me/Dev_QQQQQ' });
-      });
-      on('btnCopyPersonalTelegram', 'click', function() {
-        vscode.postMessage({ command: 'copyToClipboard', text: 'https://t.me/Dev_QQQQQ' });
-        showToast('📋 已复制作者个人 TG 链接');
-      });
-
-      // A股
-      on('aShareEnabled', 'change', function() { sendUpdate('aShare.enabled', this.checked); });
-      on('aShareStatusBar', 'change', function() { sendUpdate('aShare.statusBar', this.checked); });
-      on('aShareStopOnMarketClosed', 'change', function() { sendUpdate('aShare.stopOnMarketClosed', this.checked); });
-      on('aShareNetDirect', 'change', function() { handleNetChange('aShare', 'direct'); });
-      on('aShareNetProxy', 'change', function() { handleNetChange('aShare', 'proxy'); });
-      on('aShareProxyUrl', 'blur', function() { handleProxyBlur('aShare.proxyUrl', this); });
-      on('btnDetectAshare', 'click', function() { triggerDetect('aShare'); });
-
-      // 港股
-      on('hkStockEnabled', 'change', function() { sendUpdate('hkStock.enabled', this.checked); });
-      on('hkStockStatusBar', 'change', function() { sendUpdate('hkStock.statusBar', this.checked); });
-      on('hkStockStopOnMarketClosed', 'change', function() { sendUpdate('hkStock.stopOnMarketClosed', this.checked); });
-      on('hkStockNetDirect', 'change', function() { handleNetChange('hkStock', 'direct'); });
-      on('hkStockNetProxy', 'change', function() { handleNetChange('hkStock', 'proxy'); });
-      on('hkStockProxyUrl', 'blur', function() { handleProxyBlur('hkStock.proxyUrl', this); });
-      on('btnDetectHkStock', 'click', function() { triggerDetect('hkStock'); });
-
-      // 美股
-      on('usStockEnabled', 'change', function() { sendUpdate('usStock.enabled', this.checked); });
-      on('usStockStatusBar', 'change', function() { sendUpdate('usStock.statusBar', this.checked); });
-      on('usStockStopOnMarketClosed', 'change', function() { sendUpdate('usStock.stopOnMarketClosed', this.checked); });
-      on('usStockNetDirect', 'change', function() { handleNetChange('usStock', 'direct'); });
-      on('usStockNetProxy', 'change', function() { handleNetChange('usStock', 'proxy'); });
-      on('usStockProxyUrl', 'blur', function() { handleProxyBlur('usStock.proxyUrl', this); });
-      on('btnDetectUsStock', 'click', function() { triggerDetect('usStock'); });
-
-      // Binance
-      on('binanceEnabled', 'change', function() { sendUpdate('binance.enabled', this.checked); });
-      on('binanceStatusBar', 'change', function() { sendUpdate('binance.statusBar', this.checked); });
-      on('binanceNetDirect', 'change', function() { handleNetChange('binance', 'direct'); });
-      on('binanceNetProxy', 'change', function() { handleNetChange('binance', 'proxy'); });
-      on('binanceProxyUrl', 'blur', function() { handleProxyBlur('binance.proxyUrl', this); });
-      on('btnDetectBinance', 'click', function() { triggerDetect('binance'); });
-
-      // Alpha
-      on('alphaEnabled', 'change', function() { sendUpdate('alpha.enabled', this.checked); });
-      on('alphaStatusBar', 'change', function() { sendUpdate('alpha.statusBar', this.checked); });
-      on('alphaNetDirect', 'change', function() { handleNetChange('alpha', 'direct'); });
-      on('alphaNetProxy', 'change', function() { handleNetChange('alpha', 'proxy'); });
-      on('alphaProxyUrl', 'blur', function() { handleProxyBlur('alpha.proxyUrl', this); });
-      on('btnDetectAlpha', 'click', function() { triggerDetect('alpha'); });
 
       function handleProxyBlur(key, input) {
         var val = input.value.trim();
@@ -961,11 +895,10 @@ export function getSettingsWebviewHtml(
           input.value = val;
           showToast('⚠️ 代理地址不能为空，已恢复默认');
         } else {
-          // 若用户填了 socks5:// 或 socks://，转换为 http:// 并明确提示
           if (/^socks5?:\/\//i.test(val)) {
             val = 'http://' + val.replace(/^socks5?:\/\//i, '');
             input.value = val;
-            showToast('⚠️ 插件使用 HTTP 代理协议。若连接失败，请确认该端口为 HTTP/混合端口（纯 SOCKS 端口不通）');
+            showToast('⚠️ 插件使用 HTTP 代理协议。已转换为 HTTP 格式');
           } else if (/^https:\/\//i.test(val)) {
             val = 'http://' + val.replace(/^https:\/\//i, '');
             input.value = val;
@@ -978,7 +911,151 @@ export function getSettingsWebviewHtml(
         sendUpdate(key, val);
       }
 
-      // ── 接收数据同步 ──
+      // ── DOM 事件绑定辅助 ──
+      function on(id, evt, fn) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener(evt, fn);
+      }
+
+      // 1. 通用设置事件
+      on('btnRestoreDefaults', 'click', function() {
+        postCmd('restoreDefaults');
+        showToast('🔄 正在请求恢复出厂默认设置...');
+      });
+      on('btnClearWatchlist', 'click', function() {
+        postCmd('clearWatchlist');
+        showToast('🗑️ 正在请求清空自选标的...');
+      });
+      on('statusBarEnabled', 'change', function() {
+        sendUpdate('statusBar.enabled', this.checked);
+        showToast(this.checked ? '✅ 已开启底部状态栏轮播' : '⚪ 已关闭底部状态栏轮播');
+      });
+      on('autoRefresh', 'change', function() {
+        sendUpdate('autoRefresh', this.checked);
+        showToast(this.checked ? '✅ 已开启定时自动刷新' : '⚪ 已关闭定时自动刷新');
+      });
+      on('refreshInterval', 'change', function() {
+        var val = parseInt(this.value, 10);
+        if (!isNaN(val) && val >= 1000) {
+          sendUpdate('refreshInterval', val);
+          showToast('⏱️ 全局刷新频率已更新为 ' + val + ' 毫秒');
+        }
+      });
+      on('maskMode', 'change', function() {
+        sendUpdate('maskMode', this.checked);
+        showToast(this.checked ? '🕶️ 伪装摸鱼模式已开启' : '👁️ 伪装摸鱼模式已关闭');
+      });
+      on('colorNeutral', 'change', function() {
+        sendUpdate('colorNeutral', this.checked);
+        showToast(this.checked ? '🎨 颜色脱敏模式已开启' : '🔴 颜色脱敏模式已关闭');
+      });
+      on('btnKeybindMask', 'click', function() {
+        postCmd('openKeybindings', { query: 'marketlens.toggleMask' });
+      });
+      on('btnKeybindColor', 'click', function() {
+        postCmd('openKeybindings', { query: 'marketlens.toggleColorNeutral' });
+      });
+      on('btnKeybindAll', 'click', function() {
+        postCmd('openKeybindings', { query: 'marketlens' });
+      });
+
+      // 2. 关于与交流事件
+      on('btnJoinTelegram', 'click', function() {
+        postCmd('openExternal', { url: 'https://t.me/+-eZR0R--jyUwN2Nl' });
+      });
+      on('btnCopyTelegram', 'click', function() {
+        copyText('https://t.me/+-eZR0R--jyUwN2Nl', '📋 已复制 Telegram 群链接');
+      });
+      on('btnJoinPersonalTelegram', 'click', function() {
+        postCmd('openExternal', { url: 'https://t.me/Dev_QQQQQ' });
+      });
+      on('btnCopyPersonalTelegram', 'click', function() {
+        copyText('https://t.me/Dev_QQQQQ', '📋 已复制作者个人 TG 链接');
+      });
+
+      // 3. A股市场事件
+      on('aShareEnabled', 'change', function() {
+        sendUpdate('aShare.enabled', this.checked);
+        showToast(this.checked ? '✅ A股分组已启用' : '⚪ A股分组已禁用');
+      });
+      on('aShareStatusBar', 'change', function() {
+        sendUpdate('aShare.statusBar', this.checked);
+        showToast(this.checked ? '✅ A股标的参与底部轮播' : '⚪ A股标的退出底部轮播');
+      });
+      on('aShareStopOnMarketClosed', 'change', function() {
+        sendUpdate('aShare.stopOnMarketClosed', this.checked);
+        showToast(this.checked ? '🌙 A股休市停刷已开启' : '☀️ A股持续拉取已开启');
+      });
+      on('aShareNetDirect', 'change', function() { handleNetChange('aShare', 'direct'); });
+      on('aShareNetProxy', 'change', function() { handleNetChange('aShare', 'proxy'); });
+      on('aShareProxyUrl', 'blur', function() { handleProxyBlur('aShare.proxyUrl', this); });
+      on('btnDetectAshare', 'click', function() { triggerDetect('aShare'); });
+
+      // 4. 港股市场事件
+      on('hkStockEnabled', 'change', function() {
+        sendUpdate('hkStock.enabled', this.checked);
+        showToast(this.checked ? '✅ 港股分组已启用' : '⚪ 港股分组已禁用');
+      });
+      on('hkStockStatusBar', 'change', function() {
+        sendUpdate('hkStock.statusBar', this.checked);
+        showToast(this.checked ? '✅ 港股标的参与底部轮播' : '⚪ 港股标的退出底部轮播');
+      });
+      on('hkStockStopOnMarketClosed', 'change', function() {
+        sendUpdate('hkStock.stopOnMarketClosed', this.checked);
+        showToast(this.checked ? '🌙 港股休市停刷已开启' : '☀️ 港股持续拉取已开启');
+      });
+      on('hkStockNetDirect', 'change', function() { handleNetChange('hkStock', 'direct'); });
+      on('hkStockNetProxy', 'change', function() { handleNetChange('hkStock', 'proxy'); });
+      on('hkStockProxyUrl', 'blur', function() { handleProxyBlur('hkStock.proxyUrl', this); });
+      on('btnDetectHkStock', 'click', function() { triggerDetect('hkStock'); });
+
+      // 5. 美股市场事件
+      on('usStockEnabled', 'change', function() {
+        sendUpdate('usStock.enabled', this.checked);
+        showToast(this.checked ? '✅ 美股分组已启用' : '⚪ 美股分组已禁用');
+      });
+      on('usStockStatusBar', 'change', function() {
+        sendUpdate('usStock.statusBar', this.checked);
+        showToast(this.checked ? '✅ 美股标的参与底部轮播' : '⚪ 美股标的退出底部轮播');
+      });
+      on('usStockStopOnMarketClosed', 'change', function() {
+        sendUpdate('usStock.stopOnMarketClosed', this.checked);
+        showToast(this.checked ? '🌙 美股休市停刷已开启' : '☀️ 美股持续拉取已开启');
+      });
+      on('usStockNetDirect', 'change', function() { handleNetChange('usStock', 'direct'); });
+      on('usStockNetProxy', 'change', function() { handleNetChange('usStock', 'proxy'); });
+      on('usStockProxyUrl', 'blur', function() { handleProxyBlur('usStock.proxyUrl', this); });
+      on('btnDetectUsStock', 'click', function() { triggerDetect('usStock'); });
+
+      // 6. Binance 板块事件
+      on('binanceEnabled', 'change', function() {
+        sendUpdate('binance.enabled', this.checked);
+        showToast(this.checked ? '✅ Binance分组已启用' : '⚪ Binance分组已禁用');
+      });
+      on('binanceStatusBar', 'change', function() {
+        sendUpdate('binance.statusBar', this.checked);
+        showToast(this.checked ? '✅ Binance标的参与底部轮播' : '⚪ Binance标的退出底部轮播');
+      });
+      on('binanceNetDirect', 'change', function() { handleNetChange('binance', 'direct'); });
+      on('binanceNetProxy', 'change', function() { handleNetChange('binance', 'proxy'); });
+      on('binanceProxyUrl', 'blur', function() { handleProxyBlur('binance.proxyUrl', this); });
+      on('btnDetectBinance', 'click', function() { triggerDetect('binance'); });
+
+      // 7. Alpha 板块事件
+      on('alphaEnabled', 'change', function() {
+        sendUpdate('alpha.enabled', this.checked);
+        showToast(this.checked ? '✅ Alpha分组已启用' : '⚪ Alpha分组已禁用');
+      });
+      on('alphaStatusBar', 'change', function() {
+        sendUpdate('alpha.statusBar', this.checked);
+        showToast(this.checked ? '✅ Alpha标的参与底部轮播' : '⚪ Alpha标的退出底部轮播');
+      });
+      on('alphaNetDirect', 'change', function() { handleNetChange('alpha', 'direct'); });
+      on('alphaNetProxy', 'change', function() { handleNetChange('alpha', 'proxy'); });
+      on('alphaProxyUrl', 'blur', function() { handleProxyBlur('alpha.proxyUrl', this); });
+      on('btnDetectAlpha', 'click', function() { triggerDetect('alpha'); });
+
+      // ── 接收 VS Code 消息同步 ──
       window.addEventListener('message', function(event) {
         var msg = event.data;
         if (!msg) return;
@@ -988,7 +1065,7 @@ export function getSettingsWebviewHtml(
           if (!d) return;
 
           function setChecked(id, val) { var el = document.getElementById(id); if (el) el.checked = !!val; }
-          function setValue(id, val)   { var el = document.getElementById(id); if (el) el.value = val; }
+          function setValue(id, val)   { var el = document.getElementById(id); if (el) el.value = (val !== undefined && val !== null) ? val : ''; }
 
           setChecked('autoRefresh',      d.autoRefresh);
           setValue('refreshInterval',    d.refreshInterval);
@@ -1073,7 +1150,7 @@ export function getSettingsWebviewHtml(
         }
       });
 
-      // 发起数据获取（双重保证）
+      // 发起双重握手获取最新配置
       postCmd('getSettings');
       setTimeout(function() {
         postCmd('getSettings');

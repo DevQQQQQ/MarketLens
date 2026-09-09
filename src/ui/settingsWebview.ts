@@ -56,6 +56,7 @@ export class SettingsWebviewPanel {
 
     if (SettingsWebviewPanel.currentPanel) {
       SettingsWebviewPanel.currentPanel._panel.reveal(column);
+      SettingsWebviewPanel.currentPanel._panel.webview.html = SettingsWebviewPanel.currentPanel._getHtmlForWebview();
       SettingsWebviewPanel.currentPanel.sendCurrentSettings();
       return;
     }
