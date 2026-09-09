@@ -254,9 +254,9 @@ export class SettingsWebviewPanel {
     return true;
   }
 
-  private sendCurrentSettings() {
+  private _getCurrentSettingsData() {
     const cfg = vscode.workspace.getConfiguration("marketlens");
-    const data = {
+    return {
       autoRefresh:              cfg.get<boolean>("autoRefresh", true),
       refreshInterval:          cfg.get<number>("refreshInterval", 5000),
       maskMode:                 cfg.get<boolean>("maskMode", false),
@@ -286,6 +286,10 @@ export class SettingsWebviewPanel {
       alphaNetworkMode:         cfg.get<string>("alpha.networkMode", "proxy"),
       alphaProxyUrl:            cfg.get<string>("alpha.proxyUrl", "http://127.0.0.1:7890"),
     };
+  }
+
+  private sendCurrentSettings() {
+    const data = this._getCurrentSettingsData();
     this._panel.webview.postMessage({ command: "initSettings", data });
   }
 
@@ -300,6 +304,7 @@ export class SettingsWebviewPanel {
 
   private _getHtmlForWebview(): string {
     const nonce = SettingsWebviewPanel._generateNonce();
-    return getSettingsWebviewHtml(nonce, this._version, this._panel.webview.cspSource);
+    const currentData = this._getCurrentSettingsData();
+    return getSettingsWebviewHtml(nonce, this._version, this._panel.webview.cspSource, currentData);
   }
 }

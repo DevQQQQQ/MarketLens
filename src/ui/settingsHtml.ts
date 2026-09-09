@@ -1,12 +1,79 @@
 // src/ui/settingsHtml.ts
 
-export function getSettingsWebviewHtml(nonce: string, version: string, cspSource: string = ""): string {
+export interface SettingsFormData {
+  autoRefresh?: boolean;
+  refreshInterval?: number;
+  maskMode?: boolean;
+  colorNeutral?: boolean;
+  statusBarEnabled?: boolean;
+  aShareEnabled?: boolean;
+  aShareStatusBar?: boolean;
+  aShareStopOnMarketClosed?: boolean;
+  aShareNetworkMode?: string;
+  aShareProxyUrl?: string;
+  hkStockEnabled?: boolean;
+  hkStockStatusBar?: boolean;
+  hkStockStopOnMarketClosed?: boolean;
+  hkStockNetworkMode?: string;
+  hkStockProxyUrl?: string;
+  usStockEnabled?: boolean;
+  usStockStatusBar?: boolean;
+  usStockStopOnMarketClosed?: boolean;
+  usStockNetworkMode?: string;
+  usStockProxyUrl?: string;
+  binanceEnabled?: boolean;
+  binanceStatusBar?: boolean;
+  binanceNetworkMode?: string;
+  binanceProxyUrl?: string;
+  alphaEnabled?: boolean;
+  alphaStatusBar?: boolean;
+  alphaNetworkMode?: string;
+  alphaProxyUrl?: string;
+}
+
+export function getSettingsWebviewHtml(
+  nonce: string,
+  version: string,
+  cspSource: string = "",
+  initialData: SettingsFormData = {}
+): string {
+  const d: Required<SettingsFormData> = {
+    autoRefresh:              initialData.autoRefresh !== undefined ? initialData.autoRefresh : true,
+    refreshInterval:          initialData.refreshInterval || 5000,
+    maskMode:                 !!initialData.maskMode,
+    colorNeutral:             !!initialData.colorNeutral,
+    statusBarEnabled:         initialData.statusBarEnabled !== undefined ? initialData.statusBarEnabled : true,
+    aShareEnabled:            initialData.aShareEnabled !== undefined ? initialData.aShareEnabled : true,
+    aShareStatusBar:          initialData.aShareStatusBar !== undefined ? initialData.aShareStatusBar : true,
+    aShareStopOnMarketClosed: initialData.aShareStopOnMarketClosed !== undefined ? initialData.aShareStopOnMarketClosed : true,
+    aShareNetworkMode:        initialData.aShareNetworkMode || "direct",
+    aShareProxyUrl:           initialData.aShareProxyUrl || "http://127.0.0.1:7890",
+    hkStockEnabled:           initialData.hkStockEnabled !== undefined ? initialData.hkStockEnabled : true,
+    hkStockStatusBar:         initialData.hkStockStatusBar !== undefined ? initialData.hkStockStatusBar : true,
+    hkStockStopOnMarketClosed: initialData.hkStockStopOnMarketClosed !== undefined ? initialData.hkStockStopOnMarketClosed : true,
+    hkStockNetworkMode:       initialData.hkStockNetworkMode || "direct",
+    hkStockProxyUrl:          initialData.hkStockProxyUrl || "http://127.0.0.1:7890",
+    usStockEnabled:           initialData.usStockEnabled !== undefined ? initialData.usStockEnabled : true,
+    usStockStatusBar:         initialData.usStockStatusBar !== undefined ? initialData.usStockStatusBar : true,
+    usStockStopOnMarketClosed: initialData.usStockStopOnMarketClosed !== undefined ? initialData.usStockStopOnMarketClosed : true,
+    usStockNetworkMode:       initialData.usStockNetworkMode || "direct",
+    usStockProxyUrl:          initialData.usStockProxyUrl || "http://127.0.0.1:7890",
+    binanceEnabled:           initialData.binanceEnabled !== undefined ? initialData.binanceEnabled : true,
+    binanceStatusBar:         initialData.binanceStatusBar !== undefined ? initialData.binanceStatusBar : true,
+    binanceNetworkMode:       initialData.binanceNetworkMode || "proxy",
+    binanceProxyUrl:          initialData.binanceProxyUrl || "http://127.0.0.1:7890",
+    alphaEnabled:             initialData.alphaEnabled !== undefined ? initialData.alphaEnabled : true,
+    alphaStatusBar:           initialData.alphaStatusBar !== undefined ? initialData.alphaStatusBar : true,
+    alphaNetworkMode:         initialData.alphaNetworkMode || "proxy",
+    alphaProxyUrl:            initialData.alphaProxyUrl || "http://127.0.0.1:7890",
+  };
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'nonce-${nonce}' 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data: blob:;">
   <title>MarketLens 设置</title>
   <style>
     :root {
@@ -306,7 +373,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">恢复出厂默认设置</div>
             <div class="card-desc">将所有自选标的列表（A股、港股、美股、Binance、Alpha）恢复为首次安装时的初始预设，并还原所有配置项。</div>
           </div>
-          <button class="btn-restore" id="btnRestoreDefaults">🔄 恢复默认设置</button>
+          <button class="btn-restore" id="btnRestoreDefaults" onclick="postCmd('restoreDefaults')">🔄 恢复默认设置</button>
         </div>
 
         <div class="card">
@@ -314,7 +381,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">一键清空自选标的</div>
             <div class="card-desc">一键清空当前所有板块（A股、港股、美股、Binance、Alpha）的自选标的，保留板块分类，方便您从零开始自定义添加喜欢的资产。</div>
           </div>
-          <button class="btn-clear" id="btnClearWatchlist">🗑️ 一键清空标的</button>
+          <button class="btn-clear" id="btnClearWatchlist" onclick="postCmd('clearWatchlist')">🗑️ 一键清空标的</button>
         </div>
 
         <div class="card">
@@ -322,7 +389,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">全部标的参与底部轮播</div>
             <div class="card-desc">控制 VS Code 底部状态栏是否展示行情轮播。关闭后底部状态栏将完全隐藏自选行情。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="statusBarEnabled"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="statusBarEnabled" ${d.statusBarEnabled ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -330,7 +397,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">定时自动刷新</div>
             <div class="card-desc">开启后后台周期轮询最新行情；关闭后彻底停止后台拉取，仅在点击刷新按钮时更新。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="autoRefresh"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="autoRefresh" ${d.autoRefresh ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -338,7 +405,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">全局刷新频率 (毫秒)</div>
             <div class="card-desc">自动刷新时间间隔（推荐 3000 ~ 10000 毫秒）。</div>
           </div>
-          <input type="number" id="refreshInterval" min="1000" step="500" style="width: 110px;">
+          <input type="number" id="refreshInterval" min="1000" step="500" value="${d.refreshInterval}" style="width: 110px;">
         </div>
 
         <div class="card">
@@ -350,8 +417,8 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-desc">开启后状态栏伪装为 Git 分支及构建日志（如 <code>git:(main) build: 65.2k</code>），彻底隐蔽。</div>
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
-            <button class="btn-shortcut" id="btnKeybindMask" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
-            <label class="switch"><input type="checkbox" id="maskMode"><span class="slider"></span></label>
+            <button class="btn-shortcut" id="btnKeybindMask" onclick="postCmd('openKeybindings', { query: 'marketlens.toggleMask' })" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
+            <label class="switch"><input type="checkbox" id="maskMode" ${d.maskMode ? "checked" : ""}><span class="slider"></span></label>
           </div>
         </div>
 
@@ -364,8 +431,8 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-desc">开启后所有涨跌数值使用编辑器默认中性颜色，关闭红绿配色刺激，防止旁观者察觉。</div>
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
-            <button class="btn-shortcut" id="btnKeybindColor" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
-            <label class="switch"><input type="checkbox" id="colorNeutral"><span class="slider"></span></label>
+            <button class="btn-shortcut" id="btnKeybindColor" onclick="postCmd('openKeybindings', { query: 'marketlens.toggleColorNeutral' })" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
+            <label class="switch"><input type="checkbox" id="colorNeutral" ${d.colorNeutral ? "checked" : ""}><span class="slider"></span></label>
           </div>
         </div>
       </div>
@@ -383,7 +450,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">启用 A 股分组</div>
             <div class="card-desc">是否在左侧看板展示 A 股相关自选分组。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="aShareEnabled"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="aShareEnabled" ${d.aShareEnabled ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -391,7 +458,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">A股标的参与底部轮播</div>
             <div class="card-desc">控制 A 股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="aShareStatusBar"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="aShareStatusBar" ${d.aShareStatusBar ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -399,7 +466,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">A股闭市期间停止轮询</div>
             <div class="card-desc">开启后仅在 A 股交易时段（北京时间 9:15–11:30, 13:00–15:05）请求数据，休市与周末停止拉取。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="aShareStopOnMarketClosed"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="aShareStopOnMarketClosed" ${d.aShareStopOnMarketClosed ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -407,23 +474,23 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">网络访问模式</div>
             <div class="card-desc">
               腾讯财经接口属于境内正规服务，推荐选择<b>直连</b>（零延迟）。
-              <div id="aShareNetTag" class="direct-tag">⚡ 当前为境内直连（推荐）</div>
+              <div id="aShareNetTag" class="${d.aShareNetworkMode === "proxy" ? "security-tag" : "direct-tag"}">${d.aShareNetworkMode === "proxy" ? "🛡️ 已启用杜绝直连保护" : "⚡ 当前为境内直连（推荐）"}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="aShareNetwork" value="direct" id="aShareNetDirect"> 直连 (默认)</label>
-            <label class="radio-label"><input type="radio" name="aShareNetwork" value="proxy"  id="aShareNetProxy"> 强制代理</label>
+            <label class="radio-label"><input type="radio" name="aShareNetwork" value="direct" id="aShareNetDirect" ${d.aShareNetworkMode !== "proxy" ? "checked" : ""}> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="aShareNetwork" value="proxy"  id="aShareNetProxy" ${d.aShareNetworkMode === "proxy" ? "checked" : ""}> 强制代理</label>
           </div>
         </div>
 
-        <div class="card" id="aShareProxyCard">
+        <div class="card ${d.aShareNetworkMode === "proxy" ? "" : "hidden-card"}" id="aShareProxyCard">
           <div class="card-info">
             <div class="card-title">A股代理地址</div>
             <div class="card-desc">指定 A 股请求所使用的代理服务器。</div>
           </div>
           <div class="proxy-input-box">
-            <input type="text" id="aShareProxyUrl" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectAshare">⚡ 探测代理</button>
+            <input type="text" id="aShareProxyUrl" value="${d.aShareProxyUrl}" style="width: 220px;">
+            <button class="btn-detect" id="btnDetectAshare" onclick="triggerDetect('aShare')">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -441,7 +508,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">启用港股分组</div>
             <div class="card-desc">是否在左侧看板展示港股相关自选分组。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="hkStockEnabled"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="hkStockEnabled" ${d.hkStockEnabled ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -449,7 +516,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">港股标的参与底部轮播</div>
             <div class="card-desc">控制港股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="hkStockStatusBar"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="hkStockStatusBar" ${d.hkStockStatusBar ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -457,7 +524,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">港股闭市期间停止轮询</div>
             <div class="card-desc">开启后仅在港股交易时段（北京时间 9:30–12:00, 13:00–16:10）请求数据，休市与周末停止拉取。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="hkStockStopOnMarketClosed"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="hkStockStopOnMarketClosed" ${d.hkStockStopOnMarketClosed ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -465,23 +532,23 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">网络访问模式</div>
             <div class="card-desc">
               腾讯财经港股行情源境内畅通，推荐选择<b>直连</b>（零延迟）。
-              <div id="hkStockNetTag" class="direct-tag">⚡ 当前为境内直连（推荐）</div>
+              <div id="hkStockNetTag" class="${d.hkStockNetworkMode === "proxy" ? "security-tag" : "direct-tag"}">${d.hkStockNetworkMode === "proxy" ? "🛡️ 已启用杜绝直连保护" : "⚡ 当前为境内直连（推荐）"}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="direct" id="hkStockNetDirect"> 直连 (默认)</label>
-            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="proxy"  id="hkStockNetProxy"> 强制代理</label>
+            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="direct" id="hkStockNetDirect" ${d.hkStockNetworkMode !== "proxy" ? "checked" : ""}> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="proxy"  id="hkStockNetProxy" ${d.hkStockNetworkMode === "proxy" ? "checked" : ""}> 强制代理</label>
           </div>
         </div>
 
-        <div class="card" id="hkStockProxyCard">
+        <div class="card ${d.hkStockNetworkMode === "proxy" ? "" : "hidden-card"}" id="hkStockProxyCard">
           <div class="card-info">
             <div class="card-title">港股代理地址</div>
             <div class="card-desc">指定港股请求所使用的代理服务器。</div>
           </div>
           <div class="proxy-input-box">
-            <input type="text" id="hkStockProxyUrl" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectHkStock">⚡ 探测代理</button>
+            <input type="text" id="hkStockProxyUrl" value="${d.hkStockProxyUrl}" style="width: 220px;">
+            <button class="btn-detect" id="btnDetectHkStock" onclick="triggerDetect('hkStock')">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -499,7 +566,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">启用美股分组</div>
             <div class="card-desc">是否在左侧看板展示美股相关自选分组。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="usStockEnabled"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="usStockEnabled" ${d.usStockEnabled ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -507,7 +574,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">美股标的参与底部轮播</div>
             <div class="card-desc">控制美股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="usStockStatusBar"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="usStockStatusBar" ${d.usStockStatusBar ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -515,7 +582,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">美股闭市期间停止轮询</div>
             <div class="card-desc">开启后仅在美股交易时段（北京时间工作日 21:00 至次日凌晨 5:00）请求数据，非交易时段展示收盘价。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="usStockStopOnMarketClosed"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="usStockStopOnMarketClosed" ${d.usStockStopOnMarketClosed ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -523,23 +590,23 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">网络访问模式</div>
             <div class="card-desc">
               腾讯财经美股行情源支持境内直连，亦支持强制走代理。
-              <div id="usStockNetTag" class="direct-tag">⚡ 当前为直连访问</div>
+              <div id="usStockNetTag" class="${d.usStockNetworkMode === "proxy" ? "security-tag" : "direct-tag"}">${d.usStockNetworkMode === "proxy" ? "🛡️ 已启用杜绝直连保护" : "⚡ 当前为直连访问"}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="usStockNetwork" value="direct" id="usStockNetDirect"> 直连 (默认)</label>
-            <label class="radio-label"><input type="radio" name="usStockNetwork" value="proxy"  id="usStockNetProxy"> 强制代理</label>
+            <label class="radio-label"><input type="radio" name="usStockNetwork" value="direct" id="usStockNetDirect" ${d.usStockNetworkMode !== "proxy" ? "checked" : ""}> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="usStockNetwork" value="proxy"  id="usStockNetProxy" ${d.usStockNetworkMode === "proxy" ? "checked" : ""}> 强制代理</label>
           </div>
         </div>
 
-        <div class="card" id="usStockProxyCard">
+        <div class="card ${d.usStockNetworkMode === "proxy" ? "" : "hidden-card"}" id="usStockProxyCard">
           <div class="card-info">
             <div class="card-title">美股代理地址</div>
             <div class="card-desc">指定美股请求所使用的代理服务器。</div>
           </div>
           <div class="proxy-input-box">
-            <input type="text" id="usStockProxyUrl" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectUsStock">⚡ 探测代理</button>
+            <input type="text" id="usStockProxyUrl" value="${d.usStockProxyUrl}" style="width: 220px;">
+            <button class="btn-detect" id="btnDetectUsStock" onclick="triggerDetect('usStock')">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -557,7 +624,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">启用 Binance 分组</div>
             <div class="card-desc">是否在侧边栏显示主流加密货币行情（BTC、ETH 等）。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="binanceEnabled"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="binanceEnabled" ${d.binanceEnabled ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -565,7 +632,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">Binance标的参与底部轮播</div>
             <div class="card-desc">控制 Binance 主流代币是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="binanceStatusBar"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="binanceStatusBar" ${d.binanceStatusBar ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -573,23 +640,23 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">网络访问模式 (防公司审计)</div>
             <div class="card-desc">
               在公司网络下强烈建议保持<b>强制代理</b>，插件将绝对阻止直连包，杜绝网关产生访问记录。
-              <div id="binanceNetTag" class="security-tag">🛡️ 已启用杜绝直连保护</div>
+              <div id="binanceNetTag" class="${d.binanceNetworkMode === "direct" ? "direct-tag" : "security-tag"}">${d.binanceNetworkMode === "direct" ? "⚡ 已切换为直连访问" : "🛡️ 已启用杜绝直连保护"}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="binanceNetwork" value="proxy"  id="binanceNetProxy"> 强制代理 (默认)</label>
-            <label class="radio-label"><input type="radio" name="binanceNetwork" value="direct" id="binanceNetDirect"> 直连</label>
+            <label class="radio-label"><input type="radio" name="binanceNetwork" value="proxy"  id="binanceNetProxy" ${d.binanceNetworkMode !== "direct" ? "checked" : ""}> 强制代理 (默认)</label>
+            <label class="radio-label"><input type="radio" name="binanceNetwork" value="direct" id="binanceNetDirect" ${d.binanceNetworkMode === "direct" ? "checked" : ""}> 直连</label>
           </div>
         </div>
 
-        <div class="card" id="binanceProxyCard">
+        <div class="card ${d.binanceNetworkMode === "direct" ? "hidden-card" : ""}" id="binanceProxyCard">
           <div class="card-info">
             <div class="card-title">代理地址 (仅支持 HTTP / 混合代理)</div>
             <div class="card-desc">插件使用 HTTP 代理协议。若使用 Clash/Verge 填 7890/7897，v2rayN 填 10809。纯 SOCKS5 客户端请在客户端设置中开启 HTTP 监听端口。</div>
           </div>
           <div class="proxy-input-box">
-            <input type="text" id="binanceProxyUrl" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectBinance">⚡ 探测代理</button>
+            <input type="text" id="binanceProxyUrl" value="${d.binanceProxyUrl}" style="width: 220px;">
+            <button class="btn-detect" id="btnDetectBinance" onclick="triggerDetect('binance')">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -607,7 +674,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">启用 Alpha 分组</div>
             <div class="card-desc">是否在侧边栏展示链上 DEX 代币行情。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="alphaEnabled"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="alphaEnabled" ${d.alphaEnabled ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -615,7 +682,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">Alpha标的参与底部轮播</div>
             <div class="card-desc">控制 Alpha 链上代币是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="alphaStatusBar"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="alphaStatusBar" ${d.alphaStatusBar ? "checked" : ""}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -623,23 +690,23 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
             <div class="card-title">网络访问模式 (防公司审计)</div>
             <div class="card-desc">
               访问 DexScreener 全球链上聚合接口。建议保持<b>强制代理</b>，防止公司网关检测。
-              <div id="alphaNetTag" class="security-tag">🛡️ 已启用杜绝直连保护</div>
+              <div id="alphaNetTag" class="${d.alphaNetworkMode === "direct" ? "direct-tag" : "security-tag"}">${d.alphaNetworkMode === "direct" ? "⚡ 已切换为直连访问" : "🛡️ 已启用杜绝直连保护"}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="alphaNetwork" value="proxy"  id="alphaNetProxy"> 强制代理 (默认)</label>
-            <label class="radio-label"><input type="radio" name="alphaNetwork" value="direct" id="alphaNetDirect"> 直连</label>
+            <label class="radio-label"><input type="radio" name="alphaNetwork" value="proxy"  id="alphaNetProxy" ${d.alphaNetworkMode !== "direct" ? "checked" : ""}> 强制代理 (默认)</label>
+            <label class="radio-label"><input type="radio" name="alphaNetwork" value="direct" id="alphaNetDirect" ${d.alphaNetworkMode === "direct" ? "checked" : ""}> 直连</label>
           </div>
         </div>
 
-        <div class="card" id="alphaProxyCard">
+        <div class="card ${d.alphaNetworkMode === "direct" ? "hidden-card" : ""}" id="alphaProxyCard">
           <div class="card-info">
             <div class="card-title">代理地址 (仅支持 HTTP / 混合代理)</div>
             <div class="card-desc">插件使用 HTTP 代理协议。若使用 Clash/Verge 填 7890/7897，v2rayN 填 10809。纯 SOCKS5 客户端请在客户端设置中开启 HTTP 监听端口。</div>
           </div>
           <div class="proxy-input-box">
-            <input type="text" id="alphaProxyUrl" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectAlpha">⚡ 探测代理</button>
+            <input type="text" id="alphaProxyUrl" value="${d.alphaProxyUrl}" style="width: 220px;">
+            <button class="btn-detect" id="btnDetectAlpha" onclick="triggerDetect('alpha')">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -662,7 +729,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
               • <b>悬停详情卡片</b>: 鼠标放至任意资产上，即可查看今开、昨收、高低、涨跌与成交额。
             </div>
           </div>
-          <button class="btn-shortcut" id="btnKeybindAll">⌨️ 打开全局快捷键设置</button>
+          <button class="btn-shortcut" id="btnKeybindAll" onclick="postCmd('openKeybindings', { query: 'marketlens' })">⌨️ 打开全局快捷键设置</button>
         </div>
         <div class="card">
           <div class="card-info">
@@ -671,12 +738,12 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
           </div>
           <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="btn-telegram" id="btnJoinTelegram" style="width: 175px; justify-content: center;">✈️ 进入 Telegram 交流群</button>
-              <button class="btn-shortcut" id="btnCopyTelegram" title="复制群链接到剪贴板">📋 复制链接</button>
+              <button class="btn-telegram" id="btnJoinTelegram" onclick="postCmd('openExternal', { url: 'https://t.me/+-eZR0R--jyUwN2Nl' })" style="width: 175px; justify-content: center;">✈️ 进入 Telegram 交流群</button>
+              <button class="btn-shortcut" id="btnCopyTelegram" onclick="copyText('https://t.me/+-eZR0R--jyUwN2Nl', '已复制 Telegram 群链接')" title="复制群链接到剪贴板">📋 复制链接</button>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="btn-telegram" id="btnJoinPersonalTelegram" style="width: 175px; justify-content: center; background: #2AABEE; border-color: #2AABEE;">💬 联系作者个人 TG</button>
-              <button class="btn-shortcut" id="btnCopyPersonalTelegram" title="复制个人链接到剪贴板">📋 复制链接</button>
+              <button class="btn-telegram" id="btnJoinPersonalTelegram" onclick="postCmd('openExternal', { url: 'https://t.me/Dev_QQQQQ' })" style="width: 175px; justify-content: center; background: #2AABEE; border-color: #2AABEE;">💬 联系作者个人 TG</button>
+              <button class="btn-shortcut" id="btnCopyPersonalTelegram" onclick="copyText('https://t.me/Dev_QQQQQ', '已复制作者个人 TG 链接')" title="复制个人链接到剪贴板">📋 复制链接</button>
             </div>
           </div>
         </div>
@@ -703,7 +770,35 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
         showToast('⚠️ Webview 错误: ' + msg);
       };
 
-      var vscode = acquireVsCodeApi();
+      var vscode = null;
+      try {
+        vscode = acquireVsCodeApi();
+      } catch (err) {
+        console.error('acquireVsCodeApi error:', err);
+      }
+
+      // ── 通用指令下发（支持内联与函数调用双重保障） ──
+      function postCmd(cmd, payload) {
+        if (vscode) {
+          var msg = Object.assign({ command: cmd }, payload || {});
+          vscode.postMessage(msg);
+        }
+      }
+      window.postCmd = postCmd;
+
+      // ── 复制剪贴板 ──
+      function copyText(text, toastMsg) {
+        postCmd('copyToClipboard', { text: text });
+        showToast(toastMsg || '📋 已复制到剪贴板');
+      }
+      window.copyText = copyText;
+
+      // ── 代理端口探测 ──
+      function triggerDetect(target) {
+        showToast('正在探测本机活跃代理端口...');
+        postCmd('detectProxy', { target: target });
+      }
+      window.triggerDetect = triggerDetect;
 
       // ── Tab 切换逻辑（联动 CSS Radio，双向双保） ──
       var TAB_RADIOS = {
@@ -739,8 +834,9 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
 
       // ── 通信函数 ──
       function sendUpdate(key, value) {
-        vscode.postMessage({ command: 'updateSetting', key: key, value: value });
+        postCmd('updateSetting', { key: key, value: value });
       }
+      window.sendUpdate = sendUpdate;
 
       // ── 代理卡片显隐控制 ──
       function applyProxyCardVisibility(section, mode) {
@@ -882,11 +978,6 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
         sendUpdate(key, val);
       }
 
-      function triggerDetect(target) {
-        showToast('正在探测本机活跃代理端口...');
-        vscode.postMessage({ command: 'detectProxy', target: target });
-      }
-
       // ── 接收数据同步 ──
       window.addEventListener('message', function(event) {
         var msg = event.data;
@@ -983,9 +1074,9 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
       });
 
       // 发起数据获取（双重保证）
-      vscode.postMessage({ command: 'getSettings' });
+      postCmd('getSettings');
       setTimeout(function() {
-        vscode.postMessage({ command: 'getSettings' });
+        postCmd('getSettings');
       }, 300);
     })();
   </script>
