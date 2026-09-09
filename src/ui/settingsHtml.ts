@@ -1,12 +1,12 @@
 // src/ui/settingsHtml.ts
 
-export function getSettingsWebviewHtml(nonce: string, version: string): string {
+export function getSettingsWebviewHtml(nonce: string, version: string, cspSource: string = ""): string {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <title>MarketLens 设置</title>
   <style>
     :root {
@@ -255,13 +255,13 @@ export function getSettingsWebviewHtml(nonce: string, version: string): string {
       <h2>📊 MarketLens</h2>
       <p>极客行情与摸鱼配置中心</p>
     </div>
-    <div id="nav-general" class="nav-item active"><span class="icon">⚙️</span><span>通用设置</span></div>
-    <div id="nav-ashare"  class="nav-item"><span class="icon">🇨🇳</span><span>A股板块</span></div>
-    <div id="nav-hkstock" class="nav-item"><span class="icon">🇭🇰</span><span>港股板块</span></div>
-    <div id="nav-usstock" class="nav-item"><span class="icon">🇺🇸</span><span>美股板块</span></div>
-    <div id="nav-binance" class="nav-item"><span class="icon">🟡</span><span>Binance板块</span></div>
-    <div id="nav-alpha"   class="nav-item"><span class="icon">🦄</span><span>Alpha板块</span></div>
-    <div id="nav-about"   class="nav-item"><span class="icon">ℹ️</span><span>关于与帮助</span></div>
+    <div id="nav-general" class="nav-item active" data-tab="tab-general"><span class="icon">⚙️</span><span>通用设置</span></div>
+    <div id="nav-ashare"  class="nav-item" data-tab="tab-ashare"><span class="icon">🇨🇳</span><span>A股板块</span></div>
+    <div id="nav-hkstock" class="nav-item" data-tab="tab-hkstock"><span class="icon">🇭🇰</span><span>港股板块</span></div>
+    <div id="nav-usstock" class="nav-item" data-tab="tab-usstock"><span class="icon">🇺🇸</span><span>美股板块</span></div>
+    <div id="nav-binance" class="nav-item" data-tab="tab-binance"><span class="icon">🟡</span><span>Binance板块</span></div>
+    <div id="nav-alpha"   class="nav-item" data-tab="tab-alpha"><span class="icon">🦄</span><span>Alpha板块</span></div>
+    <div id="nav-about"   class="nav-item" data-tab="tab-about"><span class="icon">ℹ️</span><span>关于与帮助</span></div>
   </div>
 
   <!-- 内容区 -->
@@ -669,6 +669,12 @@ export function getSettingsWebviewHtml(nonce: string, version: string): string {
 
   <script nonce="${nonce}">
     (function() {
+      // 全局错误捕获
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        console.error('MarketLens Webview Error:', msg, lineNo, error);
+        showToast('⚠️ Webview 错误: ' + msg);
+      };
+
       var vscode = acquireVsCodeApi();
 
       // ── Tab 切换逻辑 ──
@@ -704,6 +710,27 @@ export function getSettingsWebviewHtml(nonce: string, version: string): string {
         }
       }
 
+      window.switchTab = switchTab;
+
+      // 侧边栏容器事件委托（无论点击文字、图标还是边距均能精准切换）
+      var sidebarEl = document.querySelector('.sidebar');
+      if (sidebarEl) {
+        sidebarEl.addEventListener('click', function(e) {
+          var target = e.target;
+          var item = (target && target.closest) ? target.closest('.nav-item') : null;
+          if (!item && target && target.classList && target.classList.contains('nav-item')) {
+            item = target;
+          }
+          if (item) {
+            var tabId = item.getAttribute('data-tab');
+            if (tabId) {
+              switchTab(tabId);
+            }
+          }
+        });
+      }
+
+      // 保留单个元素直接监听作为双重保障
       for (var j = 0; j < TABS.length; j++) {
         (function(targetId) {
           var el = document.getElementById(targetId.navId);
@@ -969,8 +996,11 @@ export function getSettingsWebviewHtml(nonce: string, version: string): string {
         }
       });
 
-      // 发起数据获取
+      // 发起数据获取（双重保证）
       vscode.postMessage({ command: 'getSettings' });
+      setTimeout(function() {
+        vscode.postMessage({ command: 'getSettings' });
+      }, 300);
     })();
   </script>
 </body>
