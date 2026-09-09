@@ -29,6 +29,8 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
       color: var(--fg);
       font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
       font-size: 13px;
+    }
+    .layout {
       display: flex;
       height: 100vh;
       overflow: hidden;
@@ -66,13 +68,23 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
       user-select: none;
     }
     .nav-item:hover { background: var(--hover-bg); }
-    .nav-item.active {
+    .nav-item .icon { font-size: 15px; }
+
+    /* ── 隐藏 radio 输入，用 :checked 驱动 Tab 切换 ── */
+    .tab-radio { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+
+    /* 激活的 nav-item 样式 */
+    #tab-r-general:checked ~ .layout .sidebar label[for="tab-r-general"],
+    #tab-r-ashare:checked  ~ .layout .sidebar label[for="tab-r-ashare"],
+    #tab-r-hkstock:checked ~ .layout .sidebar label[for="tab-r-hkstock"],
+    #tab-r-usstock:checked ~ .layout .sidebar label[for="tab-r-usstock"],
+    #tab-r-binance:checked ~ .layout .sidebar label[for="tab-r-binance"],
+    #tab-r-alpha:checked   ~ .layout .sidebar label[for="tab-r-alpha"],
+    #tab-r-about:checked   ~ .layout .sidebar label[for="tab-r-about"] {
       background: var(--active-bg);
       color: #fff;
       font-weight: 500;
     }
-    .nav-item .icon { font-size: 15px; pointer-events: none; }
-    .nav-item span { pointer-events: none; }
 
     /* ── 右侧主内容区 ── */
     .content {
@@ -80,10 +92,16 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
       overflow-y: auto;
       padding: 32px 48px;
     }
-    .tab-pane {
-      display: none;
-    }
-    .tab-pane.active {
+    .tab-pane { display: none; }
+
+    /* 激活的 tab-pane */
+    #tab-r-general:checked ~ .layout .content #tab-general,
+    #tab-r-ashare:checked  ~ .layout .content #tab-ashare,
+    #tab-r-hkstock:checked ~ .layout .content #tab-hkstock,
+    #tab-r-usstock:checked ~ .layout .content #tab-usstock,
+    #tab-r-binance:checked ~ .layout .content #tab-binance,
+    #tab-r-alpha:checked   ~ .layout .content #tab-alpha,
+    #tab-r-about:checked   ~ .layout .content #tab-about {
       display: block;
       animation: fadeIn 0.15s ease;
     }
@@ -248,27 +266,36 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
   </style>
 </head>
 <body>
+  <!-- Radio inputs for pure-CSS tab switching (MUST be direct siblings of .layout) -->
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-general" checked>
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-ashare">
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-hkstock">
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-usstock">
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-binance">
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-alpha">
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-about">
 
+  <div class="layout">
   <!-- 侧边导航 -->
   <div class="sidebar">
     <div class="brand">
       <h2>📊 MarketLens</h2>
       <p>极客行情与摸鱼配置中心</p>
     </div>
-    <div id="nav-general" class="nav-item active" data-tab="tab-general"><span class="icon">⚙️</span><span>通用设置</span></div>
-    <div id="nav-ashare"  class="nav-item" data-tab="tab-ashare"><span class="icon">🇨🇳</span><span>A股板块</span></div>
-    <div id="nav-hkstock" class="nav-item" data-tab="tab-hkstock"><span class="icon">🇭🇰</span><span>港股板块</span></div>
-    <div id="nav-usstock" class="nav-item" data-tab="tab-usstock"><span class="icon">🇺🇸</span><span>美股板块</span></div>
-    <div id="nav-binance" class="nav-item" data-tab="tab-binance"><span class="icon">🟡</span><span>Binance板块</span></div>
-    <div id="nav-alpha"   class="nav-item" data-tab="tab-alpha"><span class="icon">🦄</span><span>Alpha板块</span></div>
-    <div id="nav-about"   class="nav-item" data-tab="tab-about"><span class="icon">ℹ️</span><span>关于与帮助</span></div>
+    <label class="nav-item" for="tab-r-general"><span class="icon">⚙️</span><span>通用设置</span></label>
+    <label class="nav-item" for="tab-r-ashare"><span class="icon">🇨🇳</span><span>A股板块</span></label>
+    <label class="nav-item" for="tab-r-hkstock"><span class="icon">🇭🇰</span><span>港股板块</span></label>
+    <label class="nav-item" for="tab-r-usstock"><span class="icon">🇺🇸</span><span>美股板块</span></label>
+    <label class="nav-item" for="tab-r-binance"><span class="icon">🟡</span><span>Binance板块</span></label>
+    <label class="nav-item" for="tab-r-alpha"><span class="icon">🦄</span><span>Alpha板块</span></label>
+    <label class="nav-item" for="tab-r-about"><span class="icon">ℹ️</span><span>关于与帮助</span></label>
   </div>
 
   <!-- 内容区 -->
   <div class="content">
 
     <!-- 1. 通用设置 -->
-    <div id="tab-general" class="tab-pane active">
+    <div id="tab-general" class="tab-pane">
       <div class="section-header">
         <h1>通用与全局设置</h1>
         <p>控制全局刷新调度、摸鱼模式与视觉脱敏</p>
@@ -664,6 +691,7 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
     </div>
 
   </div>
+  </div>
 
   <div id="toast" class="toast"></div>
 
@@ -677,70 +705,28 @@ export function getSettingsWebviewHtml(nonce: string, version: string, cspSource
 
       var vscode = acquireVsCodeApi();
 
-      // ── Tab 切换逻辑 ──
-      var TABS = [
-        { navId: 'nav-general', paneId: 'tab-general' },
-        { navId: 'nav-ashare',  paneId: 'tab-ashare' },
-        { navId: 'nav-hkstock', paneId: 'tab-hkstock' },
-        { navId: 'nav-usstock', paneId: 'tab-usstock' },
-        { navId: 'nav-binance', paneId: 'tab-binance' },
-        { navId: 'nav-alpha',   paneId: 'tab-alpha' },
-        { navId: 'nav-about',   paneId: 'tab-about' }
-      ];
+      // ── Tab 切换逻辑（联动 CSS Radio，双向双保） ──
+      var TAB_RADIOS = {
+        'tab-general': 'tab-r-general',
+        'tab-ashare':  'tab-r-ashare',
+        'tab-hkstock': 'tab-r-hkstock',
+        'tab-usstock': 'tab-r-usstock',
+        'tab-binance': 'tab-r-binance',
+        'tab-alpha':   'tab-r-alpha',
+        'tab-about':   'tab-r-about'
+      };
 
       function switchTab(targetPaneId) {
-        for (var i = 0; i < TABS.length; i++) {
-          var t = TABS[i];
-          var navEl = document.getElementById(t.navId);
-          var paneEl = document.getElementById(t.paneId);
-          if (navEl) {
-            if (t.paneId === targetPaneId) {
-              navEl.classList.add('active');
-            } else {
-              navEl.classList.remove('active');
-            }
-          }
-          if (paneEl) {
-            if (t.paneId === targetPaneId) {
-              paneEl.classList.add('active');
-            } else {
-              paneEl.classList.remove('active');
-            }
+        var radioId = TAB_RADIOS[targetPaneId];
+        if (radioId) {
+          var radio = document.getElementById(radioId);
+          if (radio) {
+            radio.checked = true;
           }
         }
       }
 
       window.switchTab = switchTab;
-
-      // 侧边栏容器事件委托（无论点击文字、图标还是边距均能精准切换）
-      var sidebarEl = document.querySelector('.sidebar');
-      if (sidebarEl) {
-        sidebarEl.addEventListener('click', function(e) {
-          var target = e.target;
-          var item = (target && target.closest) ? target.closest('.nav-item') : null;
-          if (!item && target && target.classList && target.classList.contains('nav-item')) {
-            item = target;
-          }
-          if (item) {
-            var tabId = item.getAttribute('data-tab');
-            if (tabId) {
-              switchTab(tabId);
-            }
-          }
-        });
-      }
-
-      // 保留单个元素直接监听作为双重保障
-      for (var j = 0; j < TABS.length; j++) {
-        (function(targetId) {
-          var el = document.getElementById(targetId.navId);
-          if (el) {
-            el.addEventListener('click', function() {
-              switchTab(targetId.paneId);
-            });
-          }
-        })(TABS[j]);
-      }
 
       // ── Toast 提示 ──
       function showToast(msg) {

@@ -23,7 +23,7 @@ export function registerCommands(
   context.subscriptions.push(
     // 打开设置界面（专属 Webview 控制台面板）
     vscode.commands.registerCommand("marketlens.openSettings", () => {
-      const extVersion = context.extension?.packageJSON?.version || "1.1.1";
+      const extVersion = context.extension?.packageJSON?.version || "1.1.2";
       SettingsWebviewPanel.createOrShow(context.extensionUri, extVersion);
     }),
 

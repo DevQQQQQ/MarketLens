@@ -49,13 +49,14 @@ export class SettingsWebviewPanel {
   private readonly _version: string;
   private _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(extensionUri: vscode.Uri, version: string = "1.1.1") {
+  public static createOrShow(extensionUri: vscode.Uri, version: string = "1.1.2") {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
     if (SettingsWebviewPanel.currentPanel) {
       SettingsWebviewPanel.currentPanel._panel.reveal(column);
+      SettingsWebviewPanel.currentPanel.sendCurrentSettings();
       return;
     }
 
@@ -81,12 +82,12 @@ export class SettingsWebviewPanel {
     return text;
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, version: string = "1.1.1") {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, version: string = "1.1.2") {
     this._panel = panel;
     this._version = version;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-    this._panel.webview.html = this._getHtmlForWebview();
 
+    // 1. 先注册消息接收器，避免 webview 加载时发出的 getSettings 信号丢失
     this._panel.webview.onDidReceiveMessage(
       async (message) => {
         switch (message.command) {
@@ -141,6 +142,23 @@ export class SettingsWebviewPanel {
       null,
       this._disposables
     );
+
+    // 2. 监听 panel 视图可见性状态改变，切回前台时自动重新同步配置
+    this._panel.onDidChangeViewState(
+      (e) => {
+        if (e.webviewPanel.visible) {
+          this.sendCurrentSettings();
+        }
+      },
+      null,
+      this._disposables
+    );
+
+    // 3. 赋值 webview HTML
+    this._panel.webview.html = this._getHtmlForWebview();
+
+    // 4. 主动推一次配置（双向握手保障）
+    this.sendCurrentSettings();
   }
 
   public static async restoreDefaults(): Promise<boolean> {
@@ -282,6 +300,6 @@ export class SettingsWebviewPanel {
 
   private _getHtmlForWebview(): string {
     const nonce = SettingsWebviewPanel._generateNonce();
-    return getSettingsWebviewHtml(nonce, this._version);
+    return getSettingsWebviewHtml(nonce, this._version, this._panel.webview.cspSource);
   }
 }
