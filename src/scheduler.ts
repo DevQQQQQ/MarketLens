@@ -9,7 +9,7 @@ import { logger } from "./utils/logger";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen } from "./utils/marketHours";
 import { readConfig } from "./utils/config";
 
-import { extractTargetsFromWatchlist } from "./utils/symbolHelper";
+import { extractTargetsFromWatchlist, extractStatusBarQuotes } from "./utils/symbolHelper";
 
 export interface SchedulerContext {
   marketManager: MarketManager;
@@ -88,6 +88,30 @@ export class RefreshScheduler implements vscode.Disposable {
     });
   }
 
+  /**
+   * 统一更新底部状态栏行情与轮播展示
+   * 聚合所有启用且开启轮播的板块标的，优先使用内存中的最新报价（含已闭市标的的收盘报价），
+   * 确保闭市时状态栏不会丢失已缓存的收盘行情，并在配置开关变动时立即生效。
+   */
+  public updateStatusBar(currentConfig?: MarketLensConfig): void {
+    const config = currentConfig || readConfig();
+    const statusBarQuotes = extractStatusBarQuotes(config.watchlist, this.quoteCache, {
+      statusBarEnabled: config.statusBar?.enabled,
+      aShare: config.aShare,
+      hkStock: config.hkStock,
+      usStock: config.usStock,
+      binance: config.binance,
+      alpha: config.alpha,
+    });
+
+    this.statusBar.setQuotes(statusBarQuotes);
+    if (statusBarQuotes.length > 0) {
+      this.statusBar.show();
+    } else {
+      this.statusBar.hide();
+    }
+  }
+
   // ── 全量刷新 ────────────────────────────────────────────────────
 
   public async refresh(forceRefreshAll: boolean = false): Promise<void> {
@@ -127,6 +151,17 @@ export class RefreshScheduler implements vscode.Disposable {
         { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl }
       );
 
+      const totalTargetsCount =
+        targets.aShares.length +
+        targets.hkStocks.length +
+        targets.usStocks.length +
+        targets.cryptos.length +
+        targets.bscTokens.length;
+
+      if (totalTargetsCount === 0) {
+        this.quoteCache.clear();
+      }
+
       for (const q of quotes) {
         this.saveToQuoteCache(q);
       }
@@ -142,20 +177,7 @@ export class RefreshScheduler implements vscode.Disposable {
         this.treeProvider.applyQuotes(quotes);
       }
 
-      if (config.statusBar?.enabled === false) {
-        this.statusBar.hide();
-      } else {
-        const filteredQuotes = quotes.filter((q) => {
-          if (q.type === "A_SHARE") return config.aShare.statusBar !== false;
-          if (q.type === "HK_STOCK") return config.hkStock.statusBar !== false;
-          if (q.type === "US_STOCK") return config.usStock.statusBar !== false;
-          if (q.type === "CRYPTO") return config.binance.statusBar !== false;
-          if (q.type === "BSC_TOKEN" || q.type === "ALPHA_TOKEN") return config.alpha.statusBar !== false;
-          return true;
-        });
-        this.statusBar.setQuotes(filteredQuotes);
-        this.statusBar.show();
-      }
+      this.updateStatusBar(config);
     } catch (err) {
       // 静默降级：仅写日志到 OutputChannel，绝不弹窗打断用户编码
       logger.error("全量刷新失败", err);
@@ -189,6 +211,7 @@ export class RefreshScheduler implements vscode.Disposable {
       }
 
       this.treeProvider.applyQuotes(quotes);
+      this.updateStatusBar(config);
     } catch (err) {
       logger.error(`分组 '${group.groupName}' 刷新失败`, err);
     } finally {

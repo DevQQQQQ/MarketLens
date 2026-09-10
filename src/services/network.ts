@@ -12,10 +12,10 @@ export interface CryptoNetworkOptions {
  * 优先探测 HTTP 监听端口，确保与 Axios HTTP 代理协议无缝匹配
  */
 export const COMMON_PROXY_PORTS = [
+  10808, // v2rayN (Socks/Mixed)
+  10809, // v2rayN (HTTP)
   7890,  // Clash / Clash Verge / ClashX (HTTP/Socks Mixed)
   7897,  // Mihomo Party (HTTP/Socks Mixed)
-  10809, // v2rayN (HTTP)
-  10808, // v2rayN (Socks/Mixed)
   2080,  // NekoBox / sing-box (Mixed)
   6152,  // Surge (HTTP)
   8889,  // Qv2ray (HTTP)
@@ -37,6 +37,11 @@ let lastFallbackFailedTime = 0;
 /** 探测冷却时间：30 秒（避免 10+ 并发请求在代理未开时同时遍历 9 端口打满网络） */
 const FALLBACK_COOLDOWN_MS = 30_000;
 
+/** 获取当前已探测并生效的本地代理端口 */
+export function getCachedWorkingPort(): number | undefined {
+  return cachedWorkingPort;
+}
+
 /** 重置代理缓存与探测状态（当用户在设置面板修改网络配置时调用） */
 export function resetProxyCache(): void {
   cachedWorkingPort = undefined;
@@ -45,16 +50,25 @@ export function resetProxyCache(): void {
 
 /**
  * 校验并规范化代理地址（防止用户输入为空、带特殊协议或格式残缺导致崩溃）
- * 1. 彻底纠偏 https://：本地代理服务器（如 127.0.0.1:7890）均为明文 HTTP 监听，填 https:// 会导致 Node.js 抛 EPROTO 握手异常，自动规整为 http://
- * 2. 友好支持 socks5:// / socks://：提取其中的 host 与 port，将其转换为 Node.js HTTP 代理形式，避免静默解析崩溃退回默认
- * 3. 完整保留认证信息 (http://user:pass@host:port)，杜绝企业级/隧道代理 407 鉴权失败
- * 4. 端口缺省时，对于非本地代理采用工业通用标准 8080（本地采用 7890/10808）
+ * 1. 支持纯端口号输入（如 10808 或 "10808"），自动规范化为 http://127.0.0.1:10808
+ * 2. 彻底纠偏 https://：本地代理服务器均为明文 HTTP 监听，自动规整为 http://
+ * 3. 友好支持 socks5:// / socks://：提取其中的 host 与 port，将其转换为 Node.js HTTP 代理形式
+ * 4. 完整保留认证信息 (http://user:pass@host:port)
+ * 5. 缺省返回当前可用工作端口或 10808
  */
 export function validateAndNormalizeProxyUrl(rawUrl: string | undefined): string {
   if (!rawUrl || !rawUrl.trim()) {
-    return cachedWorkingPort ? `http://127.0.0.1:${cachedWorkingPort}` : "http://127.0.0.1:7890";
+    return cachedWorkingPort ? `http://127.0.0.1:${cachedWorkingPort}` : "http://127.0.0.1:10808";
   }
   let str = rawUrl.trim();
+
+  // 若用户直接输入纯数字端口（例如 "10808"）
+  if (/^\d{1,5}$/.test(str)) {
+    const p = parseInt(str, 10);
+    if (p >= 1 && p <= 65535) {
+      return `http://127.0.0.1:${p}`;
+    }
+  }
 
   // 若用户填了 socks5:// 或 socks://，剥离前缀并转换
   if (/^socks5?:\/\//i.test(str)) {
@@ -73,12 +87,12 @@ export function validateAndNormalizeProxyUrl(rawUrl: string | undefined): string
     const u = new URL(str);
     const host = u.hostname || "127.0.0.1";
     const isLocal = host === "127.0.0.1" || host === "localhost";
-    const defaultPort = isLocal ? "7890" : "8080";
+    const defaultPort = isLocal ? "10808" : "8080";
     const port = u.port || defaultPort;
     const authPart = u.username ? `${u.username}${u.password ? `:${u.password}` : ""}@` : "";
     return `http://${authPart}${host}:${port}`;
   } catch {
-    return "http://127.0.0.1:7890";
+    return "http://127.0.0.1:10808";
   }
 }
 
@@ -92,7 +106,7 @@ export function parseProxy(proxyUrlStr: string) {
     const url = new URL(normalized);
     const host = url.hostname || "127.0.0.1";
     const isLocal = host === "127.0.0.1" || host === "localhost";
-    const defaultPort = isLocal ? 7890 : 8080;
+    const defaultPort = isLocal ? 10808 : 8080;
     const port = parseInt(url.port, 10) || defaultPort;
 
     const res: {
@@ -115,7 +129,7 @@ export function parseProxy(proxyUrlStr: string) {
 
     return res;
   } catch {
-    return { host: "127.0.0.1", port: 7890, protocol: "http" };
+    return { host: "127.0.0.1", port: 10808, protocol: "http" };
   }
 }
 
@@ -146,14 +160,17 @@ function testLocalPort(port: number): Promise<boolean> {
 }
 
 /**
- * 自动探测本机当前活跃的代理端口（供设置界面“一键探测”使用）
+ * 自动探测本机当前活跃的代理端口号（返回端口数字，如 10808）
  */
-export async function detectAvailableProxy(): Promise<string | null> {
+export async function detectAvailablePort(): Promise<number | null> {
+  if (cachedWorkingPort && (await testLocalPort(cachedWorkingPort))) {
+    return cachedWorkingPort;
+  }
   for (const port of COMMON_PROXY_PORTS) {
     const ok = await testLocalPort(port);
     if (ok) {
       cachedWorkingPort = port;
-      return `http://127.0.0.1:${port}`;
+      return port;
     }
   }
   return null;

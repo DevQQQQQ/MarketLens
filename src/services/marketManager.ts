@@ -43,8 +43,8 @@ export class MarketManager {
     aShareOptions: CryptoNetworkOptions = { mode: "direct" },
     hkStockOptions: CryptoNetworkOptions = { mode: "direct" },
     usStockOptions: CryptoNetworkOptions = { mode: "direct" },
-    binanceOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:7890" },
-    alphaOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:7890" }
+    binanceOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" },
+    alphaOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" }
   ): Promise<MarketItem[]> {
     const { aShares = [], hkStocks = [], usStocks = [], cryptos = [], bscTokens = [] } = targets;
 

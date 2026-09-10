@@ -172,6 +172,10 @@ export class StockItem extends vscode.TreeItem {
         `_更新时间: ${new Date().toLocaleTimeString()}_`;
     }
 
+    if (!hasQuote) {
+      mdText += `\n\n> 💡 **提示**：若长期处于“获取行情中”，可能是当前网络或公司内网拦截了该接口。建议在插件设置中开启本地代理端口（如 10808），或在设置中暂时关闭该分组。`;
+    }
+
     this.tooltip = new vscode.MarkdownString(mdText);
     this.tooltip.isTrusted = true;
 

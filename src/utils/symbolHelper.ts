@@ -45,10 +45,10 @@ export function isSameSymbol(a?: string, b?: string): boolean {
     if (mUsDelim) {
       return { prefix: "us", code: mUsDelim[1].replace(/[\._\-]/g, "").toLowerCase() };
     }
-    // 腾讯美股前缀: 小写 us + 大写字母 (如 usAAPL, usAMD, usNET, usTSM, usARM, usB, usUSB)
+    // 腾讯美股前缀: 小写 us + 大写字母 (如 usAAPL, usAMD, usNET, usTSM, usARM, usB, usUSB, usBRK.B)
     // 区分大小写，真实大写 ticker (如 USB, USM, USA) 首字母为大写 U，不会被误提取
     if (/^us[A-Z]/.test(orig)) {
-      return { prefix: "us", code: orig.slice(2).toLowerCase() };
+      return { prefix: "us", code: orig.slice(2).replace(/[\._\-]/g, "").toLowerCase() };
     }
     return null;
   };
@@ -98,15 +98,15 @@ export function normalizeSymbolKey(sym?: string): string {
     return "hk" + clean.replace(/^0+/, "");
   }
 
-  // 2. 如果是美股：去除显式分隔符前缀（如 us.aapl, us_aapl, us-aapl -> aapl, us.usb -> usb）
+  // 2. 如果是美股：去除显式分隔符前缀（如 us.aapl, us_aapl, us-aapl -> aapl, us.usb -> usb, us.brk.b -> brkb）
   if (/^us[\._\-]/i.test(s)) {
-    return s.replace(/^us[\._\-]/i, "").toLowerCase();
+    return s.replace(/^us[\._\-]/i, "").toLowerCase().replace(/[\._\-]/g, "");
   }
 
-  // 3. 腾讯美股前缀格式（区分大小写：小写 us + 大写字母，如 usAAPL -> aapl, usAMD -> amd, usNET -> net, usUSB -> usb）
+  // 3. 腾讯美股前缀格式（区分大小写：小写 us + 大写字母，如 usAAPL -> aapl, usAMD -> amd, usNET -> net, usUSB -> usb, usBRK.B -> brkb）
   // 真实大写 ticker（如 USB, USM, USA）首字母为大写 U，不会被误剥离
   if (/^us[A-Z]/.test(s)) {
-    return s.slice(2).toLowerCase();
+    return s.slice(2).toLowerCase().replace(/[\._\-]/g, "");
   }
 
   // A股保留 sh/sz/bj 前缀，其他（包括 USB, B, BTCUSDT, 合约地址等）直接返回 clean
@@ -114,24 +114,26 @@ export function normalizeSymbolKey(sym?: string): string {
 }
 
 /**
- * 规范化美股抓取代码（Tencent 接口格式，如 "AMD" -> "usAMD", "usAMD" -> "usAMD", "us.IXIC" -> "usIXIC"）
+ * 规范化美股抓取代码（Tencent 接口格式，如 "AMD" -> "usAMD", "usAMD" -> "usAMD", "us.IXIC" -> "usIXIC", "BRK.B" -> "usBRK.B"）
  */
 export function normalizeUSCode(raw: string): string {
   const clean = raw.trim().replace(/^r_/, "");
-  // 如果带显式 us 分隔符（如 us.AAPL, us_AAPL, us-AAPL）
+  // 如果带显式 us 分隔符（如 us.AAPL, us_AAPL, us-AAPL, us.BRK.B）
   if (/^us[\._\-]/i.test(clean)) {
-    const ticker = clean.replace(/^us[\._\-]/i, "").toUpperCase();
+    const ticker = clean.replace(/^us[\._\-]/i, "").toUpperCase().replace(/[\-_/]/g, ".");
     return `us${ticker}`;
   }
   if (clean.startsWith(".")) {
     return `us${clean.slice(1).toUpperCase()}`;
   }
-  // 如果已带腾讯格式前缀：小写 us 开头后紧跟大写字母（如 usAAPL, usAMD, usNET, usTSM, usARM, usB, usUSB）
+  // 如果已带腾讯格式前缀：小写 us 开头后紧跟大写字母（如 usAAPL, usAMD, usNET, usTSM, usARM, usB, usUSB, usBRK.B）
   if (/^us[A-Z]/.test(clean)) {
-    return `us${clean.slice(2).toUpperCase()}`;
+    const ticker = clean.slice(2).toUpperCase().replace(/[\-_/]/g, ".");
+    return `us${ticker}`;
   }
-  // 否则原生美股 ticker（如 AAPL, B, USB, USFD，首字母为大写 U 或其他大写字母）统一添加 us 前缀
-  return `us${clean.toUpperCase()}`;
+  // 否则原生美股 ticker（如 AAPL, B, USB, USFD, BRK.B, BRK-B），类股连字符统一映射为点号
+  const ticker = clean.toUpperCase().replace(/[\-_/]/g, ".");
+  return `us${ticker}`;
 }
 
 /**
@@ -183,11 +185,12 @@ export function resolveItemAssetType(
       return "CRYPTO";
     }
 
-    // 2.5 美股绝对强特征：指数、带分隔符前缀（us.AAPL / us_TSLA）、腾讯美股格式（usAAPL / usNET 等）
+    // 2.5 美股绝对强特征：指数、带分隔符前缀（us.AAPL / us_TSLA）、腾讯美股格式（usAAPL / usNET / usBRK.B 等）、类股代码（如 BRK.B, BF.B, BRK-B）
     if (
       sym.startsWith(".") ||
-      /^us[\._\-][a-zA-Z]+$/i.test(sym) ||
-      (/^us[a-zA-Z]/i.test(sym) && !/^(usdt|usdc|usd1|usdd|usde|usds|usdy|usdx|usual|fdusd|tusd|pyusd|dai)/i.test(sym))
+      /^us[\._\-]/i.test(sym) ||
+      (/^us[a-zA-Z]/i.test(sym) && !/^(usdt|usdc|usd1|usdd|usde|usds|usdy|usdx|usual|fdusd|tusd|pyusd|dai)/i.test(sym)) ||
+      /^[a-zA-Z]{1,5}[\.\-_/][a-zA-Z]{1,2}$/.test(sym)
     ) {
       return "US_STOCK";
     }
@@ -242,8 +245,8 @@ export function resolveItemAssetType(
   }
 
   // ── Level 4: 弱代码与裸代码兜底推断（组名也无任何提示） ──
-  // 纯字母且无特殊标记的 1~5 位裸代码（如 AAPL, TSLA, NVDA）
-  if (sym && /^[a-zA-Z]{1,5}$/.test(sym)) {
+  // 纯字母且无特殊标记的 1~5 位裸代码（如 AAPL, TSLA, NVDA）或类股代码（如 BRK.B, BF.B）
+  if (sym && (/^[a-zA-Z]{1,5}$/.test(sym) || /^[a-zA-Z]{1,5}[\.\-_/][a-zA-Z]{1,2}$/.test(sym))) {
     return "US_STOCK";
   }
 
@@ -363,6 +366,112 @@ export function extractTargetsFromWatchlist(
     cryptos: [...new Set(cryptos)],
     bscTokens: [...new Set(bscTokens)],
   };
+}
+
+export interface StatusBarQuotesOptions {
+  statusBarEnabled?: boolean;
+  aShare?: { enabled?: boolean; statusBar?: boolean };
+  hkStock?: { enabled?: boolean; statusBar?: boolean };
+  usStock?: { enabled?: boolean; statusBar?: boolean };
+  binance?: { enabled?: boolean; statusBar?: boolean };
+  alpha?: { enabled?: boolean; statusBar?: boolean };
+}
+
+/**
+ * 纯算法函数：计算状态栏总控与分板块开关聚合后的最终展示状态
+ * @param explicitStatusBarEnabled 用户是否显式配置了 statusBar.enabled（undefined 表示未显式配置，遵循默认值开启）
+ * @param anyTabsStatusBar 是否至少有一个分板块开启了状态栏轮播
+ */
+export function computeStatusBarEnabled(
+  explicitStatusBarEnabled: boolean | undefined,
+  anyTabsStatusBar: boolean
+): boolean {
+  return explicitStatusBarEnabled !== false && anyTabsStatusBar;
+}
+
+/**
+ * 纯算法函数：从 watchlist 中按板块开关与轮播开关提取所有参与底部状态栏轮播的标的行情
+ * 优先从 quoteCache 读取最新报价（即使对应市场因闭市跳过了周期网络拉取，依然保留收盘报价轮播），
+ * 若 quoteCache 暂无则提供基础占位，确保全量预设（如 49 个标的）正常流转。
+ */
+export function extractStatusBarQuotes<
+  T extends { symbol: string; name?: string; type?: string; price?: number; changePercent?: number }
+>(
+  watchlist: Record<string, any[]>,
+  quoteCache: Map<string, T>,
+  options: StatusBarQuotesOptions = {}
+): T[] {
+  const {
+    statusBarEnabled = true,
+    aShare = { enabled: true, statusBar: true },
+    hkStock = { enabled: true, statusBar: true },
+    usStock = { enabled: true, statusBar: true },
+    binance = { enabled: true, statusBar: true },
+    alpha = { enabled: true, statusBar: true },
+  } = options;
+
+  if (statusBarEnabled === false) {
+    return [];
+  }
+
+  const isSectionActive = (type?: string): boolean => {
+    switch (type) {
+      case "A_SHARE":
+        return aShare.enabled !== false && aShare.statusBar !== false;
+      case "HK_STOCK":
+        return hkStock.enabled !== false && hkStock.statusBar !== false;
+      case "US_STOCK":
+        return usStock.enabled !== false && usStock.statusBar !== false;
+      case "CRYPTO":
+        return binance.enabled !== false && binance.statusBar !== false;
+      case "ALPHA_TOKEN":
+      case "BSC_TOKEN":
+        return alpha.enabled !== false && alpha.statusBar !== false;
+      default:
+        return true;
+    }
+  };
+
+  const result: T[] = [];
+  const seenSymbols = new Set<string>();
+
+  for (const [groupName, items] of Object.entries(watchlist || {})) {
+    for (const item of items || []) {
+      if (!item?.symbol) continue;
+      const symKey = item.symbol.toLowerCase().trim();
+      if (seenSymbols.has(symKey)) continue;
+
+      const assetType = resolveItemAssetType(item, groupName);
+      if (!isSectionActive(assetType)) {
+        continue;
+      }
+
+      seenSymbols.add(symKey);
+
+      const normKey = normalizeSymbolKey(item.symbol);
+      const rawTicker = item.symbol.toLowerCase().replace(/^(us|hk|sh|sz|bj)[\._\-]?/i, "");
+      const cached =
+        quoteCache.get(normKey) ||
+        quoteCache.get(item.symbol) ||
+        quoteCache.get(item.symbol.toLowerCase()) ||
+        quoteCache.get(rawTicker);
+
+      if (cached) {
+        result.push(cached);
+      } else {
+        result.push({
+          id: item.symbol,
+          name: item.name || item.symbol,
+          symbol: item.symbol,
+          type: (assetType || item.type || "A_SHARE") as any,
+          price: 0,
+          changePercent: 0,
+        } as unknown as T);
+      }
+    }
+  }
+
+  return result;
 }
 
 /**

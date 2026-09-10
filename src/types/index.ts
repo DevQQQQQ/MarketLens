@@ -47,6 +47,8 @@ export interface MarketLensConfig {
   maskMode: boolean;
   colorNeutral: boolean;
   statusBar: { enabled: boolean };
+  proxyPort?: number;
+  proxyUrl?: string;
 
   // ── 分板块独立设置 ──
   aShare:  { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean; statusBar: boolean };

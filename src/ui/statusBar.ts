@@ -93,11 +93,19 @@ export class StatusBar implements vscode.Disposable {
 
   /** 更新全量行情数据，触发显示刷新 */
   setQuotes(quotes: MarketItem[]): void {
+    const prevCount = this.quotes.length;
     this.quotes = quotes;
     if (this.quotes.length === 0) {
       this.carouselIndex = 0;
-    } else if (this.carouselIndex >= this.quotes.length) {
-      this.carouselIndex = this.carouselIndex % this.quotes.length;
+      this.stopCarousel();
+      this.barItem.text = "";
+      this.barItem.tooltip = undefined;
+      this.barItem.hide();
+      return;
+    }
+    // 当标的总数发生变动时（例如板块开关开启或关闭），重置轮播索引为 0，使 UI 即时从第一条开始呈现新总数
+    if (prevCount !== this.quotes.length || this.carouselIndex >= this.quotes.length) {
+      this.carouselIndex = 0;
     }
     if (this.bossKeyActive) {
       return;
@@ -108,9 +116,12 @@ export class StatusBar implements vscode.Disposable {
 
   /** 显示状态栏 */
   show(): void {
-    if (!this.bossKeyActive) {
+    if (!this.bossKeyActive && this.quotes.length > 0) {
       this.barItem.show();
       this.render();
+    } else if (this.quotes.length === 0) {
+      this.barItem.text = "";
+      this.barItem.hide();
     }
   }
 
@@ -188,7 +199,12 @@ export class StatusBar implements vscode.Disposable {
   // ── 渲染 ────────────────────────────────────────────────────────
 
   private render(): void {
-    if (this.bossKeyActive || this.quotes.length === 0) { return; }
+    if (this.bossKeyActive || this.quotes.length === 0) {
+      this.barItem.text = "";
+      this.barItem.tooltip = undefined;
+      this.barItem.hide();
+      return;
+    }
 
     // 决定要显示哪些条目
     let visible: MarketItem[];
@@ -220,7 +236,7 @@ export class StatusBar implements vscode.Disposable {
       : "";
 
     this.barItem.text    = `$(graph-line) ${parts.join("  |  ")}${suffix}`;
-    this.barItem.tooltip = this.buildTooltip(this.quotes);
+    this.barItem.tooltip = "MarketLens — 点击立即刷新";
     this.applyColor(visible[0]);
   }
 
@@ -235,26 +251,10 @@ export class StatusBar implements vscode.Disposable {
       ? ` [${this.carouselIndex + 1}/${this.quotes.length}]`
       : "";
     this.barItem.text = `$(git-branch) ${branch}${countPart}  ${parts.join("  |  ")}`;
-    this.barItem.tooltip = new vscode.MarkdownString(
-      "_MarketLens 伪装模式开启中_\n\n点击刷新数据"
-    );
+    this.barItem.tooltip = "MarketLens — 点击立即刷新";
     // 伪装模式下强制无色
     this.barItem.backgroundColor = undefined;
     this.barItem.color = undefined;
-  }
-
-  /** 悬停 Tooltip —— 完整行情表格 */
-  private buildTooltip(quotes: MarketItem[]): vscode.MarkdownString {
-    const rows = quotes.map((q) => {
-      const emoji = q.changePercent >= 0 ? "🟢" : "🔴";
-      const pct   = `${q.changePercent >= 0 ? "+" : ""}${q.changePercent.toFixed(2)}%`;
-      return `| ${q.name} | \`${q.symbol}\` | ${toDisplayPrice(q.price)} | ${emoji} ${pct} |`;
-    }).join("\n");
-    const md = new vscode.MarkdownString(
-      `**MarketLens** — 点击立即刷新\n\n| 名称 | 代码 | 价格 | 涨跌幅 |\n|---|---|---|---|\n${rows}`
-    );
-    md.isTrusted = true;
-    return md;
   }
 
   /**

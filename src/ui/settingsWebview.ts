@@ -1,9 +1,11 @@
 import * as vscode from "vscode";
-import { detectAvailableProxy } from "../services/network";
+import { detectAvailablePort, getCachedWorkingPort, resetProxyCache } from "../services/network";
 import { getSettingsWebviewHtml } from "./settingsHtml";
 import { logger } from "../utils/logger";
 
 const ALLOWED_CONFIG_KEYS = new Set([
+  "proxyPort",
+  "proxyUrl",
   "autoRefresh",
   "refreshInterval",
   "maskMode",
@@ -45,6 +47,7 @@ function isAllowedUrl(urlString: string): boolean {
 
 export class SettingsWebviewPanel {
   public static currentPanel: SettingsWebviewPanel | undefined;
+  public static onDidUpdateSetting?: (key: string, value: any) => void;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _version: string;
   private _disposables: vscode.Disposable[] = [];
@@ -56,7 +59,6 @@ export class SettingsWebviewPanel {
 
     if (SettingsWebviewPanel.currentPanel) {
       SettingsWebviewPanel.currentPanel._panel.reveal(column);
-      SettingsWebviewPanel.currentPanel._panel.webview.html = SettingsWebviewPanel.currentPanel._getHtmlForWebview();
       SettingsWebviewPanel.currentPanel.sendCurrentSettings();
       return;
     }
@@ -94,21 +96,125 @@ export class SettingsWebviewPanel {
         switch (message.command) {
           case "getSettings":
             this.sendCurrentSettings();
+            // 自动静默异步探测本机真实活跃代理端口：若探测到了真实活跃端口，立即精准通知并更新界面！
+            detectAvailablePort().then((detectedPort) => {
+              if (detectedPort) {
+                this._panel.webview.postMessage({
+                  command: "portDetected",
+                  port: detectedPort,
+                  url: `http://127.0.0.1:${detectedPort}`,
+                });
+              }
+            }).catch(() => {});
             break;
           case "updateSetting":
             if (message.key && ALLOWED_CONFIG_KEYS.has(message.key)) {
-              await vscode.workspace
-                .getConfiguration("marketlens")
-                .update(message.key, message.value, vscode.ConfigurationTarget.Global);
+              // 1. 立即同步触发内存配置更新（0ms 响应，立即刷新状态栏与看板，无需等待磁盘写入）
+              try {
+                SettingsWebviewPanel.onDidUpdateSetting?.(message.key, message.value);
+              } catch (syncErr) {
+                logger.error(`即时内存配置更新异常: ${message.key}`, syncErr);
+              }
+
+              // 2. 异步持久化配置到 VS Code 配置（磁盘 I/O）
+              try {
+                const cfg = vscode.workspace.getConfiguration("marketlens");
+                if (message.key === "proxyPort") {
+                  resetProxyCache();
+                  const port = parseInt(message.value, 10);
+                  if (port >= 1 && port <= 65535) {
+                    const pUrl = `http://127.0.0.1:${port}`;
+                    await Promise.all([
+                      cfg.update("proxyPort", port, vscode.ConfigurationTarget.Global),
+                      cfg.update("proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                      cfg.update("aShare.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                      cfg.update("hkStock.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                      cfg.update("usStock.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                      cfg.update("binance.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                      cfg.update("alpha.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                    ]);
+                    this.sendCurrentSettings();
+                  }
+                } else if (message.key === "proxyUrl") {
+                  resetProxyCache();
+                  const pUrl = message.value || "http://127.0.0.1:10808";
+                  let port = 10808;
+                  try {
+                    const u = new URL(pUrl);
+                    if (u.port) port = parseInt(u.port, 10);
+                  } catch (_) {}
+                  await Promise.all([
+                    cfg.update("proxyPort", port, vscode.ConfigurationTarget.Global),
+                    cfg.update("proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                    cfg.update("aShare.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                    cfg.update("hkStock.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                    cfg.update("usStock.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                    cfg.update("binance.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                    cfg.update("alpha.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
+                  ]);
+                  this.sendCurrentSettings();
+                } else if (message.key === "statusBar.enabled") {
+                  const enableAll = !!message.value;
+                  await Promise.all([
+                    cfg.update("statusBar.enabled", enableAll, vscode.ConfigurationTarget.Global),
+                    cfg.update("aShare.statusBar", enableAll, vscode.ConfigurationTarget.Global),
+                    cfg.update("hkStock.statusBar", enableAll, vscode.ConfigurationTarget.Global),
+                    cfg.update("usStock.statusBar", enableAll, vscode.ConfigurationTarget.Global),
+                    cfg.update("binance.statusBar", enableAll, vscode.ConfigurationTarget.Global),
+                    cfg.update("alpha.statusBar", enableAll, vscode.ConfigurationTarget.Global),
+                  ]);
+                  this.sendCurrentSettings();
+                } else if (
+                  message.key === "aShare.statusBar" ||
+                  message.key === "hkStock.statusBar" ||
+                  message.key === "usStock.statusBar" ||
+                  message.key === "binance.statusBar" ||
+                  message.key === "alpha.statusBar"
+                ) {
+                  await cfg.update(message.key, message.value, vscode.ConfigurationTarget.Global);
+
+                  const aShareSB  = message.key === "aShare.statusBar"  ? !!message.value : (cfg.get<boolean>("aShare.statusBar") ?? true);
+                  const hkStockSB = message.key === "hkStock.statusBar" ? !!message.value : (cfg.get<boolean>("hkStock.statusBar") ?? true);
+                  const usStockSB = message.key === "usStock.statusBar" ? !!message.value : (cfg.get<boolean>("usStock.statusBar") ?? true);
+                  const binanceSB = message.key === "binance.statusBar" ? !!message.value : (cfg.get<boolean>("binance.statusBar") ?? true);
+                  const alphaSB   = message.key === "alpha.statusBar"   ? !!message.value : (cfg.get<boolean>("alpha.statusBar") ?? true);
+
+                  const anyActive = aShareSB || hkStockSB || usStockSB || binanceSB || alphaSB;
+                  await cfg.update("statusBar.enabled", anyActive, vscode.ConfigurationTarget.Global);
+                  this.sendCurrentSettings();
+                } else {
+                  await cfg.update(message.key, message.value, vscode.ConfigurationTarget.Global);
+                }
+              } catch (err) {
+                logger.error(`更新设置项失败: ${message.key}`, err);
+              }
             } else {
               logger.warn(`拦截到未知或非法的设置项写入: ${message.key}`);
             }
             break;
           case "detectProxy": {
-            const url = await detectAvailableProxy();
+            const port = await detectAvailablePort();
+            const url = port ? `http://127.0.0.1:${port}` : null;
+            if (port && url) {
+              const cfg = vscode.workspace.getConfiguration("marketlens");
+              await Promise.all([
+                cfg.update("proxyPort", port, vscode.ConfigurationTarget.Global),
+                cfg.update("proxyUrl", url, vscode.ConfigurationTarget.Global),
+                cfg.update("aShare.proxyUrl", url, vscode.ConfigurationTarget.Global),
+                cfg.update("hkStock.proxyUrl", url, vscode.ConfigurationTarget.Global),
+                cfg.update("usStock.proxyUrl", url, vscode.ConfigurationTarget.Global),
+                cfg.update("binance.proxyUrl", url, vscode.ConfigurationTarget.Global),
+                cfg.update("alpha.proxyUrl", url, vscode.ConfigurationTarget.Global),
+              ]);
+              try {
+                SettingsWebviewPanel.onDidUpdateSetting?.("proxyPort", port);
+                SettingsWebviewPanel.onDidUpdateSetting?.("proxyUrl", url);
+              } catch (_) {}
+            }
             this._panel.webview.postMessage({
               command: "proxyDetected",
               target: message.target,
+              port,
               url,
             });
             break;
@@ -178,6 +284,8 @@ export class SettingsWebviewPanel {
     await cfg.update("watchlist", undefined, vscode.ConfigurationTarget.Global);
 
     const keys = [
+      "proxyPort",
+      "proxyUrl",
       "autoRefresh",
       "refreshInterval",
       "maskMode",
@@ -216,6 +324,11 @@ export class SettingsWebviewPanel {
       SettingsWebviewPanel.currentPanel.sendCurrentSettings();
     }
 
+    // 立即通知重置内存状态
+    try {
+      SettingsWebviewPanel.onDidUpdateSetting?.("restoreDefaults", true);
+    } catch (_) {}
+
     // 触发全局强制刷新全部最新行情
     await vscode.commands.executeCommand("marketlens.refresh");
 
@@ -246,6 +359,11 @@ export class SettingsWebviewPanel {
     if (!emptyWatchlist["Binance"]) emptyWatchlist["Binance"] = [];
     if (!emptyWatchlist["Alpha"]) emptyWatchlist["Alpha"] = [];
 
+    // 立即同步清空内存列表，状态栏立刻清空并隐藏
+    try {
+      SettingsWebviewPanel.onDidUpdateSetting?.("watchlist", emptyWatchlist);
+    } catch (_) {}
+
     await cfg.update("watchlist", emptyWatchlist, vscode.ConfigurationTarget.Global);
 
     // 触发全局强制刷新
@@ -257,35 +375,60 @@ export class SettingsWebviewPanel {
 
   private _getCurrentSettingsData() {
     const cfg = vscode.workspace.getConfiguration("marketlens");
+    const aShareSB  = cfg.get<boolean>("aShare.statusBar") ?? (cfg.get<any>("aShare")?.statusBar ?? true);
+    const hkStockSB = cfg.get<boolean>("hkStock.statusBar") ?? (cfg.get<any>("hkStock")?.statusBar ?? true);
+    const usStockSB = cfg.get<boolean>("usStock.statusBar") ?? (cfg.get<any>("usStock")?.statusBar ?? true);
+    const binanceSB = cfg.get<boolean>("binance.statusBar") ?? (cfg.get<any>("binance")?.statusBar ?? true);
+    const alphaSB   = cfg.get<boolean>("alpha.statusBar") ?? (cfg.get<any>("alpha")?.statusBar ?? true);
+    const allActive = aShareSB && hkStockSB && usStockSB && binanceSB && alphaSB;
+
+    // 解析当前生效的统一代理端口与地址
+    const cachedPort = getCachedWorkingPort();
+    let configuredPort = cfg.get<number>("proxyPort");
+    if (!configuredPort) {
+      const pUrl = cfg.get<string>("proxyUrl") || cfg.get<string>("binance.proxyUrl") || cfg.get<string>("alpha.proxyUrl");
+      if (pUrl) {
+        try {
+          const u = new URL(pUrl);
+          if (u.port) configuredPort = parseInt(u.port, 10);
+        } catch (_) {}
+      }
+    }
+    // 优先级：真实探测工作中的端口 > 用户配置端口 > 10808
+    const effectivePort = cachedPort || configuredPort || 10808;
+    const proxyUrl = `http://127.0.0.1:${effectivePort}`;
+
     return {
       autoRefresh:              cfg.get<boolean>("autoRefresh", true),
       refreshInterval:          cfg.get<number>("refreshInterval", 5000),
       maskMode:                 cfg.get<boolean>("maskMode", false),
       colorNeutral:             cfg.get<boolean>("colorNeutral", false),
-      statusBarEnabled:         cfg.get<boolean>("statusBar.enabled", true),
+      statusBarEnabled:         allActive,
+      proxyPort:                effectivePort,
+      proxyUrl:                 proxyUrl,
       aShareEnabled:            cfg.get<boolean>("aShare.enabled", true),
-      aShareStatusBar:          cfg.get<boolean>("aShare.statusBar", true),
+      aShareStatusBar:          aShareSB,
       aShareStopOnMarketClosed: cfg.get<boolean>("aShare.stopOnMarketClosed", true),
       aShareNetworkMode:        cfg.get<string>("aShare.networkMode", "direct"),
-      aShareProxyUrl:           cfg.get<string>("aShare.proxyUrl", "http://127.0.0.1:7890"),
+      aShareProxyUrl:           proxyUrl,
       hkStockEnabled:           cfg.get<boolean>("hkStock.enabled", true),
-      hkStockStatusBar:         cfg.get<boolean>("hkStock.statusBar", true),
+      hkStockStatusBar:         hkStockSB,
       hkStockStopOnMarketClosed: cfg.get<boolean>("hkStock.stopOnMarketClosed", true),
       hkStockNetworkMode:       cfg.get<string>("hkStock.networkMode", "direct"),
-      hkStockProxyUrl:          cfg.get<string>("hkStock.proxyUrl", "http://127.0.0.1:7890"),
+      hkStockProxyUrl:          proxyUrl,
       usStockEnabled:           cfg.get<boolean>("usStock.enabled", true),
-      usStockStatusBar:         cfg.get<boolean>("usStock.statusBar", true),
+      usStockStatusBar:         usStockSB,
       usStockStopOnMarketClosed: cfg.get<boolean>("usStock.stopOnMarketClosed", true),
       usStockNetworkMode:       cfg.get<string>("usStock.networkMode", "direct"),
-      usStockProxyUrl:          cfg.get<string>("usStock.proxyUrl", "http://127.0.0.1:7890"),
+      usStockProxyUrl:          proxyUrl,
       binanceEnabled:           cfg.get<boolean>("binance.enabled", true),
-      binanceStatusBar:         cfg.get<boolean>("binance.statusBar", true),
+      binanceStatusBar:         binanceSB,
       binanceNetworkMode:       cfg.get<string>("binance.networkMode", "proxy"),
-      binanceProxyUrl:          cfg.get<string>("binance.proxyUrl", "http://127.0.0.1:7890"),
+      binanceProxyUrl:          proxyUrl,
       alphaEnabled:             cfg.get<boolean>("alpha.enabled", true),
-      alphaStatusBar:           cfg.get<boolean>("alpha.statusBar", true),
+      alphaStatusBar:           alphaSB,
       alphaNetworkMode:         cfg.get<string>("alpha.networkMode", "proxy"),
-      alphaProxyUrl:            cfg.get<string>("alpha.proxyUrl", "http://127.0.0.1:7890"),
+      alphaProxyUrl:            proxyUrl,
     };
   }
 

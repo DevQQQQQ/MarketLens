@@ -67,7 +67,7 @@ export class DexScreenerService {
    */
   async fetchQuotes(
     contractAddresses: string[],
-    options: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:7890" }
+    options: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" }
   ): Promise<MarketItem[]> {
     if (!contractAddresses?.length) { return []; }
 

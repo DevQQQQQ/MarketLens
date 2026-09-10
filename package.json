@@ -2,12 +2,16 @@
 	"name": "marketlens",
 	"displayName": "MarketLens - 全球行情看板 (A股/港股/美股/加密货币)",
 	"description": "专为开发者打造的行情看板与效率工具，实时查看 A股、港股、美股、主流加密货币、DEX 资产，支持快捷键隐藏、简洁模式及网络代理配置。",
-	"version": "1.1.2",
+	"version": "1.1.3",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/DevQQQQQ/MarketLens"
 	},
+	"bugs": {
+		"url": "https://github.com/DevQQQQQ/MarketLens/issues"
+	},
+	"homepage": "https://github.com/DevQQQQQ/MarketLens",
 	"license": "MIT",
 	"engines": {
 		"vscode": "^1.85.0"
@@ -117,16 +121,34 @@
 				"mac": "cmd+alt+m"
 			},
 			{
+				"command": "marketlens.toggleBossKey",
+				"key": "alt+m",
+				"win": "alt+m",
+				"mac": "alt+m"
+			},
+			{
 				"command": "marketlens.toggleMask",
 				"key": "ctrl+alt+k",
 				"win": "ctrl+alt+k",
 				"mac": "cmd+alt+k"
 			},
 			{
+				"command": "marketlens.toggleMask",
+				"key": "alt+k",
+				"win": "alt+k",
+				"mac": "alt+k"
+			},
+			{
 				"command": "marketlens.toggleColorNeutral",
-				"key": "ctrl+alt+c",
-				"win": "ctrl+alt+c",
-				"mac": "cmd+alt+c"
+				"key": "ctrl+alt+l",
+				"win": "ctrl+alt+l",
+				"mac": "cmd+alt+l"
+			},
+			{
+				"command": "marketlens.toggleColorNeutral",
+				"key": "alt+l",
+				"win": "alt+l",
+				"mac": "alt+l"
 			}
 		],
 		"menus": {
@@ -210,6 +232,20 @@
 					"order": 5,
 					"description": "【全局】全部标的参与底部轮播：是否在底部状态栏轮播展示行情（关闭后彻底隐藏底部状态栏）"
 				},
+				"marketlens.proxyPort": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 65535,
+					"default": 10808,
+					"order": 6,
+					"description": "【全局】本地代理端口号（1-65535，如 v2rayN 10808/10809, Clash 7890/7897 等）"
+				},
+				"marketlens.proxyUrl": {
+					"type": "string",
+					"default": "http://127.0.0.1:10808",
+					"order": 7,
+					"description": "【全局】统一代理地址（仅支持 HTTP / 混合代理，自动由代理端口生成）"
+				},
 				"marketlens.aShare.enabled": {
 					"type": "boolean",
 					"default": true,
@@ -232,7 +268,7 @@
 				},
 				"marketlens.aShare.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:7890",
+					"default": "http://127.0.0.1:10808",
 					"order": 12,
 					"description": "【A股板块】代理地址"
 				},
@@ -270,7 +306,7 @@
 				},
 				"marketlens.hkStock.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:7890",
+					"default": "http://127.0.0.1:10808",
 					"order": 22,
 					"description": "【港股板块】代理地址"
 				},
@@ -308,7 +344,7 @@
 				},
 				"marketlens.usStock.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:7890",
+					"default": "http://127.0.0.1:10808",
 					"order": 32,
 					"description": "【美股板块】代理地址"
 				},
@@ -346,9 +382,9 @@
 				},
 				"marketlens.binance.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:7890",
+					"default": "http://127.0.0.1:10808",
 					"order": 42,
-					"description": "【Binance板块】代理地址（支持自动探测 7890, 7897, 10809, 10808, 2080 等本地端口）"
+					"description": "【Binance板块】代理地址（支持自动探测 10808, 10809, 7890, 7897, 2080 等本地端口）"
 				},
 				"marketlens.binance.statusBar": {
 					"type": "boolean",
@@ -378,7 +414,7 @@
 				},
 				"marketlens.alpha.proxyUrl": {
 					"type": "string",
-					"default": "http://127.0.0.1:7890",
+					"default": "http://127.0.0.1:10808",
 					"order": 52,
 					"description": "【Alpha板块】代理地址（支持自动探测主流代理客户端端口）"
 				},

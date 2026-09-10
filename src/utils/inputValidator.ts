@@ -13,10 +13,57 @@ export function isContractAddress(str: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(str) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(str);
 }
 
-export function validateAndParseInput(input: string): { error?: string; parsed?: ParsedItemInput } {
+/**
+ * 从 DexScreener、Pump.fun、GeckoTerminal、Birdeye 等完整网页 URL 中自动提取合约/Mint 地址
+ */
+export function extractContractAddressFromUrl(input: string): string | null {
   const trimmed = input.trim();
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return null;
+  }
+
+  // 0. 明确排除交易/区块详情链接（如 etherscan.io/tx/... 或 solscan.io/tx/...），避免将 tx hash 误当合约截断提取
+  if (/\/(?:tx|txs|block)\//i.test(trimmed)) {
+    return null;
+  }
+
+  // 1. 优先提取 0x 开头的 42位 EVM 合约地址（BSC, ETH, Base, Arbitrum 等）
+  // 严格要求右边界：40位 hex 之后绝不能紧跟十六进制字符（杜绝 64 位 tx hash 或 block hash 被截断）
+  const evmMatch = trimmed.match(/(?:^|[^0-9a-zA-Z])(0x[0-9a-fA-F]{40})(?![0-9a-fA-F])/);
+  if (evmMatch) {
+    return evmMatch[1];
+  }
+  // 2. 匹配常见 DEX/区块链浏览器中的 Solana Base58 地址 (32~44位)
+  // 格式如 /solana/<address>, /coin/<address>, /pools/<address>, /token/<address>, /account/<address>
+  const solanaMatch = trimmed.match(
+    /(?:dexscreener\.com\/[^\/]+\/|pump\.fun\/(?:coin\/)?|geckoterminal\.com\/[^\/]+\/pools\/|birdeye\.so\/token\/|gmgn\.ai\/[^\/]+\/token\/|solscan\.io\/(?:token|account)\/)([1-9A-HJ-NP-Za-km-z]{32,44})/i
+  );
+  if (solanaMatch) {
+    return solanaMatch[1];
+  }
+  // 3. 通用兜底：URL 路径末尾的 32~44 位 Base58 字符串
+  const generalBase58 = trimmed.match(/[\/=]([1-9A-HJ-NP-Za-km-z]{32,44})(?:[\/?#]|$)/);
+  if (generalBase58) {
+    return generalBase58[1];
+  }
+  return null;
+}
+
+export function validateAndParseInput(input: string): { error?: string; parsed?: ParsedItemInput } {
+  let trimmed = input.trim();
   if (!trimmed) {
     return { error: "代码不能为空" };
+  }
+
+  // 拦截用户误贴的链上交易哈希或交易详情链接，给予精准的指引提示
+  if (/^0x[0-9a-fA-F]{64}$/.test(trimmed) || /^https?:\/\/.*?\/(?:tx|txs)\//i.test(trimmed)) {
+    return { error: "检测到输入为链上交易详情 (Tx Hash)，请粘贴代币合约地址 (Token Contract) 或代币详情页链接" };
+  }
+
+  // 0. 若用户粘贴的是网页完整 URL，自动提取内部的代币合约地址
+  const extractedFromUrl = extractContractAddressFromUrl(trimmed);
+  if (extractedFromUrl) {
+    trimmed = extractedFromUrl;
   }
 
   // 1. 链上 DEX / Alpha 合约地址 (EVM 0x... 42位, 或 Solana Mint 32~44位)
@@ -84,9 +131,9 @@ export function validateAndParseInput(input: string): { error?: string; parsed?:
     };
   }
 
-  // 美股显式前缀（如 us.AAPL, us_TSLA, us-AMD）
-  if (/^us[\._\-][a-zA-Z]+$/i.test(trimmed)) {
-    const ticker = trimmed.replace(/^us[\._\-]/i, "").toUpperCase();
+  // 美股显式前缀（如 us.AAPL, us_TSLA, us-AMD，以及带类股后缀的 us.BRK.B, us-BF.B）
+  if (/^us[\._\-][a-zA-Z]+(?:[\._\-][a-zA-Z]+)?$/i.test(trimmed)) {
+    const ticker = trimmed.replace(/^us[\._\-]/i, "").toUpperCase().replace(/[\-_/]/g, ".");
     const sym = `us${ticker}`;
     return {
       parsed: {
@@ -98,15 +145,30 @@ export function validateAndParseInput(input: string): { error?: string; parsed?:
     };
   }
 
-  // 腾讯美股前缀格式（小写 us + 大写 ticker，如 usAAPL, usAMD, usNET, usTSM）
+  // 腾讯美股前缀格式（小写 us + 大写 ticker，如 usAAPL, usAMD, usNET, usTSM，以及带类股后缀的 usBRK.B）
   // 需排除用户误打的加密货币前缀（如 usUSDT, usUSDC, usBTCUSDT）
-  if (/^us[A-Z]+$/.test(trimmed) && !/^us(USDT|USDC|BUSD|FDUSD|BTC|ETH)/i.test(trimmed)) {
+  if (/^us[A-Z]+(?:[\._\-][A-Z]+)?$/.test(trimmed) && !/^us(USDT|USDC|BUSD|FDUSD|BTC|ETH)/i.test(trimmed)) {
+    const sym = trimmed.replace(/[\-_/]/g, ".");
     return {
       parsed: {
-        symbol: trimmed,
+        symbol: sym,
         type: "US_STOCK",
         defaultGroup: "美股",
-        hint: `美股资产 (${trimmed})`,
+        hint: `美股资产 (${sym})`,
+      },
+    };
+  }
+
+  // 美股类股代码（Class A/B/C，如 BRK.B, BRK-B, BF.B, BRK.A, BF.A，标准点号统一规整）
+  const usClassMatch = trimmed.match(/^([a-zA-Z]{1,5})[\.\-_/]([a-zA-Z]{1,2})$/);
+  if (usClassMatch) {
+    const sym = `${usClassMatch[1].toUpperCase()}.${usClassMatch[2].toUpperCase()}`;
+    return {
+      parsed: {
+        symbol: sym,
+        type: "US_STOCK",
+        defaultGroup: "美股",
+        hint: `美股代码 (${sym})`,
       },
     };
   }

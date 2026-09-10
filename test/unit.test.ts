@@ -3,8 +3,8 @@ import assert from "node:assert";
 import test from "node:test";
 
 // 直接导入真实的源码模块，杜绝测试代码与生产代码漂移
-import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, resolveItemAssetType, getWatchlistFingerprint, reorderWatchlist, extractTargetsFromWatchlist } from "../src/utils/symbolHelper.ts";
-import { validateAndParseInput, isContractAddress } from "../src/utils/inputValidator.ts";
+import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, resolveItemAssetType, getWatchlistFingerprint, reorderWatchlist, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled } from "../src/utils/symbolHelper.ts";
+import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, getZonedTimeParts, beijingFormatter, newYorkFormatter } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache } from "../src/services/network.ts";
 import { isDisplayMasked } from "../src/utils/maskState.ts";
@@ -43,6 +43,15 @@ test("symbolHelper - 真实源码逻辑校验", () => {
   assert.strictEqual(normalizeSymbolKey("usAMD"), "amd");
   assert.strictEqual(normalizeSymbolKey("usNET"), "net");
   assert.strictEqual(normalizeSymbolKey("usTSM"), "tsm");
+
+  // 美股类股（BRK.B, BF.B, BRK-B）与腾讯 us 前缀互通
+  assert.strictEqual(isSameSymbol("BRK.B", "usBRK.B"), true);
+  assert.strictEqual(isSameSymbol("BRK.B", "BRK-B"), true);
+  assert.strictEqual(isSameSymbol("BF.B", "usBF.B"), true);
+  assert.strictEqual(normalizeSymbolKey("BRK.B"), "brkb");
+  assert.strictEqual(normalizeSymbolKey("usBRK.B"), "brkb");
+  assert.strictEqual(normalizeSymbolKey("BRK-B"), "brkb");
+  assert.strictEqual(normalizeSymbolKey("BF.B"), "bfb");
   assert.strictEqual(normalizeSymbolKey("usARM"), "arm");
 
   // 加密货币
@@ -97,6 +106,24 @@ test("inputValidator - 真实源码输入识别与非法拦截", () => {
 
   const usNet = validateAndParseInput("usNET");
   assert.strictEqual(usNet.parsed?.symbol, "usNET");
+
+  // 美股类股（BRK.B, BRK-B, BF.B, us.BRK.B）测试
+  const brkb = validateAndParseInput("BRK.B");
+  assert.strictEqual(brkb.parsed?.symbol, "BRK.B");
+  assert.strictEqual(brkb.parsed?.type, "US_STOCK");
+  assert.strictEqual(brkb.parsed?.defaultGroup, "美股");
+
+  const brkbDash = validateAndParseInput("BRK-B");
+  assert.strictEqual(brkbDash.parsed?.symbol, "BRK.B");
+  assert.strictEqual(brkbDash.parsed?.type, "US_STOCK");
+
+  const bfb = validateAndParseInput("BF.B");
+  assert.strictEqual(bfb.parsed?.symbol, "BF.B");
+  assert.strictEqual(bfb.parsed?.type, "US_STOCK");
+
+  const usBrkb = validateAndParseInput("us.BRK.B");
+  assert.strictEqual(usBrkb.parsed?.symbol, "usBRK.B");
+  assert.strictEqual(usBrkb.parsed?.type, "US_STOCK");
 
   // 加密货币 US 开头币对测试（防止被误判为美股）
   const usdcUsdt = validateAndParseInput("USDCUSDT");
@@ -163,6 +190,13 @@ test("normalizeUSCode - 美股代码规范化与防双重前缀", () => {
   assert.strictEqual(normalizeUSCode(".IXIC"), "usIXIC");
   assert.strictEqual(normalizeUSCode("us.AMD"), "usAMD");
   assert.strictEqual(normalizeUSCode("us.USB"), "usUSB");
+
+  // 美股类股（BRK.B, BRK-B, BF.B, usBRK.B, us.BRK.B）
+  assert.strictEqual(normalizeUSCode("BRK.B"), "usBRK.B");
+  assert.strictEqual(normalizeUSCode("BRK-B"), "usBRK.B");
+  assert.strictEqual(normalizeUSCode("BF.B"), "usBF.B");
+  assert.strictEqual(normalizeUSCode("usBRK.B"), "usBRK.B");
+  assert.strictEqual(normalizeUSCode("us.BRK.B"), "usBRK.B");
 });
 
 test("bossKeyActive - 老板键状态与脱敏逻辑守卫校验（真实生产函数）", () => {
@@ -205,9 +239,13 @@ test("proxyUrl - 代理地址规范化与协议纠偏", () => {
   const parsed2080 = parseProxy("http://127.0.0.1:2080");
   assert.strictEqual(parsed2080.port, 2080);
 
-  // 7. 测试 resetProxyCache 能正确重置
+  // 7. 测试 resetProxyCache 能正确重置，空值默认回退到 10808
   resetProxyCache();
-  assert.strictEqual(validateAndNormalizeProxyUrl(""), "http://127.0.0.1:7890");
+  assert.strictEqual(validateAndNormalizeProxyUrl(""), "http://127.0.0.1:10808");
+
+  // 8. 测试纯数字端口号解析
+  assert.strictEqual(validateAndNormalizeProxyUrl("10808"), "http://127.0.0.1:10808");
+  assert.strictEqual(validateAndNormalizeProxyUrl("7890"), "http://127.0.0.1:7890");
 });
 
 test("resolveItemAssetType & 分组板块判定策略（先看 item.type，彻底杜绝组名子串误伤）", () => {
@@ -224,6 +262,9 @@ test("resolveItemAssetType & 分组板块判定策略（先看 item.type，彻�
   assert.strictEqual(resolveItemAssetType({ symbol: "00700" }, "临时组"), "HK_STOCK");
   assert.strictEqual(resolveItemAssetType({ symbol: "600519" }, "临时组"), "A_SHARE");
   assert.strictEqual(resolveItemAssetType({ symbol: "AAPL" }, "临时组"), "US_STOCK");
+  assert.strictEqual(resolveItemAssetType({ symbol: "BRK.B" }, "临时组"), "US_STOCK");
+  assert.strictEqual(resolveItemAssetType({ symbol: "BF.B" }, "临时组"), "US_STOCK");
+  assert.strictEqual(resolveItemAssetType({ symbol: "BRK-B" }, "临时组"), "US_STOCK");
   assert.strictEqual(resolveItemAssetType({ symbol: "0x28cd1fc7b6eebf46b59001ff49c9d14f8bb97777" }, "临时组"), "ALPHA_TOKEN");
 
   // 3. 空组名场景启发（组内无 item 时）
@@ -453,6 +494,322 @@ test("extractTargetsFromWatchlist - 标的分桶过滤与闭市跳过测试", ()
   assert.deepStrictEqual(groupSpecificTargets.aShares, []);
   assert.deepStrictEqual(groupSpecificTargets.cryptos, []);
 });
+
+test("extractStatusBarQuotes - 底部状态栏49标的全量轮播与分板块开关即时过滤测试", () => {
+  // 构建符合真实生产配置的 49 个预设标的 Watchlist
+  // A股: 10, 港股: 6, 美股: 9, Binance: 12, Alpha: 12 = 49
+  const defaultWatchlist = {
+    "A股": [
+      { symbol: "sh600030", name: "中信证券", type: "A_SHARE" },
+      { symbol: "sz000839", name: "国安股份", type: "A_SHARE" },
+      { symbol: "sz002385", name: "大北农", type: "A_SHARE" },
+      { symbol: "sh603686", name: "福龙马", type: "A_SHARE" },
+      { symbol: "sz002867", name: "周大生", type: "A_SHARE" },
+      { symbol: "sh603031", name: "安孚科技", type: "A_SHARE" },
+      { symbol: "sz000977", name: "浪潮信息", type: "A_SHARE" },
+      { symbol: "sh688545", name: "兴福电子", type: "A_SHARE" },
+      { symbol: "sh688584", name: "上海合晶", type: "A_SHARE" },
+      { symbol: "sz301293", name: "三博脑科", type: "A_SHARE" },
+    ],
+    "港股": [
+      { symbol: "hk06030", name: "中信证券", type: "HK_STOCK" },
+      { symbol: "hk00700", name: "腾讯控股", type: "HK_STOCK" },
+      { symbol: "hk03690", name: "美团-W", type: "HK_STOCK" },
+      { symbol: "hk09988", name: "阿里巴巴-SW", type: "HK_STOCK" },
+      { symbol: "hk00981", name: "中芯国际", type: "HK_STOCK" },
+      { symbol: "hk01810", name: "小米集团-W", type: "HK_STOCK" },
+    ],
+    "美股": [
+      { symbol: "usAAPL", name: "苹果", type: "US_STOCK" },
+      { symbol: "usNVDA", name: "英伟达", type: "US_STOCK" },
+      { symbol: "usTSLA", name: "特斯拉", type: "US_STOCK" },
+      { symbol: "usNET", name: "Cloudflare", type: "US_STOCK" },
+      { symbol: "usTSM", name: "台积电", type: "US_STOCK" },
+      { symbol: "usAMD", name: "超威半导体", type: "US_STOCK" },
+      { symbol: "usAVGO", name: "博通", type: "US_STOCK" },
+      { symbol: "usARM", name: "安谋", type: "US_STOCK" },
+      { symbol: "usIXIC", name: "纳斯达克综合指数", type: "US_STOCK" },
+    ],
+    "Binance": [
+      { symbol: "BTCUSDT", name: "BTC/USDT", type: "CRYPTO" },
+      { symbol: "ETHUSDT", name: "ETH/USDT", type: "CRYPTO" },
+      { symbol: "ETCUSDT", name: "ETC/USDT", type: "CRYPTO" },
+      { symbol: "SOLUSDT", name: "SOL/USDT", type: "CRYPTO" },
+      { symbol: "BNBUSDT", name: "BNB/USDT", type: "CRYPTO" },
+      { symbol: "ARBUSDT", name: "ARB/USDT", type: "CRYPTO" },
+      { symbol: "OPUSDT", name: "OP/USDT", type: "CRYPTO" },
+      { symbol: "APTUSDT", name: "APT/USDT", type: "CRYPTO" },
+      { symbol: "DOGEUSDT", name: "DOGE/USDT", type: "CRYPTO" },
+      { symbol: "ORDIUSDT", name: "ORDI/USDT", type: "CRYPTO" },
+      { symbol: "ASTERUSDT", name: "ASTER/USDT", type: "CRYPTO" },
+      { symbol: "LUNAUSDT", name: "LUNA/USDT", type: "CRYPTO" },
+    ],
+    "Alpha": [
+      { symbol: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", name: "WBNB", type: "ALPHA_TOKEN" },
+      { symbol: "0x55d398326f99059fF775485246999027B3197955", name: "USDT", type: "ALPHA_TOKEN" },
+      { symbol: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", name: "USDC", type: "ALPHA_TOKEN" },
+      { symbol: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", name: "ETH", type: "ALPHA_TOKEN" },
+      { symbol: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c", name: "BTCB", type: "ALPHA_TOKEN" },
+      { symbol: "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82", name: "CAKE", type: "ALPHA_TOKEN" },
+      { symbol: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", name: "BUSD", type: "ALPHA_TOKEN" },
+      { symbol: "0x14016E85a25a55715135CE47bB891e4a1E4B9245", name: "XVS", type: "ALPHA_TOKEN" },
+      { symbol: "0x570A5D26f7708833242CE6daC7601804157d3710", name: "BAKE", type: "ALPHA_TOKEN" },
+      { symbol: "0x8f0528cE5eF7B51152A59745bEfDD91D97091d2F", name: "ALPACA", type: "ALPHA_TOKEN" },
+      { symbol: "0x0D8Ce2A99Bb6e3B7Db580eD848240e4a0F9aE153", name: "FIL", type: "ALPHA_TOKEN" },
+      { symbol: "0x1CE0c482752f2571085744e793707090449174fb", name: "DOT", type: "ALPHA_TOKEN" },
+    ],
+  };
+
+  // 模拟从 initial load 填充的 quoteCache
+  const mockCache = new Map<string, any>();
+  for (const [_, items] of Object.entries(defaultWatchlist)) {
+    for (const it of items) {
+      mockCache.set(it.symbol, {
+        id: it.symbol,
+        name: it.name,
+        symbol: it.symbol,
+        type: it.type,
+        price: 100,
+        changePercent: 1.5,
+      });
+    }
+  }
+
+  // 1. 默认情况下（全开状态），应完整返回全部 49 个标的参与轮播（即使此时市场闭市跳过了周期打网）
+  const fullQuotes = extractStatusBarQuotes(defaultWatchlist, mockCache);
+  assert.strictEqual(fullQuotes.length, 49, "默认应有 49 个标的参与底部轮播");
+
+  // 2. 关闭 A 股底部轮播（aShare.statusBar = false）
+  const noAshareQuotes = extractStatusBarQuotes(defaultWatchlist, mockCache, {
+    aShare: { enabled: true, statusBar: false },
+  });
+  assert.strictEqual(noAshareQuotes.length, 39, "关闭 A 股轮播后应有 39 个标的 (49 - 10)");
+  assert.ok(!noAshareQuotes.some((q) => q.type === "A_SHARE"), "结果中不应包含任何 A 股标的");
+
+  // 3. 关闭 Binance 底部轮播（binance.statusBar = false）
+  const noBinanceQuotes = extractStatusBarQuotes(defaultWatchlist, mockCache, {
+    binance: { enabled: true, statusBar: false },
+  });
+  assert.strictEqual(noBinanceQuotes.length, 37, "关闭 Binance 轮播后应有 37 个标的 (49 - 12)");
+  assert.ok(!noBinanceQuotes.some((q) => q.type === "CRYPTO"), "结果中不应包含任何加密货币标的");
+
+  // 4. 关闭整个板块（aShare.enabled = false）
+  const aShareDisabled = extractStatusBarQuotes(defaultWatchlist, mockCache, {
+    aShare: { enabled: false, statusBar: true },
+  });
+  assert.strictEqual(aShareDisabled.length, 39, "A股板块禁用后不应参与轮播");
+
+  // 5. 5个板块轮播全部关闭时，应返回空数组并隐藏状态栏
+  const allDisabled = extractStatusBarQuotes(defaultWatchlist, mockCache, {
+    aShare: { enabled: true, statusBar: false },
+    hkStock: { enabled: true, statusBar: false },
+    usStock: { enabled: true, statusBar: false },
+    binance: { enabled: true, statusBar: false },
+    alpha: { enabled: true, statusBar: false },
+  });
+  assert.strictEqual(allDisabled.length, 0, "全部板块轮播关闭后应返回空数组");
+
+  // 6. 一键清空自选列表后（watchlist 为空对象）
+  const emptyQuotes = extractStatusBarQuotes({}, mockCache);
+  assert.strictEqual(emptyQuotes.length, 0, "清空自选列表后应返回空数组并隐藏状态栏");
+
+  // 7. 重复标的去重保护
+  const dupWatchlist = {
+    "组1": [{ symbol: "BTCUSDT", type: "CRYPTO" }],
+    "组2": [{ symbol: "BTCUSDT", type: "CRYPTO" }],
+  };
+  const dupQuotes = extractStatusBarQuotes(dupWatchlist, mockCache);
+  assert.strictEqual(dupQuotes.length, 1, "跨组同标的代码应自动去重");
+
+  // 8. 状态栏总开关测试（statusBarEnabled = false 必须直接返回空数组，令状态栏即时隐藏）
+  const disabledTotalQuotes = extractStatusBarQuotes(defaultWatchlist, mockCache, {
+    statusBarEnabled: false,
+  });
+  assert.strictEqual(disabledTotalQuotes.length, 0, "状态栏轮播总开关关闭时，应直接返回空数组令状态栏立即隐藏");
+
+  // 9. 联动逻辑判定测试：5个全开 -> 全局总开关为 true；任意一个关闭 -> 全局总开关为 false，但其余正常轮播
+  const calcMaster = (a: boolean, h: boolean, u: boolean, b: boolean, al: boolean) => a && h && u && b && al;
+  assert.strictEqual(calcMaster(true, true, true, true, true), true, "5个板块全部开启轮播时，全部标的参与轮播总开关为 true");
+  assert.strictEqual(calcMaster(false, true, true, true, true), false, "A股关闭轮播时，全部标的参与轮播总开关为 false");
+  assert.strictEqual(calcMaster(true, false, true, true, true), false, "港股关闭轮播时，全部标的参与轮播总开关为 false");
+  assert.strictEqual(calcMaster(true, true, false, true, true), false, "美股关闭轮播时，全部标的参与轮播总开关为 false");
+  assert.strictEqual(calcMaster(true, true, true, false, true), false, "Binance关闭轮播时，全部标的参与轮播总开关为 false");
+  assert.strictEqual(calcMaster(true, true, true, true, false), false, "Alpha关闭轮播时，全部标的参与轮播总开关为 false");
+});
+
+test("proxyPort - 端口校验与提取规则", () => {
+  function validatePort(val: any): number | null {
+    let raw = String(val || "").trim();
+    const match = raw.match(/:(\d{1,5})/);
+    if (match) {
+      raw = match[1];
+    }
+    const port = parseInt(raw, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      return null;
+    }
+    return port;
+  }
+
+  // 合法端口数字
+  assert.strictEqual(validatePort(10808), 10808);
+  assert.strictEqual(validatePort(7890), 7890);
+  assert.strictEqual(validatePort("10808"), 10808);
+  assert.strictEqual(validatePort(1), 1);
+  assert.strictEqual(validatePort(65535), 65535);
+
+  // 粘贴完整地址时智能提取端口
+  assert.strictEqual(validatePort("http://127.0.0.1:10808"), 10808);
+  assert.strictEqual(validatePort("127.0.0.1:7890"), 7890);
+  assert.strictEqual(validatePort("localhost:10809"), 10809);
+
+  // 非法端口校验拦截
+  assert.strictEqual(validatePort(""), null);
+  assert.strictEqual(validatePort("0"), null);
+  assert.strictEqual(validatePort(-1), null);
+  assert.strictEqual(validatePort(65536), null);
+  assert.strictEqual(validatePort("abc"), null);
+  assert.strictEqual(validatePort("99999"), null);
+});
+
+test("extractContractAddressFromUrl - 网页URL合约提取与校验", () => {
+  // DexScreener Solana URL
+  const dexSolUrl = "https://dexscreener.com/solana/4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R";
+  assert.strictEqual(extractContractAddressFromUrl(dexSolUrl), "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R");
+
+  // DexScreener BSC EVM URL
+  const dexBscUrl = "https://dexscreener.com/bsc/0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+  assert.strictEqual(extractContractAddressFromUrl(dexBscUrl), "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c");
+
+  // Pump.fun URL
+  const pumpUrl = "https://pump.fun/coin/7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr";
+  assert.strictEqual(extractContractAddressFromUrl(pumpUrl), "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr");
+
+  // GeckoTerminal URL
+  const geckoUrl = "https://www.geckoterminal.com/solana/pools/4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R";
+  assert.strictEqual(extractContractAddressFromUrl(geckoUrl), "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R");
+
+  // BscScan / Etherscan Token URL
+  const bscScanUrl = "https://bscscan.com/token/0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+  assert.strictEqual(extractContractAddressFromUrl(bscScanUrl), "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c");
+  const ethTokenUrl = "https://etherscan.io/token/0x55d398326f99059ff775485246999027b3197955";
+  assert.strictEqual(extractContractAddressFromUrl(ethTokenUrl), "0x55d398326f99059ff775485246999027b3197955");
+
+  // 交易哈希链接（Etherscan/BscScan tx 等 64位 hex）：绝不能被截断提取成假代币
+  const ethTxUrl = "https://etherscan.io/tx/0x90f8bf944c659c253d8e107d6b50b076b92316bc3b42d80ceea30b93b5819d33";
+  assert.strictEqual(extractContractAddressFromUrl(ethTxUrl), null, "Etherscan 交易链接不能被提取为代币合约");
+  const bscTxUrl = "https://bscscan.com/tx/0x90f8bf944c659c253d8e107d6b50b076b92316bc3b42d80ceea30b93b5819d33";
+  assert.strictEqual(extractContractAddressFromUrl(bscTxUrl), null, "BscScan 交易链接不能被提取为代币合约");
+
+  // validateAndParseInput 直接支持粘贴 URL
+  const parsed = validateAndParseInput(dexSolUrl);
+  assert.strictEqual(parsed.error, undefined);
+  assert.strictEqual(parsed.parsed?.type, "ALPHA_TOKEN");
+  assert.strictEqual(parsed.parsed?.symbol, "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R");
+  assert.strictEqual(parsed.parsed?.defaultGroup, "Alpha");
+
+  // validateAndParseInput 对 Tx Hash 给出友好精准拦截提示
+  const txParsed = validateAndParseInput(ethTxUrl);
+  assert.ok(txParsed.error && txParsed.error.includes("Tx Hash"), "交易链接应明确提示为 Tx Hash");
+  const rawTxHash = "0x90f8bf944c659c253d8e107d6b50b076b92316bc3b42d80ceea30b93b5819d33";
+  const rawTxParsed = validateAndParseInput(rawTxHash);
+  assert.ok(rawTxParsed.error && rawTxParsed.error.includes("Tx Hash"), "裸交易哈希应明确提示为 Tx Hash");
+});
+
+test("extractStatusBarQuotes - 状态栏总控与分板块开关精准过滤", () => {
+  const sampleWatchlist = {
+    "A股": [
+      { symbol: "sh600519", name: "贵州茅台", type: "A_SHARE" },
+      { symbol: "sz000001", name: "平安银行", type: "A_SHARE" },
+    ],
+    "港股": [
+      { symbol: "hk00700", name: "腾讯控股", type: "HK_STOCK" },
+    ],
+    "美股": [
+      { symbol: "AAPL", name: "Apple", type: "US_STOCK" },
+    ],
+    "Binance": [
+      { symbol: "BTCUSDT", name: "Bitcoin", type: "CRYPTO" },
+    ],
+    "Alpha": [
+      { symbol: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", name: "WBNB", type: "ALPHA_TOKEN" },
+    ],
+  };
+
+  const cache = new Map<string, any>();
+  cache.set("sh600519", { symbol: "sh600519", name: "贵州茅台", price: 1800, changePercent: 1.2 });
+  cache.set("sz000001", { symbol: "sz000001", name: "平安银行", price: 12, changePercent: -0.5 });
+  cache.set("hk700", { symbol: "hk00700", name: "腾讯控股", price: 380, changePercent: 2.1 });
+  cache.set("aapl", { symbol: "AAPL", name: "Apple", price: 230, changePercent: 0.8 });
+  cache.set("btcusdt", { symbol: "BTCUSDT", name: "Bitcoin", price: 65000, changePercent: 3.5 });
+  cache.set("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", { symbol: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", name: "WBNB", price: 580, changePercent: 4.0 });
+
+  // 1. 全开启状态：返回所有 6 个标的
+  const allOpen = extractStatusBarQuotes(sampleWatchlist, cache, {
+    statusBarEnabled: true,
+    aShare:  { enabled: true, statusBar: true },
+    hkStock: { enabled: true, statusBar: true },
+    usStock: { enabled: true, statusBar: true },
+    binance: { enabled: true, statusBar: true },
+    alpha:   { enabled: true, statusBar: true },
+  });
+  assert.strictEqual(allOpen.length, 6);
+
+  // 2. 总控关闭：立即返回空数组
+  const masterDisabled = extractStatusBarQuotes(sampleWatchlist, cache, {
+    statusBarEnabled: false,
+    aShare:  { enabled: true, statusBar: true },
+    hkStock: { enabled: true, statusBar: true },
+    usStock: { enabled: true, statusBar: true },
+    binance: { enabled: true, statusBar: true },
+    alpha:   { enabled: true, statusBar: true },
+  });
+  assert.strictEqual(masterDisabled.length, 0);
+
+  // 3. 仅关闭 A 股轮播（用户报告的场景）：总控依然开启，A股标的退出，其余4个板块标的正常参与轮播
+  const aShareOff = extractStatusBarQuotes(sampleWatchlist, cache, {
+    statusBarEnabled: true,
+    aShare:  { enabled: true, statusBar: false },
+    hkStock: { enabled: true, statusBar: true },
+    usStock: { enabled: true, statusBar: true },
+    binance: { enabled: true, statusBar: true },
+    alpha:   { enabled: true, statusBar: true },
+  });
+  assert.strictEqual(aShareOff.length, 4);
+  assert.ok(!aShareOff.some(q => q.symbol === "sh600519" || q.symbol === "sz000001"));
+  assert.ok(aShareOff.some(q => q.symbol === "hk00700"));
+  assert.ok(aShareOff.some(q => q.symbol === "AAPL"));
+  assert.ok(aShareOff.some(q => q.symbol === "BTCUSDT"));
+  assert.ok(aShareOff.some(q => q.symbol === "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"));
+
+  // 4. 所有分板块均关闭轮播：返回 0 条
+  const allSubOff = extractStatusBarQuotes(sampleWatchlist, cache, {
+    statusBarEnabled: true,
+    aShare:  { enabled: true, statusBar: false },
+    hkStock: { enabled: true, statusBar: false },
+    usStock: { enabled: true, statusBar: false },
+    binance: { enabled: true, statusBar: false },
+    alpha:   { enabled: true, statusBar: false },
+  });
+  assert.strictEqual(allSubOff.length, 0);
+});
+
+test("computeStatusBarEnabled - 状态栏总控与分板块开关聚合判定", () => {
+  // 1. 用户显式设置 statusBar.enabled: false，无论分板块如何开启，状态栏必须彻底关闭
+  assert.strictEqual(computeStatusBarEnabled(false, true), false, "显式关闭总控时，即使有活跃板块也必须关闭");
+  assert.strictEqual(computeStatusBarEnabled(false, false), false, "显式关闭总控时，无活跃板块也必须关闭");
+
+  // 2. 用户显式设置 statusBar.enabled: true
+  assert.strictEqual(computeStatusBarEnabled(true, true), true, "显式开启总控且有活跃板块时，状态栏开启");
+  assert.strictEqual(computeStatusBarEnabled(true, false), false, "显式开启总控但无活跃板块时，状态栏关闭");
+
+  // 3. 用户未显式配置（undefined，默认开启状态）
+  assert.strictEqual(computeStatusBarEnabled(undefined, true), true, "未显式配置且有活跃板块时，状态栏默认开启");
+  assert.strictEqual(computeStatusBarEnabled(undefined, false), false, "未显式配置但无活跃板块时，状态栏默认关闭");
+});
+
+
+
 
 
 

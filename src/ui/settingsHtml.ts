@@ -1,79 +1,102 @@
 // src/ui/settingsHtml.ts
 
 export interface SettingsFormData {
-  autoRefresh?: boolean;
-  refreshInterval?: number;
-  maskMode?: boolean;
-  colorNeutral?: boolean;
-  statusBarEnabled?: boolean;
-  aShareEnabled?: boolean;
-  aShareStatusBar?: boolean;
-  aShareStopOnMarketClosed?: boolean;
-  aShareNetworkMode?: string;
-  aShareProxyUrl?: string;
-  hkStockEnabled?: boolean;
-  hkStockStatusBar?: boolean;
-  hkStockStopOnMarketClosed?: boolean;
-  hkStockNetworkMode?: string;
-  hkStockProxyUrl?: string;
-  usStockEnabled?: boolean;
-  usStockStatusBar?: boolean;
-  usStockStopOnMarketClosed?: boolean;
-  usStockNetworkMode?: string;
-  usStockProxyUrl?: string;
-  binanceEnabled?: boolean;
-  binanceStatusBar?: boolean;
-  binanceNetworkMode?: string;
-  binanceProxyUrl?: string;
-  alphaEnabled?: boolean;
-  alphaStatusBar?: boolean;
-  alphaNetworkMode?: string;
-  alphaProxyUrl?: string;
+	autoRefresh?: boolean;
+	refreshInterval?: number;
+	maskMode?: boolean;
+	colorNeutral?: boolean;
+	statusBarEnabled?: boolean;
+	proxyPort?: number;
+	proxyUrl?: string;
+	aShareEnabled?: boolean;
+	aShareStatusBar?: boolean;
+	aShareStopOnMarketClosed?: boolean;
+	aShareNetworkMode?: string;
+	aShareProxyUrl?: string;
+	hkStockEnabled?: boolean;
+	hkStockStatusBar?: boolean;
+	hkStockStopOnMarketClosed?: boolean;
+	hkStockNetworkMode?: string;
+	hkStockProxyUrl?: string;
+	usStockEnabled?: boolean;
+	usStockStatusBar?: boolean;
+	usStockStopOnMarketClosed?: boolean;
+	usStockNetworkMode?: string;
+	usStockProxyUrl?: string;
+	binanceEnabled?: boolean;
+	binanceStatusBar?: boolean;
+	binanceNetworkMode?: string;
+	binanceProxyUrl?: string;
+	alphaEnabled?: boolean;
+	alphaStatusBar?: boolean;
+	alphaNetworkMode?: string;
+	alphaProxyUrl?: string;
 }
 
 export function getSettingsWebviewHtml(
-  nonce: string,
-  version: string,
-  cspSource: string = "",
-  initialData: SettingsFormData = {}
+	nonce: string,
+	version: string,
+	cspSource: string = '',
+	initialData: SettingsFormData = {}
 ): string {
-  const d: Required<SettingsFormData> = {
-    autoRefresh:              initialData.autoRefresh !== undefined ? initialData.autoRefresh : true,
-    refreshInterval:          initialData.refreshInterval || 5000,
-    maskMode:                 !!initialData.maskMode,
-    colorNeutral:             !!initialData.colorNeutral,
-    statusBarEnabled:         initialData.statusBarEnabled !== undefined ? initialData.statusBarEnabled : true,
-    aShareEnabled:            initialData.aShareEnabled !== undefined ? initialData.aShareEnabled : true,
-    aShareStatusBar:          initialData.aShareStatusBar !== undefined ? initialData.aShareStatusBar : true,
-    aShareStopOnMarketClosed: initialData.aShareStopOnMarketClosed !== undefined ? initialData.aShareStopOnMarketClosed : true,
-    aShareNetworkMode:        initialData.aShareNetworkMode || "direct",
-    aShareProxyUrl:           initialData.aShareProxyUrl || "http://127.0.0.1:7890",
-    hkStockEnabled:           initialData.hkStockEnabled !== undefined ? initialData.hkStockEnabled : true,
-    hkStockStatusBar:         initialData.hkStockStatusBar !== undefined ? initialData.hkStockStatusBar : true,
-    hkStockStopOnMarketClosed: initialData.hkStockStopOnMarketClosed !== undefined ? initialData.hkStockStopOnMarketClosed : true,
-    hkStockNetworkMode:       initialData.hkStockNetworkMode || "direct",
-    hkStockProxyUrl:          initialData.hkStockProxyUrl || "http://127.0.0.1:7890",
-    usStockEnabled:           initialData.usStockEnabled !== undefined ? initialData.usStockEnabled : true,
-    usStockStatusBar:         initialData.usStockStatusBar !== undefined ? initialData.usStockStatusBar : true,
-    usStockStopOnMarketClosed: initialData.usStockStopOnMarketClosed !== undefined ? initialData.usStockStopOnMarketClosed : true,
-    usStockNetworkMode:       initialData.usStockNetworkMode || "direct",
-    usStockProxyUrl:          initialData.usStockProxyUrl || "http://127.0.0.1:7890",
-    binanceEnabled:           initialData.binanceEnabled !== undefined ? initialData.binanceEnabled : true,
-    binanceStatusBar:         initialData.binanceStatusBar !== undefined ? initialData.binanceStatusBar : true,
-    binanceNetworkMode:       initialData.binanceNetworkMode || "proxy",
-    binanceProxyUrl:          initialData.binanceProxyUrl || "http://127.0.0.1:7890",
-    alphaEnabled:             initialData.alphaEnabled !== undefined ? initialData.alphaEnabled : true,
-    alphaStatusBar:           initialData.alphaStatusBar !== undefined ? initialData.alphaStatusBar : true,
-    alphaNetworkMode:         initialData.alphaNetworkMode || "proxy",
-    alphaProxyUrl:            initialData.alphaProxyUrl || "http://127.0.0.1:7890",
-  };
+	const defaultPort = initialData.proxyPort || 10808;
+	const d: Required<SettingsFormData> = {
+		autoRefresh: initialData.autoRefresh !== undefined ? initialData.autoRefresh : true,
+		refreshInterval: initialData.refreshInterval || 5000,
+		maskMode: !!initialData.maskMode,
+		colorNeutral: !!initialData.colorNeutral,
+		statusBarEnabled:
+			initialData.statusBarEnabled !== undefined ? initialData.statusBarEnabled : true,
+		proxyPort: defaultPort,
+		proxyUrl: initialData.proxyUrl || `http://127.0.0.1:${defaultPort}`,
+		aShareEnabled: initialData.aShareEnabled !== undefined ? initialData.aShareEnabled : true,
+		aShareStatusBar:
+			initialData.aShareStatusBar !== undefined ? initialData.aShareStatusBar : true,
+		aShareStopOnMarketClosed:
+			initialData.aShareStopOnMarketClosed !== undefined
+				? initialData.aShareStopOnMarketClosed
+				: true,
+		aShareNetworkMode: initialData.aShareNetworkMode || 'direct',
+		aShareProxyUrl: initialData.aShareProxyUrl || 'http://127.0.0.1:7890',
+		hkStockEnabled:
+			initialData.hkStockEnabled !== undefined ? initialData.hkStockEnabled : true,
+		hkStockStatusBar:
+			initialData.hkStockStatusBar !== undefined ? initialData.hkStockStatusBar : true,
+		hkStockStopOnMarketClosed:
+			initialData.hkStockStopOnMarketClosed !== undefined
+				? initialData.hkStockStopOnMarketClosed
+				: true,
+		hkStockNetworkMode: initialData.hkStockNetworkMode || 'direct',
+		hkStockProxyUrl: initialData.hkStockProxyUrl || 'http://127.0.0.1:7890',
+		usStockEnabled:
+			initialData.usStockEnabled !== undefined ? initialData.usStockEnabled : true,
+		usStockStatusBar:
+			initialData.usStockStatusBar !== undefined ? initialData.usStockStatusBar : true,
+		usStockStopOnMarketClosed:
+			initialData.usStockStopOnMarketClosed !== undefined
+				? initialData.usStockStopOnMarketClosed
+				: true,
+		usStockNetworkMode: initialData.usStockNetworkMode || 'direct',
+		usStockProxyUrl: initialData.usStockProxyUrl || 'http://127.0.0.1:7890',
+		binanceEnabled:
+			initialData.binanceEnabled !== undefined ? initialData.binanceEnabled : true,
+		binanceStatusBar:
+			initialData.binanceStatusBar !== undefined ? initialData.binanceStatusBar : true,
+		binanceNetworkMode: initialData.binanceNetworkMode || 'proxy',
+		binanceProxyUrl: initialData.binanceProxyUrl || 'http://127.0.0.1:7890',
+		alphaEnabled: initialData.alphaEnabled !== undefined ? initialData.alphaEnabled : true,
+		alphaStatusBar:
+			initialData.alphaStatusBar !== undefined ? initialData.alphaStatusBar : true,
+		alphaNetworkMode: initialData.alphaNetworkMode || 'proxy',
+		alphaProxyUrl: initialData.alphaProxyUrl || 'http://127.0.0.1:7890',
+	};
 
-  return `<!DOCTYPE html>
+	return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data: blob:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline' 'unsafe-eval';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data: blob:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${cspSource};">
   <title>MarketLens 设置</title>
   <style>
     :root {
@@ -322,6 +345,26 @@ export function getSettingsWebviewHtml(
       border-color: #0077b5;
       color: #ffffff;
     }
+    .btn-github {
+      background: #238636;
+      color: #ffffff;
+      border: 1px solid #2ea043;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-github:hover {
+      background: #2ea043;
+      border-color: #3fb950;
+      color: #ffffff;
+    }
 
     .toast {
       position: fixed; bottom: 24px; right: 24px;
@@ -389,7 +432,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">全部标的参与底部轮播</div>
             <div class="card-desc">控制 VS Code 底部状态栏是否展示行情轮播。关闭后底部状态栏将完全隐藏自选行情。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="statusBarEnabled" ${d.statusBarEnabled ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="statusBarEnabled" ${d.statusBarEnabled ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -397,7 +440,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">定时自动刷新</div>
             <div class="card-desc">开启后后台周期轮询最新行情；关闭后彻底停止后台拉取，仅在点击刷新按钮时更新。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="autoRefresh" ${d.autoRefresh ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="autoRefresh" ${d.autoRefresh ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -418,7 +461,7 @@ export function getSettingsWebviewHtml(
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
             <button class="btn-shortcut" id="btnKeybindMask" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
-            <label class="switch"><input type="checkbox" id="maskMode" ${d.maskMode ? "checked" : ""}><span class="slider"></span></label>
+            <label class="switch"><input type="checkbox" id="maskMode" ${d.maskMode ? 'checked' : ''}><span class="slider"></span></label>
           </div>
         </div>
 
@@ -426,13 +469,25 @@ export function getSettingsWebviewHtml(
           <div class="card-info">
             <div class="card-title" style="display: flex; align-items: center; gap: 8px;">
               <span>颜色脱敏模式</span>
-              <span class="shortcut-tag">Ctrl+Alt+C</span>
+              <span class="shortcut-tag">Ctrl+Alt+L</span>
             </div>
             <div class="card-desc">开启后所有涨跌数值使用编辑器默认中性颜色，关闭红绿配色刺激，防止旁观者察觉。</div>
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
             <button class="btn-shortcut" id="btnKeybindColor" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
-            <label class="switch"><input type="checkbox" id="colorNeutral" ${d.colorNeutral ? "checked" : ""}><span class="slider"></span></label>
+            <label class="switch"><input type="checkbox" id="colorNeutral" ${d.colorNeutral ? 'checked' : ''}><span class="slider"></span></label>
+          </div>
+        </div>
+
+        <div class="card" id="globalProxyCard">
+          <div class="card-info">
+            <div class="card-title">本地代理端口 (仅支持 HTTP / 混合代理)</div>
+            <div class="card-desc">全插件统一网络代理端口。只需输入端口号（1 ~ 65535，默认 10808，v2rayN 为 10808/10809，Clash/Verge 为 7890/7897）。支持自动感知与一键探测。</div>
+          </div>
+          <div class="proxy-input-box">
+            <span style="font-family: monospace; color: var(--desc-fg); font-size: 13px;"></span>
+            <input type="text" id="globalProxyPort" value="${d.proxyPort}" placeholder="10808" maxlength="5" style="width: 80px; text-align: center; font-family: monospace; font-size: 13px; font-weight: 500;">
+            <button class="btn-detect" id="btnDetectGlobal">⚡ 探测代理</button>
           </div>
         </div>
       </div>
@@ -450,7 +505,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">启用 A 股分组</div>
             <div class="card-desc">是否在左侧看板展示 A 股相关自选分组。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="aShareEnabled" ${d.aShareEnabled ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="aShareEnabled" ${d.aShareEnabled ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -458,7 +513,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">A股标的参与底部轮播</div>
             <div class="card-desc">控制 A 股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="aShareStatusBar" ${d.aShareStatusBar ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="aShareStatusBar" ${d.aShareStatusBar ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -466,7 +521,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">A股闭市期间停止轮询</div>
             <div class="card-desc">开启后仅在 A 股交易时段（北京时间 9:15–11:30, 13:00–15:05）请求数据，休市与周末停止拉取。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="aShareStopOnMarketClosed" ${d.aShareStopOnMarketClosed ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="aShareStopOnMarketClosed" ${d.aShareStopOnMarketClosed ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -474,23 +529,12 @@ export function getSettingsWebviewHtml(
             <div class="card-title">网络访问模式</div>
             <div class="card-desc">
               腾讯财经接口属于境内正规服务，推荐选择<b>直连</b>（零延迟）。
-              <div id="aShareNetTag" class="${d.aShareNetworkMode === "proxy" ? "security-tag" : "direct-tag"}">${d.aShareNetworkMode === "proxy" ? "🛡️ 已启用杜绝直连保护" : "⚡ 当前为境内直连（推荐）"}</div>
+              <div id="aShareNetTag" class="${d.aShareNetworkMode === 'proxy' ? 'security-tag' : 'direct-tag'}">${d.aShareNetworkMode === 'proxy' ? '🛡️ 已启用代理（使用通用设置中的全局代理）' : '⚡ 当前为境内直连（推荐）'}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="aShareNetwork" value="direct" id="aShareNetDirect" ${d.aShareNetworkMode !== "proxy" ? "checked" : ""}> 直连 (默认)</label>
-            <label class="radio-label"><input type="radio" name="aShareNetwork" value="proxy"  id="aShareNetProxy" ${d.aShareNetworkMode === "proxy" ? "checked" : ""}> 强制代理</label>
-          </div>
-        </div>
-
-        <div class="card ${d.aShareNetworkMode === "proxy" ? "" : "hidden-card"}" id="aShareProxyCard">
-          <div class="card-info">
-            <div class="card-title">A股代理地址</div>
-            <div class="card-desc">指定 A 股请求所使用的代理服务器。</div>
-          </div>
-          <div class="proxy-input-box">
-            <input type="text" id="aShareProxyUrl" value="${d.aShareProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectAshare">⚡ 探测代理</button>
+            <label class="radio-label"><input type="radio" name="aShareNetwork" value="direct" id="aShareNetDirect" ${d.aShareNetworkMode !== 'proxy' ? 'checked' : ''}> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="aShareNetwork" value="proxy"  id="aShareNetProxy" ${d.aShareNetworkMode === 'proxy' ? 'checked' : ''}> 强制代理</label>
           </div>
         </div>
       </div>
@@ -508,7 +552,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">启用港股分组</div>
             <div class="card-desc">是否在左侧看板展示港股相关自选分组。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="hkStockEnabled" ${d.hkStockEnabled ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="hkStockEnabled" ${d.hkStockEnabled ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -516,7 +560,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">港股标的参与底部轮播</div>
             <div class="card-desc">控制港股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="hkStockStatusBar" ${d.hkStockStatusBar ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="hkStockStatusBar" ${d.hkStockStatusBar ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -524,7 +568,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">港股闭市期间停止轮询</div>
             <div class="card-desc">开启后仅在港股交易时段（北京时间 9:30–12:00, 13:00–16:10）请求数据，休市与周末停止拉取。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="hkStockStopOnMarketClosed" ${d.hkStockStopOnMarketClosed ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="hkStockStopOnMarketClosed" ${d.hkStockStopOnMarketClosed ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -532,23 +576,12 @@ export function getSettingsWebviewHtml(
             <div class="card-title">网络访问模式</div>
             <div class="card-desc">
               腾讯财经港股行情源境内畅通，推荐选择<b>直连</b>（零延迟）。
-              <div id="hkStockNetTag" class="${d.hkStockNetworkMode === "proxy" ? "security-tag" : "direct-tag"}">${d.hkStockNetworkMode === "proxy" ? "🛡️ 已启用杜绝直连保护" : "⚡ 当前为境内直连（推荐）"}</div>
+              <div id="hkStockNetTag" class="${d.hkStockNetworkMode === 'proxy' ? 'security-tag' : 'direct-tag'}">${d.hkStockNetworkMode === 'proxy' ? '🛡️ 已启用代理（使用通用设置中的全局代理）' : '⚡ 当前为境内直连（推荐）'}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="direct" id="hkStockNetDirect" ${d.hkStockNetworkMode !== "proxy" ? "checked" : ""}> 直连 (默认)</label>
-            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="proxy"  id="hkStockNetProxy" ${d.hkStockNetworkMode === "proxy" ? "checked" : ""}> 强制代理</label>
-          </div>
-        </div>
-
-        <div class="card ${d.hkStockNetworkMode === "proxy" ? "" : "hidden-card"}" id="hkStockProxyCard">
-          <div class="card-info">
-            <div class="card-title">港股代理地址</div>
-            <div class="card-desc">指定港股请求所使用的代理服务器。</div>
-          </div>
-          <div class="proxy-input-box">
-            <input type="text" id="hkStockProxyUrl" value="${d.hkStockProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectHkStock">⚡ 探测代理</button>
+            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="direct" id="hkStockNetDirect" ${d.hkStockNetworkMode !== 'proxy' ? 'checked' : ''}> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="hkStockNetwork" value="proxy"  id="hkStockNetProxy" ${d.hkStockNetworkMode === 'proxy' ? 'checked' : ''}> 强制代理</label>
           </div>
         </div>
       </div>
@@ -566,7 +599,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">启用美股分组</div>
             <div class="card-desc">是否在左侧看板展示美股相关自选分组。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="usStockEnabled" ${d.usStockEnabled ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="usStockEnabled" ${d.usStockEnabled ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -574,7 +607,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">美股标的参与底部轮播</div>
             <div class="card-desc">控制美股自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="usStockStatusBar" ${d.usStockStatusBar ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="usStockStatusBar" ${d.usStockStatusBar ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -582,7 +615,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">美股闭市期间停止轮询</div>
             <div class="card-desc">开启后仅在美股交易时段（北京时间工作日 21:00 至次日凌晨 5:00）请求数据，非交易时段展示收盘价。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="usStockStopOnMarketClosed" ${d.usStockStopOnMarketClosed ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="usStockStopOnMarketClosed" ${d.usStockStopOnMarketClosed ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -590,23 +623,12 @@ export function getSettingsWebviewHtml(
             <div class="card-title">网络访问模式</div>
             <div class="card-desc">
               腾讯财经美股行情源支持境内直连，亦支持强制走代理。
-              <div id="usStockNetTag" class="${d.usStockNetworkMode === "proxy" ? "security-tag" : "direct-tag"}">${d.usStockNetworkMode === "proxy" ? "🛡️ 已启用杜绝直连保护" : "⚡ 当前为直连访问"}</div>
+              <div id="usStockNetTag" class="${d.usStockNetworkMode === 'proxy' ? 'security-tag' : 'direct-tag'}">${d.usStockNetworkMode === 'proxy' ? '🛡️ 已启用代理（使用通用设置中的全局代理）' : '⚡ 当前为直连访问'}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="usStockNetwork" value="direct" id="usStockNetDirect" ${d.usStockNetworkMode !== "proxy" ? "checked" : ""}> 直连 (默认)</label>
-            <label class="radio-label"><input type="radio" name="usStockNetwork" value="proxy"  id="usStockNetProxy" ${d.usStockNetworkMode === "proxy" ? "checked" : ""}> 强制代理</label>
-          </div>
-        </div>
-
-        <div class="card ${d.usStockNetworkMode === "proxy" ? "" : "hidden-card"}" id="usStockProxyCard">
-          <div class="card-info">
-            <div class="card-title">美股代理地址</div>
-            <div class="card-desc">指定美股请求所使用的代理服务器。</div>
-          </div>
-          <div class="proxy-input-box">
-            <input type="text" id="usStockProxyUrl" value="${d.usStockProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectUsStock">⚡ 探测代理</button>
+            <label class="radio-label"><input type="radio" name="usStockNetwork" value="direct" id="usStockNetDirect" ${d.usStockNetworkMode !== 'proxy' ? 'checked' : ''}> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="usStockNetwork" value="proxy"  id="usStockNetProxy" ${d.usStockNetworkMode === 'proxy' ? 'checked' : ''}> 强制代理</label>
           </div>
         </div>
       </div>
@@ -624,7 +646,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">启用 Binance 分组</div>
             <div class="card-desc">是否在侧边栏显示主流加密货币行情（BTC、ETH 等）。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="binanceEnabled" ${d.binanceEnabled ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="binanceEnabled" ${d.binanceEnabled ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -632,7 +654,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">Binance标的参与底部轮播</div>
             <div class="card-desc">控制 Binance 主流代币是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="binanceStatusBar" ${d.binanceStatusBar ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="binanceStatusBar" ${d.binanceStatusBar ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -640,23 +662,12 @@ export function getSettingsWebviewHtml(
             <div class="card-title">网络访问模式 (防公司审计)</div>
             <div class="card-desc">
               在公司网络下强烈建议保持<b>强制代理</b>，插件将绝对阻止直连包，杜绝网关产生访问记录。
-              <div id="binanceNetTag" class="${d.binanceNetworkMode === "direct" ? "direct-tag" : "security-tag"}">${d.binanceNetworkMode === "direct" ? "⚡ 已切换为直连访问" : "🛡️ 已启用杜绝直连保护"}</div>
+              <div id="binanceNetTag" class="${d.binanceNetworkMode === 'direct' ? 'direct-tag' : 'security-tag'}">${d.binanceNetworkMode === 'direct' ? '⚡ 已切换为直连访问' : '🛡️ 已启用杜绝直连保护（使用通用设置中的全局代理）'}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="binanceNetwork" value="proxy"  id="binanceNetProxy" ${d.binanceNetworkMode !== "direct" ? "checked" : ""}> 强制代理 (默认)</label>
-            <label class="radio-label"><input type="radio" name="binanceNetwork" value="direct" id="binanceNetDirect" ${d.binanceNetworkMode === "direct" ? "checked" : ""}> 直连</label>
-          </div>
-        </div>
-
-        <div class="card ${d.binanceNetworkMode === "direct" ? "hidden-card" : ""}" id="binanceProxyCard">
-          <div class="card-info">
-            <div class="card-title">代理地址 (仅支持 HTTP / 混合代理)</div>
-            <div class="card-desc">插件使用 HTTP 代理协议。若使用 Clash/Verge 填 7890/7897，v2rayN 填 10809。纯 SOCKS5 客户端请在客户端设置中开启 HTTP 监听端口。</div>
-          </div>
-          <div class="proxy-input-box">
-            <input type="text" id="binanceProxyUrl" value="${d.binanceProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectBinance">⚡ 探测代理</button>
+            <label class="radio-label"><input type="radio" name="binanceNetwork" value="proxy"  id="binanceNetProxy" ${d.binanceNetworkMode !== 'direct' ? 'checked' : ''}> 强制代理 (默认)</label>
+            <label class="radio-label"><input type="radio" name="binanceNetwork" value="direct" id="binanceNetDirect" ${d.binanceNetworkMode === 'direct' ? 'checked' : ''}> 直连</label>
           </div>
         </div>
       </div>
@@ -674,7 +685,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">启用 Alpha 分组</div>
             <div class="card-desc">是否在侧边栏展示链上 DEX 代币行情。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="alphaEnabled" ${d.alphaEnabled ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="alphaEnabled" ${d.alphaEnabled ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -682,7 +693,7 @@ export function getSettingsWebviewHtml(
             <div class="card-title">Alpha标的参与底部轮播</div>
             <div class="card-desc">控制 Alpha 链上代币是否在 VS Code 底部状态栏循环轮播展示。</div>
           </div>
-          <label class="switch"><input type="checkbox" id="alphaStatusBar" ${d.alphaStatusBar ? "checked" : ""}><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="alphaStatusBar" ${d.alphaStatusBar ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -690,23 +701,12 @@ export function getSettingsWebviewHtml(
             <div class="card-title">网络访问模式 (防公司审计)</div>
             <div class="card-desc">
               访问 DexScreener 全球链上聚合接口。建议保持<b>强制代理</b>，防止公司网关检测。
-              <div id="alphaNetTag" class="${d.alphaNetworkMode === "direct" ? "direct-tag" : "security-tag"}">${d.alphaNetworkMode === "direct" ? "⚡ 已切换为直连访问" : "🛡️ 已启用杜绝直连保护"}</div>
+              <div id="alphaNetTag" class="${d.alphaNetworkMode === 'direct' ? 'direct-tag' : 'security-tag'}">${d.alphaNetworkMode === 'direct' ? '⚡ 已切换为直连访问' : '🛡️ 已启用杜绝直连保护（使用通用设置中的全局代理）'}</div>
             </div>
           </div>
           <div class="radio-group">
-            <label class="radio-label"><input type="radio" name="alphaNetwork" value="proxy"  id="alphaNetProxy" ${d.alphaNetworkMode !== "direct" ? "checked" : ""}> 强制代理 (默认)</label>
-            <label class="radio-label"><input type="radio" name="alphaNetwork" value="direct" id="alphaNetDirect" ${d.alphaNetworkMode === "direct" ? "checked" : ""}> 直连</label>
-          </div>
-        </div>
-
-        <div class="card ${d.alphaNetworkMode === "direct" ? "hidden-card" : ""}" id="alphaProxyCard">
-          <div class="card-info">
-            <div class="card-title">代理地址 (仅支持 HTTP / 混合代理)</div>
-            <div class="card-desc">插件使用 HTTP 代理协议。若使用 Clash/Verge 填 7890/7897，v2rayN 填 10809。纯 SOCKS5 客户端请在客户端设置中开启 HTTP 监听端口。</div>
-          </div>
-          <div class="proxy-input-box">
-            <input type="text" id="alphaProxyUrl" value="${d.alphaProxyUrl}" style="width: 220px;">
-            <button class="btn-detect" id="btnDetectAlpha">⚡ 探测代理</button>
+            <label class="radio-label"><input type="radio" name="alphaNetwork" value="proxy"  id="alphaNetProxy" ${d.alphaNetworkMode !== 'direct' ? 'checked' : ''}> 强制代理 (默认)</label>
+            <label class="radio-label"><input type="radio" name="alphaNetwork" value="direct" id="alphaNetDirect" ${d.alphaNetworkMode === 'direct' ? 'checked' : ''}> 直连</label>
           </div>
         </div>
       </div>
@@ -725,34 +725,30 @@ export function getSettingsWebviewHtml(
             <div class="card-desc">
               • <b>老板键一键隐蔽/恢复</b>: <code>Ctrl + Alt + M</code> 或 <code>Alt + M</code> (Mac: <code>Cmd + Alt + M</code>)<br>
               • <b>伪装摸鱼模式开关</b>: <code>Ctrl + Alt + K</code> 或 <code>Alt + K</code> (Mac: <code>Cmd + Alt + K</code>)<br>
-              • <b>颜色脱敏模式开关</b>: <code>Ctrl + Alt + C</code> 或 <code>Alt + C</code> (Mac: <code>Cmd + Alt + C</code>)<br>
+              • <b>颜色脱敏模式开关</b>: <code>Ctrl + Alt + L</code> 或 <code>Alt + L</code> (Mac: <code>Cmd + Alt + L</code>)<br>
               • <b>悬停详情卡片</b>: 鼠标放至任意资产上，即可查看今开、昨收、高低、涨跌与成交额。
             </div>
           </div>
           <button class="btn-shortcut" id="btnKeybindAll">⌨️ 打开全局快捷键设置</button>
         </div>
-        <div class="card">
-          <div class="card-info">
+        <div class="card" style="flex-direction: column; align-items: flex-start; gap: 14px;">
+          <div class="card-info" style="width: 100%;">
             <div class="card-title">问题反馈与社区交流</div>
-            <div class="card-desc">遇到 Bug、行情数据异常或有新功能建议？欢迎加入官方 Telegram 交流群，或直接联系作者个人 TG 交流反馈。</div>
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="btn-telegram" id="btnJoinTelegram" style="width: 175px; justify-content: center;">✈️ 进入 Telegram 交流群</button>
-              <button class="btn-shortcut" id="btnCopyTelegram" title="复制群链接到剪贴板">📋 复制链接</button>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="btn-telegram" id="btnJoinPersonalTelegram" style="width: 175px; justify-content: center; background: #2AABEE; border-color: #2AABEE;">💬 联系作者个人 TG</button>
-              <button class="btn-shortcut" id="btnCopyPersonalTelegram" title="复制个人链接到剪贴板">📋 复制链接</button>
+            <div class="card-desc" style="margin-bottom: 14px;">本项目已全面开源！遇到 Bug、行情数据异常或有新功能建议？欢迎前往 GitHub 提交 Issue 反馈，或加入官方 Telegram 社群与作者直接交流。</div>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <button class="btn-github" id="btnOpenIssues">🐙 GitHub 提交 Issue</button>
+              <button class="btn-telegram" id="btnJoinTelegram">✈️ 进入 Telegram 交流群</button>
+              <button class="btn-telegram" id="btnJoinPersonalTelegram" style="background: #2AABEE; border-color: #2AABEE;">💬 联系作者个人 TG</button>
             </div>
           </div>
         </div>
 
         <div class="card">
           <div class="card-info">
-            <div class="card-title">版本信息</div>
-            <div class="card-desc">MarketLens v${version.replace(/^v/i, "")} · 由 DevQQQQQ 打造</div>
+            <div class="card-title">开源代码与版本信息</div>
+            <div class="card-desc">MarketLens v${version.replace(/^v/i, '')} · 由 DevQQQQQ 倾力打造 · MIT 开源协议</div>
           </div>
+          <button class="btn-shortcut" id="btnOpenRepo" style="font-size: 12px; padding: 6px 12px;">⭐ 访问 GitHub 仓库</button>
         </div>
       </div>
     </div>
@@ -762,7 +758,7 @@ export function getSettingsWebviewHtml(
 
   <div id="toast" class="toast"></div>
 
-  <script>
+  <script nonce="${nonce}">
     (function() {
       // ── Toast 提示系统（优先初始化，供全局使用） ──
       function showToast(msg) {
@@ -863,22 +859,16 @@ export function getSettingsWebviewHtml(
       }
       window.switchTab = switchTab;
 
-      // ── 代理卡片显隐控制 ──
+      // ── 网络标签模式控制 ──
       function applyProxyCardVisibility(section, mode) {
-        var card = document.getElementById(section + 'ProxyCard');
-        var tag  = document.getElementById(section + 'NetTag');
+        var tag = document.getElementById(section + 'NetTag');
+        if (!tag) return;
         if (mode === 'direct') {
-          if (card) card.classList.add('hidden-card');
-          if (tag) {
-            tag.className = 'direct-tag';
-            tag.innerHTML = '⚡ 已切换为直连访问';
-          }
+          tag.className = 'direct-tag';
+          tag.innerHTML = (section === 'binance' || section === 'alpha') ? '⚡ 已切换为直连访问' : '⚡ 当前为境内直连（推荐）';
         } else {
-          if (card) card.classList.remove('hidden-card');
-          if (tag) {
-            tag.className = 'security-tag';
-            tag.innerHTML = '🛡️ 已启用杜绝直连保护';
-          }
+          tag.className = 'security-tag';
+          tag.innerHTML = (section === 'binance' || section === 'alpha') ? '🛡️ 已启用杜绝直连保护（使用通用设置中的全局代理）' : '🛡️ 已启用代理（使用通用设置中的全局代理）';
         }
       }
 
@@ -888,27 +878,22 @@ export function getSettingsWebviewHtml(
         showToast(mode === 'direct' ? '⚡ 已切换为直连模式' : '🛡️ 已切换为代理模式');
       }
 
-      function handleProxyBlur(key, input) {
-        var val = input.value.trim();
-        if (!val) {
-          val = 'http://127.0.0.1:7890';
-          input.value = val;
-          showToast('⚠️ 代理地址不能为空，已恢复默认');
-        } else {
-          if (/^socks5?:\/\//i.test(val)) {
-            val = 'http://' + val.replace(/^socks5?:\/\//i, '');
-            input.value = val;
-            showToast('⚠️ 插件使用 HTTP 代理协议。已转换为 HTTP 格式');
-          } else if (/^https:\/\//i.test(val)) {
-            val = 'http://' + val.replace(/^https:\/\//i, '');
-            input.value = val;
-            showToast('💡 本地代理客户端均为明文监听，已自动为您纠偏为 ' + val);
-          } else if (val.indexOf('http://') !== 0) {
-            val = 'http://' + val;
-            input.value = val;
-          }
+      function handlePortBlur(input) {
+        var raw = (input.value || '').trim();
+        var match = raw.match(/:(\d{1,5})/);
+        if (match) {
+          raw = match[1];
         }
-        sendUpdate(key, val);
+        var port = parseInt(raw, 10);
+        if (isNaN(port) || port < 1 || port > 65535) {
+          showToast('⚠️ 端口号必须是 1 到 65535 之间的有效整数');
+          input.value = input.getAttribute('data-last-valid') || '10808';
+          return;
+        }
+        input.value = String(port);
+        input.setAttribute('data-last-valid', String(port));
+        sendUpdate('proxyPort', port);
+        showToast('⚡ 本地代理端口已设置为 ' + port);
       }
 
       // ── DOM 事件绑定辅助 ──
@@ -927,9 +912,28 @@ export function getSettingsWebviewHtml(
         showToast('🗑️ 正在请求清空自选标的...');
       });
       on('statusBarEnabled', 'change', function() {
-        sendUpdate('statusBar.enabled', this.checked);
-        showToast(this.checked ? '✅ 已开启底部状态栏轮播' : '⚪ 已关闭底部状态栏轮播');
+        var checked = this.checked;
+        var subIds = ['aShareStatusBar', 'hkStockStatusBar', 'usStockStatusBar', 'binanceStatusBar', 'alphaStatusBar'];
+        for (var i = 0; i < subIds.length; i++) {
+          var el = document.getElementById(subIds[i]);
+          if (el) el.checked = checked;
+        }
+        sendUpdate('statusBar.enabled', checked);
+        showToast(checked ? '✅ 已开启全部标的参与底部轮播' : '⚪ 已关闭全部标的参与底部轮播');
       });
+
+      function syncMasterSwitch() {
+        var a = document.getElementById('aShareStatusBar');
+        var h = document.getElementById('hkStockStatusBar');
+        var u = document.getElementById('usStockStatusBar');
+        var b = document.getElementById('binanceStatusBar');
+        var al = document.getElementById('alphaStatusBar');
+        var allChecked = (!a || a.checked) && (!h || h.checked) && (!u || u.checked) && (!b || b.checked) && (!al || al.checked);
+        var master = document.getElementById('statusBarEnabled');
+        if (master) {
+          master.checked = allChecked;
+        }
+      }
       on('autoRefresh', 'change', function() {
         sendUpdate('autoRefresh', this.checked);
         showToast(this.checked ? '✅ 已开启定时自动刷新' : '⚪ 已关闭定时自动刷新');
@@ -958,19 +962,26 @@ export function getSettingsWebviewHtml(
       on('btnKeybindAll', 'click', function() {
         postCmd('openKeybindings', { query: 'marketlens' });
       });
+      on('globalProxyPort', 'blur', function() { handlePortBlur(this); });
+      on('globalProxyPort', 'keydown', function(e) {
+        if (e.key === 'Enter') {
+          this.blur();
+        }
+      });
+      on('btnDetectGlobal', 'click', function() { triggerDetect('global'); });
 
       // 2. 关于与交流事件
+      on('btnOpenIssues', 'click', function() {
+        postCmd('openExternal', { url: 'https://github.com/DevQQQQQ/MarketLens/issues' });
+      });
       on('btnJoinTelegram', 'click', function() {
         postCmd('openExternal', { url: 'https://t.me/+-eZR0R--jyUwN2Nl' });
-      });
-      on('btnCopyTelegram', 'click', function() {
-        copyText('https://t.me/+-eZR0R--jyUwN2Nl', '📋 已复制 Telegram 群链接');
       });
       on('btnJoinPersonalTelegram', 'click', function() {
         postCmd('openExternal', { url: 'https://t.me/Dev_QQQQQ' });
       });
-      on('btnCopyPersonalTelegram', 'click', function() {
-        copyText('https://t.me/Dev_QQQQQ', '📋 已复制作者个人 TG 链接');
+      on('btnOpenRepo', 'click', function() {
+        postCmd('openExternal', { url: 'https://github.com/DevQQQQQ/MarketLens' });
       });
 
       // 3. A股市场事件
@@ -979,6 +990,7 @@ export function getSettingsWebviewHtml(
         showToast(this.checked ? '✅ A股分组已启用' : '⚪ A股分组已禁用');
       });
       on('aShareStatusBar', 'change', function() {
+        syncMasterSwitch();
         sendUpdate('aShare.statusBar', this.checked);
         showToast(this.checked ? '✅ A股标的参与底部轮播' : '⚪ A股标的退出底部轮播');
       });
@@ -988,8 +1000,6 @@ export function getSettingsWebviewHtml(
       });
       on('aShareNetDirect', 'change', function() { handleNetChange('aShare', 'direct'); });
       on('aShareNetProxy', 'change', function() { handleNetChange('aShare', 'proxy'); });
-      on('aShareProxyUrl', 'blur', function() { handleProxyBlur('aShare.proxyUrl', this); });
-      on('btnDetectAshare', 'click', function() { triggerDetect('aShare'); });
 
       // 4. 港股市场事件
       on('hkStockEnabled', 'change', function() {
@@ -997,6 +1007,7 @@ export function getSettingsWebviewHtml(
         showToast(this.checked ? '✅ 港股分组已启用' : '⚪ 港股分组已禁用');
       });
       on('hkStockStatusBar', 'change', function() {
+        syncMasterSwitch();
         sendUpdate('hkStock.statusBar', this.checked);
         showToast(this.checked ? '✅ 港股标的参与底部轮播' : '⚪ 港股标的退出底部轮播');
       });
@@ -1006,8 +1017,6 @@ export function getSettingsWebviewHtml(
       });
       on('hkStockNetDirect', 'change', function() { handleNetChange('hkStock', 'direct'); });
       on('hkStockNetProxy', 'change', function() { handleNetChange('hkStock', 'proxy'); });
-      on('hkStockProxyUrl', 'blur', function() { handleProxyBlur('hkStock.proxyUrl', this); });
-      on('btnDetectHkStock', 'click', function() { triggerDetect('hkStock'); });
 
       // 5. 美股市场事件
       on('usStockEnabled', 'change', function() {
@@ -1015,6 +1024,7 @@ export function getSettingsWebviewHtml(
         showToast(this.checked ? '✅ 美股分组已启用' : '⚪ 美股分组已禁用');
       });
       on('usStockStatusBar', 'change', function() {
+        syncMasterSwitch();
         sendUpdate('usStock.statusBar', this.checked);
         showToast(this.checked ? '✅ 美股标的参与底部轮播' : '⚪ 美股标的退出底部轮播');
       });
@@ -1024,8 +1034,6 @@ export function getSettingsWebviewHtml(
       });
       on('usStockNetDirect', 'change', function() { handleNetChange('usStock', 'direct'); });
       on('usStockNetProxy', 'change', function() { handleNetChange('usStock', 'proxy'); });
-      on('usStockProxyUrl', 'blur', function() { handleProxyBlur('usStock.proxyUrl', this); });
-      on('btnDetectUsStock', 'click', function() { triggerDetect('usStock'); });
 
       // 6. Binance 板块事件
       on('binanceEnabled', 'change', function() {
@@ -1033,13 +1041,12 @@ export function getSettingsWebviewHtml(
         showToast(this.checked ? '✅ Binance分组已启用' : '⚪ Binance分组已禁用');
       });
       on('binanceStatusBar', 'change', function() {
+        syncMasterSwitch();
         sendUpdate('binance.statusBar', this.checked);
         showToast(this.checked ? '✅ Binance标的参与底部轮播' : '⚪ Binance标的退出底部轮播');
       });
       on('binanceNetDirect', 'change', function() { handleNetChange('binance', 'direct'); });
       on('binanceNetProxy', 'change', function() { handleNetChange('binance', 'proxy'); });
-      on('binanceProxyUrl', 'blur', function() { handleProxyBlur('binance.proxyUrl', this); });
-      on('btnDetectBinance', 'click', function() { triggerDetect('binance'); });
 
       // 7. Alpha 板块事件
       on('alphaEnabled', 'change', function() {
@@ -1047,13 +1054,12 @@ export function getSettingsWebviewHtml(
         showToast(this.checked ? '✅ Alpha分组已启用' : '⚪ Alpha分组已禁用');
       });
       on('alphaStatusBar', 'change', function() {
+        syncMasterSwitch();
         sendUpdate('alpha.statusBar', this.checked);
         showToast(this.checked ? '✅ Alpha标的参与底部轮播' : '⚪ Alpha标的退出底部轮播');
       });
       on('alphaNetDirect', 'change', function() { handleNetChange('alpha', 'direct'); });
       on('alphaNetProxy', 'change', function() { handleNetChange('alpha', 'proxy'); });
-      on('alphaProxyUrl', 'blur', function() { handleProxyBlur('alpha.proxyUrl', this); });
-      on('btnDetectAlpha', 'click', function() { triggerDetect('alpha'); });
 
       // ── 接收 VS Code 消息同步 ──
       window.addEventListener('message', function(event) {
@@ -1072,80 +1078,82 @@ export function getSettingsWebviewHtml(
           setChecked('maskMode',         d.maskMode);
           setChecked('colorNeutral',     d.colorNeutral);
           setChecked('statusBarEnabled', d.statusBarEnabled);
+          var portVal = d.proxyPort || 10808;
+          setValue('globalProxyPort', portVal);
+          var portInput = document.getElementById('globalProxyPort');
+          if (portInput) {
+            portInput.setAttribute('data-last-valid', String(portVal));
+          }
 
           // A股
           setChecked('aShareEnabled',            d.aShareEnabled);
           setChecked('aShareStatusBar',          d.aShareStatusBar);
           setChecked('aShareStopOnMarketClosed',  d.aShareStopOnMarketClosed);
+          applyProxyCardVisibility('aShare', d.aShareNetworkMode);
           if (d.aShareNetworkMode === 'proxy') {
             setChecked('aShareNetProxy', true);
-            applyProxyCardVisibility('aShare', 'proxy');
           } else {
             setChecked('aShareNetDirect', true);
-            applyProxyCardVisibility('aShare', 'direct');
           }
-          setValue('aShareProxyUrl', d.aShareProxyUrl);
 
           // 港股
           setChecked('hkStockEnabled',            d.hkStockEnabled);
           setChecked('hkStockStatusBar',          d.hkStockStatusBar);
           setChecked('hkStockStopOnMarketClosed',  d.hkStockStopOnMarketClosed);
+          applyProxyCardVisibility('hkStock', d.hkStockNetworkMode);
           if (d.hkStockNetworkMode === 'proxy') {
             setChecked('hkStockNetProxy', true);
-            applyProxyCardVisibility('hkStock', 'proxy');
           } else {
             setChecked('hkStockNetDirect', true);
-            applyProxyCardVisibility('hkStock', 'direct');
           }
-          setValue('hkStockProxyUrl', d.hkStockProxyUrl);
 
           // 美股
           setChecked('usStockEnabled',            d.usStockEnabled);
           setChecked('usStockStatusBar',          d.usStockStatusBar);
           setChecked('usStockStopOnMarketClosed',  d.usStockStopOnMarketClosed);
+          applyProxyCardVisibility('usStock', d.usStockNetworkMode);
           if (d.usStockNetworkMode === 'proxy') {
             setChecked('usStockNetProxy', true);
-            applyProxyCardVisibility('usStock', 'proxy');
           } else {
             setChecked('usStockNetDirect', true);
-            applyProxyCardVisibility('usStock', 'direct');
           }
-          setValue('usStockProxyUrl', d.usStockProxyUrl);
 
           // Binance
           setChecked('binanceEnabled',   d.binanceEnabled);
           setChecked('binanceStatusBar', d.binanceStatusBar);
+          applyProxyCardVisibility('binance', d.binanceNetworkMode);
           if (d.binanceNetworkMode === 'proxy') {
             setChecked('binanceNetProxy', true);
-            applyProxyCardVisibility('binance', 'proxy');
           } else {
             setChecked('binanceNetDirect', true);
-            applyProxyCardVisibility('binance', 'direct');
           }
-          setValue('binanceProxyUrl', d.binanceProxyUrl);
 
           // Alpha
           setChecked('alphaEnabled',   d.alphaEnabled);
           setChecked('alphaStatusBar', d.alphaStatusBar);
+          applyProxyCardVisibility('alpha', d.alphaNetworkMode);
           if (d.alphaNetworkMode === 'proxy') {
             setChecked('alphaNetProxy', true);
-            applyProxyCardVisibility('alpha', 'proxy');
           } else {
             setChecked('alphaNetDirect', true);
-            applyProxyCardVisibility('alpha', 'direct');
           }
-          setValue('alphaProxyUrl', d.alphaProxyUrl);
 
-        } else if (msg.command === 'proxyDetected') {
-          if (msg.url) {
-            var input = document.getElementById(msg.target + 'ProxyUrl');
+        } else if (msg.command === 'proxyDetected' || msg.command === 'portDetected') {
+          var port = msg.port;
+          if (!port && msg.url) {
+            var m = msg.url.match(/:(\d{1,5})/);
+            if (m) port = parseInt(m[1], 10);
+          }
+          if (port) {
+            var input = document.getElementById('globalProxyPort');
             if (input) {
-              input.value = msg.url;
-              sendUpdate(msg.target + '.proxyUrl', msg.url);
+              input.value = String(port);
+              input.setAttribute('data-last-valid', String(port));
             }
-            showToast('✅ 成功匹配可用代理端口: ' + msg.url);
+            sendUpdate('proxyPort', port);
+            showToast('✅ 成功检测并匹配可用代理端口: ' + port);
           } else {
-            showToast('❌ 未探测到活跃代理');
+            showToast('❌ 未探测到活跃代理端口');
           }
         }
       });
