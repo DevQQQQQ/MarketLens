@@ -40,6 +40,18 @@ export interface WatchlistConfig {
   [group: string]: WatchConfigItem[];
 }
 
+// ── 价格预警与剧烈波动类型 ──
+export interface PriceAlertItem {
+  symbol: string;
+  name?: string;
+  above?: number;          // 突破上限价格 (> X)
+  below?: number;          // 跌破下限价格 (< X)
+  changePercent?: number;  // 单日涨跌幅突破绝对值 (|%| >= X)
+  enabled: boolean;        // 是否启用预警
+}
+
+export type AlertsConfig = Record<string, PriceAlertItem>;
+
 export interface MarketLensConfig {
   // ── 全局设置 ──
   autoRefresh: boolean;
@@ -59,4 +71,9 @@ export interface MarketLensConfig {
 
   // ── 自选列表 ──
   watchlist: WatchlistConfig;
+
+  // ── 预警配置 ──
+  alerts: AlertsConfig;
+  alertNotificationMode: "notification" | "statusBarOnly" | "both";
+  alertCooldownMinutes: number;
 }

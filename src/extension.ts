@@ -38,6 +38,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider: treeProvider,
     dragAndDropController: treeProvider,
     showCollapseAll: true,
+    canSelectMany: true,
   });
 
   const scheduler = new RefreshScheduler({
@@ -47,13 +48,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeView,
   });
   _scheduler = scheduler;
+  SettingsWebviewPanel.getQuoteCache = () => scheduler.quoteCache;
 
   const watchlistOps = new WatchlistOps({
     quoteCache: scheduler.quoteCache,
     rebuildTree: (customWatchlist) => scheduler.rebuildTree(customWatchlist),
   });
 
-  // 绑定拖拽排序回调
+  // 绑定拖拽排序回调（支持多选原子批量重排与单项兼容）
+  treeProvider.onBatchReorderCallback = (items, targetGroup, targetSymbol) =>
+    watchlistOps.handleBatchReorder(items, targetGroup, targetSymbol);
   treeProvider.onReorderCallback = (sourceGroup, sourceSymbol, targetGroup, targetSymbol) =>
     watchlistOps.handleReorder(sourceGroup, sourceSymbol, targetGroup, targetSymbol);
 
@@ -81,8 +85,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   SettingsWebviewPanel.onDidUpdateSetting = (key: string, value: any) => {
     if (key === "restoreDefaults") {
       config = readConfig();
+      config.alerts = {};
+      scheduler.alertManager.resetCooldown();
+      treeProvider.setAlerts({});
       scheduler.updateStatusBar(config);
       scheduler.rebuildTree();
+      SettingsWebviewPanel.syncSettings();
+      return;
+    }
+
+    if (key === "alerts") {
+      config.alerts = value || {};
+      treeProvider.setAlerts(config.alerts);
+      scheduler.rebuildTree();
+      SettingsWebviewPanel.syncSettings();
       return;
     }
 
@@ -149,6 +165,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       config.alpha.proxyUrl = pUrl;
       resetProxyCache();
       scheduler.start();
+    } else if (key === "alerts") {
+      config.alerts = value || {};
+      treeProvider.setAlerts(config.alerts);
+    } else if (key === "alertNotificationMode") {
+      config.alertNotificationMode = value || "notification";
+    } else if (key === "alertCooldownMinutes") {
+      config.alertCooldownMinutes = Number(value) || 15;
     }
 
     const dotIndex = key.indexOf(".");
@@ -184,11 +207,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         treeProvider.setBossKey(isBossActive);
         treeProvider.setMaskMode(config.maskMode);
         treeProvider.setColorNeutral(config.colorNeutral);
+        treeProvider.setAlerts(config.alerts || {});
         statusBar.setMaskMode(config.maskMode);
         statusBar.setColorNeutral(config.colorNeutral);
 
         scheduler.updateStatusBar(config);
         scheduler.rebuildTree();
+        SettingsWebviewPanel.syncSettings();
 
         // 仅在网络/轮询周期/板块开关变动，或自选列表发生实际标的增删时才重启定时器并触发网络拉取
         // 纯 UI 配置（如 maskMode, colorNeutral, statusBar）或同组拖拽、跨组移动完全不重复打全量网络（标的报价已在内存缓存中）
@@ -236,6 +261,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
   SettingsWebviewPanel.onDidUpdateSetting = undefined;
+  SettingsWebviewPanel.getQuoteCache = undefined;
 
   _scheduler?.dispose();
   _scheduler = undefined;

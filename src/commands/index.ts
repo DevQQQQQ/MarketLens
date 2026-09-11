@@ -23,7 +23,7 @@ export function registerCommands(
   context.subscriptions.push(
     // 打开设置界面（专属 Webview 控制台面板）
     vscode.commands.registerCommand("marketlens.openSettings", () => {
-      const extVersion = context.extension?.packageJSON?.version || "1.1.2";
+      const extVersion = context.extension?.packageJSON?.version || "1.1.4";
       SettingsWebviewPanel.createOrShow(context.extensionUri, extVersion);
     }),
 
@@ -139,6 +139,14 @@ export function registerCommands(
     // 一键清空自选
     vscode.commands.registerCommand("marketlens.clearWatchlist", async () => {
       await SettingsWebviewPanel.clearWatchlist();
-    })
+    }),
+
+    // 设置价格预警（右键菜单或命令面板触发）
+    vscode.commands.registerCommand(
+      "marketlens.setAlert",
+      async (node?: StockItem) => {
+        await watchlistOps.setAlert(node);
+      }
+    )
   );
 }

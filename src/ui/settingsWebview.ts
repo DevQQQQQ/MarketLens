@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { detectAvailablePort, getCachedWorkingPort, resetProxyCache } from "../services/network";
 import { getSettingsWebviewHtml } from "./settingsHtml";
 import { logger } from "../utils/logger";
+import { MarketItem } from "../types";
+import { normalizeSymbolKey, resolveItemDisplayName } from "../utils/symbolHelper";
 
 const ALLOWED_CONFIG_KEYS = new Set([
   "proxyPort",
@@ -34,6 +36,9 @@ const ALLOWED_CONFIG_KEYS = new Set([
   "alpha.statusBar",
   "alpha.networkMode",
   "alpha.proxyUrl",
+  "alerts",
+  "alertNotificationMode",
+  "alertCooldownMinutes",
 ]);
 
 function isAllowedUrl(urlString: string): boolean {
@@ -48,11 +53,12 @@ function isAllowedUrl(urlString: string): boolean {
 export class SettingsWebviewPanel {
   public static currentPanel: SettingsWebviewPanel | undefined;
   public static onDidUpdateSetting?: (key: string, value: any) => void;
+  public static getQuoteCache?: () => Map<string, MarketItem>;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _version: string;
   private _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(extensionUri: vscode.Uri, version: string = "1.1.2") {
+  public static createOrShow(extensionUri: vscode.Uri, version: string = "1.1.4") {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
@@ -85,7 +91,7 @@ export class SettingsWebviewPanel {
     return text;
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, version: string = "1.1.2") {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, version: string = "1.1.4") {
     this._panel = panel;
     this._version = version;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -231,6 +237,24 @@ export class SettingsWebviewPanel {
           case "clearWatchlist":
             await SettingsWebviewPanel.clearWatchlist();
             break;
+          case "clearAllAlerts": {
+            const confirm = await vscode.window.showWarningMessage(
+              "确定要清空当前所有自选标的的价格预警规则吗？",
+              { modal: true },
+              "确认清空",
+              "取消"
+            );
+            if (confirm === "确认清空") {
+              try {
+                SettingsWebviewPanel.onDidUpdateSetting?.("alerts", {});
+              } catch (_) {}
+              const cfg = vscode.workspace.getConfiguration("marketlens");
+              await cfg.update("alerts", {}, vscode.ConfigurationTarget.Global);
+              this.sendCurrentSettings();
+              vscode.window.showInformationMessage("✅ 已清空所有价格预警规则");
+            }
+            break;
+          }
           case "openExternal":
             if (message.url && isAllowedUrl(message.url)) {
               await vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -270,7 +294,7 @@ export class SettingsWebviewPanel {
 
   public static async restoreDefaults(): Promise<boolean> {
     const confirm = await vscode.window.showWarningMessage(
-      "确定要将 MarketLens 恢复为出厂默认设置吗？\n所有自选标的列表将重置为初始预设（A股10只/港股6只/美股9只/Binance12个/Alpha12个），自定义配置也将还原。",
+      "确定要将 MarketLens 恢复为出厂默认设置吗？\n所有自选标的列表将重置为初始预设（A股10只/港股6只/美股9只/Binance12个/Alpha12个），所有价格预警规则与自定义配置也将全部还原。",
       { modal: true },
       "确认恢复",
       "取消"
@@ -279,11 +303,20 @@ export class SettingsWebviewPanel {
       return false;
     }
 
+    // 1. 立即同步重置内存状态（0延迟清空树节点 🔔 图标与状态栏预警）
+    try {
+      SettingsWebviewPanel.onDidUpdateSetting?.("restoreDefaults", true);
+    } catch (_) {}
+
     const cfg = vscode.workspace.getConfiguration("marketlens");
-    // 先清空核心 watchlist
+    // 先清空核心 watchlist 与价格预警 alerts
     await cfg.update("watchlist", undefined, vscode.ConfigurationTarget.Global);
+    await cfg.update("alerts", undefined, vscode.ConfigurationTarget.Global);
 
     const keys = [
+      "alerts",
+      "alertNotificationMode",
+      "alertCooldownMinutes",
       "proxyPort",
       "proxyUrl",
       "autoRefresh",
@@ -324,15 +357,10 @@ export class SettingsWebviewPanel {
       SettingsWebviewPanel.currentPanel.sendCurrentSettings();
     }
 
-    // 立即通知重置内存状态
-    try {
-      SettingsWebviewPanel.onDidUpdateSetting?.("restoreDefaults", true);
-    } catch (_) {}
-
     // 触发全局强制刷新全部最新行情
     await vscode.commands.executeCommand("marketlens.refresh");
 
-    vscode.window.showInformationMessage("✅ MarketLens 已成功恢复为出厂默认设置，并已刷新全部实时行情！");
+    vscode.window.showInformationMessage("✅ MarketLens 已成功恢复为出厂默认设置（价格预警与自选列表均已还原初始状态）！");
     return true;
   }
 
@@ -429,12 +457,51 @@ export class SettingsWebviewPanel {
       alphaStatusBar:           alphaSB,
       alphaNetworkMode:         cfg.get<string>("alpha.networkMode", "proxy"),
       alphaProxyUrl:            proxyUrl,
+      alerts:                   cfg.get<Record<string, any>>("alerts", {}),
+      alertNotificationMode:    cfg.get<string>("alertNotificationMode", "notification"),
+      alertCooldownMinutes:     cfg.get<number>("alertCooldownMinutes", 15),
+      watchlist:                (() => {
+        const rawWatchlist = cfg.get<Record<string, any[]>>("watchlist", {});
+        const quoteCache = SettingsWebviewPanel.getQuoteCache?.();
+        const resolvedWatchlist: Record<string, any[]> = {};
+
+        for (const [grp, items] of Object.entries(rawWatchlist)) {
+          resolvedWatchlist[grp] = (items || []).map((it) => {
+            if (!it) return it;
+            const sym = typeof it === "string" ? it : it.symbol;
+            const confName = typeof it === "object" ? it.name : undefined;
+            let cached: MarketItem | undefined;
+            if (quoteCache && sym) {
+              const normKey = normalizeSymbolKey(sym);
+              const rawTicker = sym.toLowerCase().replace(/^(us|hk|sh|sz|bj)[\._\-]?/i, "");
+              cached =
+                quoteCache.get(normKey) ||
+                quoteCache.get(sym) ||
+                quoteCache.get(sym.toLowerCase()) ||
+                quoteCache.get(rawTicker);
+            }
+            const finalName = resolveItemDisplayName(confName, sym, cached);
+            return typeof it === "object"
+              ? { ...it, name: finalName }
+              : { symbol: sym, name: finalName };
+          });
+        }
+        return resolvedWatchlist;
+      })(),
     };
   }
 
-  private sendCurrentSettings() {
-    const data = this._getCurrentSettingsData();
-    this._panel.webview.postMessage({ command: "initSettings", data });
+  public sendCurrentSettings(): void {
+    if (this._panel && this._panel.webview) {
+      const data = this._getCurrentSettingsData();
+      this._panel.webview.postMessage({ command: "initSettings", data });
+    }
+  }
+
+  public static syncSettings(): void {
+    if (SettingsWebviewPanel.currentPanel) {
+      SettingsWebviewPanel.currentPanel.sendCurrentSettings();
+    }
   }
 
   public dispose() {

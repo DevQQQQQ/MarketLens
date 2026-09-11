@@ -26,8 +26,8 @@ export function isSameSymbol(a?: string, b?: string): boolean {
     return true;
   }
 
-  const clean1 = s1.replace(/[\._\-]/g, "");
-  const clean2 = s2.replace(/[\._\-]/g, "");
+  const clean1 = s1.replace(/[\._\-\/]/g, "");
+  const clean2 = s2.replace(/[\._\-\/]/g, "");
   if (clean1 === clean2) {
     return true;
   }
@@ -88,7 +88,7 @@ export function isSameSymbol(a?: string, b?: string): boolean {
 export function normalizeSymbolKey(sym?: string): string {
   if (!sym) return "";
   const s = sym.trim();
-  const clean = s.toLowerCase().replace(/[\._\-]/g, "");
+  const clean = s.toLowerCase().replace(/[\._\-\/]/g, "");
 
   // 1. 如果是港股：去除 hk 前缀及前导 0，如 hk00700 -> hk700, 00700 -> hk700
   if (/^hk\d+$/.test(clean)) {
@@ -100,16 +100,16 @@ export function normalizeSymbolKey(sym?: string): string {
 
   // 2. 如果是美股：去除显式分隔符前缀（如 us.aapl, us_aapl, us-aapl -> aapl, us.usb -> usb, us.brk.b -> brkb）
   if (/^us[\._\-]/i.test(s)) {
-    return s.replace(/^us[\._\-]/i, "").toLowerCase().replace(/[\._\-]/g, "");
+    return s.replace(/^us[\._\-]/i, "").toLowerCase().replace(/[\._\-\/]/g, "");
   }
 
   // 3. 腾讯美股前缀格式（区分大小写：小写 us + 大写字母，如 usAAPL -> aapl, usAMD -> amd, usNET -> net, usUSB -> usb, usBRK.B -> brkb）
   // 真实大写 ticker（如 USB, USM, USA）首字母为大写 U，不会被误剥离
   if (/^us[A-Z]/.test(s)) {
-    return s.slice(2).toLowerCase().replace(/[\._\-]/g, "");
+    return s.slice(2).toLowerCase().replace(/[\._\-\/]/g, "");
   }
 
-  // A股保留 sh/sz/bj 前缀，其他（包括 USB, B, BTCUSDT, 合约地址等）直接返回 clean
+  // A股保留 sh/sz/bj 前缀，其他（包括 USB, B, BTCUSDT, SOL/USDT, 合约地址等）直接返回 clean
   return clean;
 }
 
@@ -390,6 +390,40 @@ export function computeStatusBarEnabled(
 }
 
 /**
+ * 统一解析标的的最终展示名称：
+ * 1. 优先使用用户在配置中显式定义的自定义名称（如 "Cloudflare"、"纳斯达克综合指数" 或用户设置的昵称）；
+ * 2. 若配置中的名称为空，或与代码本身相同（如未命名直接填写的 "600030"、"usAAPL"），则回退使用实时行情接口返回的标准官方名称（如 "贵州茅台"、"苹果"）；
+ * 3. 若均无，则兜底使用代码本身。
+ * 确保侧边栏看板、设置面板、状态栏、预警向导等所有界面全局统一！
+ */
+export function resolveItemDisplayName(
+  confName?: string,
+  confSymbol?: string,
+  cachedQuote?: { name?: string; symbol?: string }
+): string {
+  const trimmedConf = confName?.trim();
+  const trimmedSym = confSymbol?.trim();
+
+  const isCustomName =
+    !!trimmedConf &&
+    (!trimmedSym || (
+      !isSameSymbol(trimmedConf, trimmedSym) &&
+      trimmedConf.toLowerCase() !== trimmedSym.toLowerCase() &&
+      trimmedConf.toLowerCase() !== normalizeSymbolKey(trimmedSym).toLowerCase()
+    ));
+
+  if (isCustomName) {
+    return trimmedConf!;
+  }
+
+  if (cachedQuote?.name && cachedQuote.name.trim()) {
+    return cachedQuote.name.trim();
+  }
+
+  return trimmedConf || trimmedSym || "";
+}
+
+/**
  * 纯算法函数：从 watchlist 中按板块开关与轮播开关提取所有参与底部状态栏轮播的标的行情
  * 优先从 quoteCache 读取最新报价（即使对应市场因闭市跳过了周期网络拉取，依然保留收盘报价轮播），
  * 若 quoteCache 暂无则提供基础占位，确保全量预设（如 49 个标的）正常流转。
@@ -456,12 +490,17 @@ export function extractStatusBarQuotes<
         quoteCache.get(item.symbol.toLowerCase()) ||
         quoteCache.get(rawTicker);
 
+      const displayName = resolveItemDisplayName(item.name, item.symbol, cached);
+
       if (cached) {
-        result.push(cached);
+        result.push({
+          ...cached,
+          name: displayName,
+        });
       } else {
         result.push({
           id: item.symbol,
-          name: item.name || item.symbol,
+          name: displayName,
           symbol: item.symbol,
           type: (assetType || item.type || "A_SHARE") as any,
           price: 0,
@@ -472,6 +511,122 @@ export function extractStatusBarQuotes<
   }
 
   return result;
+}
+
+export interface ReorderItemDescriptor {
+  sourceGroup: string;
+  sourceSymbol: string;
+}
+
+/**
+ * 纯算法函数：批量计算同组/跨组拖拽重排后的新 watchlist 结构（原子性操作）
+ * 无论单项或多项拖拽，均在内存中一次性完成字典变换，避免向磁盘发起多次重复写入
+ * 若未发生有效变动返回 null
+ */
+export function batchReorderWatchlist(
+  currentWatchlist: Record<string, any[]>,
+  itemsToMove: ReorderItemDescriptor[],
+  targetGroup: string,
+  targetSymbol?: string
+): Record<string, any[]> | null {
+  if (!itemsToMove || !itemsToMove.length || !currentWatchlist[targetGroup]) {
+    return null;
+  }
+
+  // 1. 若目标标的本身就是被拖拽标的之一，拖拽到自身无意义，直接忽略
+  if (
+    targetSymbol &&
+    itemsToMove.some(
+      (m) =>
+        m.sourceGroup === targetGroup &&
+        (isSameSymbol(m.sourceSymbol, targetSymbol) ||
+          m.sourceSymbol.toLowerCase() === targetSymbol.toLowerCase())
+    )
+  ) {
+    return null;
+  }
+
+  // 2. 严格限制：只能在当前分组内移动，禁止跨分组转移
+  if (!itemsToMove.every((m) => m.sourceGroup === targetGroup)) {
+    return null;
+  }
+
+  // 3. 克隆 watchlist 字典
+  const updated: Record<string, any[]> = {};
+  for (const [grp, itms] of Object.entries(currentWatchlist)) {
+    updated[grp] = [...(itms || [])];
+  }
+
+  const targetGroupItemsBefore = currentWatchlist[targetGroup] || [];
+
+  // 计算同组拖拽时的方向（以选中的首个标的与 targetSymbol 的相对位置判定）
+  let isDownward = false;
+  if (targetSymbol) {
+    const origTargetIndex = targetGroupItemsBefore.findIndex(
+      (it) =>
+        isSameSymbol(it.symbol, targetSymbol) ||
+        it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
+    );
+    const firstSourceIndex = targetGroupItemsBefore.findIndex(
+      (it) =>
+        isSameSymbol(it.symbol, itemsToMove[0].sourceSymbol) ||
+        it.symbol?.toLowerCase() === itemsToMove[0].sourceSymbol.toLowerCase()
+    );
+    if (origTargetIndex !== -1 && firstSourceIndex !== -1 && firstSourceIndex < origTargetIndex) {
+      isDownward = true;
+    }
+  }
+
+  // 4. 依次摘除需要移动的 items
+  const extractedItems: any[] = [];
+  for (const descriptor of itemsToMove) {
+    const { sourceGroup, sourceSymbol } = descriptor;
+    const groupList = updated[sourceGroup];
+    if (!groupList) continue;
+
+    const idx = groupList.findIndex(
+      (it) =>
+        isSameSymbol(it.symbol, sourceSymbol) ||
+        it.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
+    );
+    if (idx !== -1) {
+      const [removed] = groupList.splice(idx, 1);
+      extractedItems.push(removed);
+    }
+  }
+
+  if (extractedItems.length === 0) {
+    return null;
+  }
+
+  // 5. 插入目标组
+  const targetList = updated[targetGroup];
+  if (!targetList) {
+    return null;
+  }
+
+  if (targetSymbol) {
+    const newTargetIndex = targetList.findIndex(
+      (it) =>
+        isSameSymbol(it.symbol, targetSymbol) ||
+        it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
+    );
+
+    if (newTargetIndex !== -1) {
+      if (isDownward) {
+        targetList.splice(newTargetIndex + 1, 0, ...extractedItems);
+      } else {
+        targetList.splice(newTargetIndex, 0, ...extractedItems);
+      }
+    } else {
+      targetList.push(...extractedItems);
+    }
+  } else {
+    // 拖拽到组名（targetSymbol 未指定）：同组拖到组名置顶
+    targetList.unshift(...extractedItems);
+  }
+
+  return updated;
 }
 
 /**
@@ -485,91 +640,116 @@ export function reorderWatchlist(
   targetGroup: string,
   targetSymbol?: string
 ): Record<string, any[]> | null {
-  if (!currentWatchlist[sourceGroup] || !currentWatchlist[targetGroup]) {
-    return null;
-  }
-
-  const updated = { ...currentWatchlist };
-
-  if (sourceGroup === targetGroup) {
-    const items = [...updated[sourceGroup]];
-    const origDragIndex = items.findIndex(
-      (it) =>
-        isSameSymbol(it.symbol, sourceSymbol) ||
-        it.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
-    );
-    if (origDragIndex === -1) {
-      return null;
-    }
-
-    if (targetSymbol) {
-      const origTargetIndex = items.findIndex(
-        (it) =>
-          isSameSymbol(it.symbol, targetSymbol) ||
-          it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
-      );
-      if (origTargetIndex === -1 || origTargetIndex === origDragIndex) {
-        return null;
-      }
-
-      const [draggedItem] = items.splice(origDragIndex, 1);
-      const newTargetIndex = items.findIndex(
-        (it) =>
-          isSameSymbol(it.symbol, targetSymbol) ||
-          it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
-      );
-      if (newTargetIndex !== -1) {
-        if (origDragIndex < origTargetIndex) {
-          items.splice(newTargetIndex + 1, 0, draggedItem);
-        } else {
-          items.splice(newTargetIndex, 0, draggedItem);
-        }
-      } else {
-        items.push(draggedItem);
-      }
-    } else {
-      // 拖拽到组名上时放到最顶部
-      const [draggedItem] = items.splice(origDragIndex, 1);
-      items.unshift(draggedItem);
-    }
-
-    updated[sourceGroup] = items;
-    return updated;
-  } else {
-    // 跨组移动
-    const sourceItems = [...updated[sourceGroup]];
-    const targetItems = [...updated[targetGroup]];
-
-    const dragIndex = sourceItems.findIndex(
-      (it) =>
-        isSameSymbol(it.symbol, sourceSymbol) ||
-        it.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
-    );
-    if (dragIndex === -1) {
-      return null;
-    }
-
-    const [draggedItem] = sourceItems.splice(dragIndex, 1);
-    updated[sourceGroup] = sourceItems;
-
-    if (targetSymbol) {
-      const targetIndex = targetItems.findIndex(
-        (it) =>
-          isSameSymbol(it.symbol, targetSymbol) ||
-          it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
-      );
-      if (targetIndex !== -1) {
-        targetItems.splice(targetIndex, 0, draggedItem);
-      } else {
-        targetItems.push(draggedItem);
-      }
-    } else {
-      targetItems.push(draggedItem);
-    }
-
-    updated[targetGroup] = targetItems;
-    return updated;
-  }
+  return batchReorderWatchlist(
+    currentWatchlist,
+    [{ sourceGroup, sourceSymbol }],
+    targetGroup,
+    targetSymbol
+  );
 }
+
+/**
+ * 纯算法函数：基于当前有效自选清单修剪清理 quoteCache 中已失效的历史死缓存（Active-Set Prune）
+ * 无论标的是通过 UI 删除、快捷键清空，还是用户直接在 settings.json 中剪切/编辑，
+ * 只要不在当前 watchlist 范围内的历史残留项，均从 quoteCache 中安全剔除。
+ * 同时 100% 保留当前自选中即使闭市也依然需要的收盘报价缓存。
+ *
+ * @param watchlist 当前生效的自选配置
+ * @param quoteCache 内存行情缓存 Map
+ * @returns 实际被清理的失效缓存 Key 数量
+ */
+export function pruneQuoteCache<T extends { symbol?: string; id?: string }>(
+  watchlist: Record<string, any[]>,
+  quoteCache: Map<string, T>
+): number {
+  if (!quoteCache || quoteCache.size === 0) {
+    return 0;
+  }
+
+  // 1. 收集当前 watchlist 中所有合法活跃标的的标识符集合
+  const activeIdentifiers = new Set<string>();
+  for (const items of Object.values(watchlist || {})) {
+    for (const item of items || []) {
+      if (!item || !item.symbol) continue;
+
+      const rawSym = String(item.symbol).trim();
+      if (!rawSym) continue;
+
+      activeIdentifiers.add(rawSym);
+      activeIdentifiers.add(rawSym.toLowerCase());
+
+      const normKey = normalizeSymbolKey(rawSym);
+      if (normKey) {
+        activeIdentifiers.add(normKey);
+        activeIdentifiers.add(normKey.toLowerCase());
+      }
+
+      const rawTicker = rawSym.toLowerCase().replace(/^(us|hk|sh|sz|bj)[\._\-]?/i, "");
+      if (rawTicker) {
+        activeIdentifiers.add(rawTicker);
+      }
+
+      if (item.id) {
+        const rawId = String(item.id).trim();
+        activeIdentifiers.add(rawId);
+        activeIdentifiers.add(rawId.toLowerCase());
+        const normId = normalizeSymbolKey(rawId);
+        if (normId) {
+          activeIdentifiers.add(normId);
+          activeIdentifiers.add(normId.toLowerCase());
+        }
+      }
+    }
+  }
+
+  // 2. 遍历检查 quoteCache，标记所有死缓存 Key
+  const deadKeys: string[] = [];
+  for (const [cacheKey, quote] of quoteCache.entries()) {
+    const keyLower = cacheKey.toLowerCase();
+    // 检查缓存键本身是否直接命中活跃标识
+    if (activeIdentifiers.has(cacheKey) || activeIdentifiers.has(keyLower)) {
+      continue;
+    }
+
+    // 检查缓存对象所关联的 symbol / id 是否能命中当前活跃标的
+    let belongsToActive = false;
+    if (quote) {
+      if (quote.symbol) {
+        const sym = String(quote.symbol).trim();
+        const normSym = normalizeSymbolKey(sym);
+        if (
+          activeIdentifiers.has(sym) ||
+          activeIdentifiers.has(sym.toLowerCase()) ||
+          (normSym && activeIdentifiers.has(normSym))
+        ) {
+          belongsToActive = true;
+        }
+      }
+      if (!belongsToActive && quote.id) {
+        const id = String(quote.id).trim();
+        const normId = normalizeSymbolKey(id);
+        if (
+          activeIdentifiers.has(id) ||
+          activeIdentifiers.has(id.toLowerCase()) ||
+          (normId && activeIdentifiers.has(normId))
+        ) {
+          belongsToActive = true;
+        }
+      }
+    }
+
+    if (!belongsToActive) {
+      deadKeys.push(cacheKey);
+    }
+  }
+
+  // 3. 执行安全的淘汰清理
+  for (const k of deadKeys) {
+    quoteCache.delete(k);
+  }
+
+  return deadKeys.length;
+}
+
 
 

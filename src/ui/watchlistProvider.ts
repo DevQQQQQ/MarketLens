@@ -1,7 +1,6 @@
-// src/ui/watchlistProvider.ts
 import * as vscode from "vscode";
-import { MarketItem, WatchlistConfig, WatchConfigItem } from "../types";
-import { normalizeSymbolKey, resolveItemAssetType } from "../utils/symbolHelper";
+import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig } from "../types";
+import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName } from "../utils/symbolHelper";
 import { isDisplayMasked } from "../utils/maskState";
 
 /**
@@ -71,22 +70,50 @@ export class GroupItem extends vscode.TreeItem {
 
 /** 单只股票 / 代币节点 */
 export class StockItem extends vscode.TreeItem {
+  public alertRule?: PriceAlertItem;
+  public confName?: string;
+
   constructor(
     public item: MarketItem,
     public groupName: string,
     public readonly confSymbol: string,
     private maskMode: boolean,
-    private colorNeutral: boolean = false
+    private colorNeutral: boolean = false,
+    alertRule?: PriceAlertItem,
+    confName?: string
   ) {
-    super(item.name || item.symbol, vscode.TreeItemCollapsibleState.None);
+    super(resolveItemDisplayName(confName, confSymbol, item), vscode.TreeItemCollapsibleState.None);
+    this.confName = confName;
     this.id = `${groupName}_${confSymbol}`;
     this.contextValue = "stockItem";
-    this.refresh(item, maskMode, colorNeutral);
+    this.alertRule = alertRule;
+    this.refresh(item, maskMode, colorNeutral, alertRule, confName);
   }
 
   /** 更新显示内容与悬停详细信息 */
-  refresh(item: MarketItem, maskMode: boolean, colorNeutral: boolean = false): void {
+  refresh(
+    item: MarketItem,
+    maskMode: boolean,
+    colorNeutral: boolean = false,
+    alertRule?: PriceAlertItem,
+    confName?: string
+  ): void {
     this.item = item;
+    if (alertRule !== undefined) {
+      this.alertRule = alertRule;
+    }
+    if (confName !== undefined) {
+      this.confName = confName;
+    }
+    const currentAlert = this.alertRule;
+    const hasAlert = !!(
+      currentAlert &&
+      currentAlert.enabled !== false &&
+      ((currentAlert.above !== undefined && Number.isFinite(currentAlert.above)) ||
+       (currentAlert.below !== undefined && Number.isFinite(currentAlert.below)) ||
+       (currentAlert.changePercent !== undefined && Number.isFinite(currentAlert.changePercent)))
+    );
+
     const currency = item.currency || (item.type === "A_SHARE" ? "CNY" : (item.type === "HK_STOCK" ? "HKD" : "USD"));
     const currSym = currency === "CNY" ? "¥" : (currency === "HKD" ? "HK$" : "$");
 
@@ -97,10 +124,12 @@ export class StockItem extends vscode.TreeItem {
     const arrow = item.changePercent >= 0 ? "▲" : "▼";
     const colorHint = colorNeutral ? "•" : (item.changePercent >= 0 ? "🟢" : "🔴");
 
-    this.label = item.name || item.symbol;
+    const alertSuffix = hasAlert ? " 🔔" : "";
+    const displayName = resolveItemDisplayName(this.confName, this.confSymbol, item);
+    this.label = displayName;
     this.description = maskMode
-      ? "****  **"
-      : (hasQuote ? `${priceStr}  ${arrow} ${pctStr}` : "获取行情中…");
+      ? `****  **${alertSuffix}`
+      : (hasQuote ? `${priceStr}  ${arrow} ${pctStr}${alertSuffix}` : `获取行情中…${alertSuffix}`);
 
     // ── 差异化构建 Tooltip ──
     const isAlpha = item.type === "ALPHA_TOKEN" || item.type === "BSC_TOKEN" || item.chain !== undefined;
@@ -176,6 +205,20 @@ export class StockItem extends vscode.TreeItem {
       mdText += `\n\n> 💡 **提示**：若长期处于“获取行情中”，可能是当前网络或公司内网拦截了该接口。建议在插件设置中开启本地代理端口（如 10808），或在设置中暂时关闭该分组。`;
     }
 
+    if (hasAlert && currentAlert) {
+      const parts: string[] = [];
+      if (currentAlert.above !== undefined && Number.isFinite(currentAlert.above)) {
+        parts.push(`突破上限 ≥ ${currentAlert.above} ${currSym}`);
+      }
+      if (currentAlert.below !== undefined && Number.isFinite(currentAlert.below)) {
+        parts.push(`跌破下限 ≤ ${currentAlert.below} ${currSym}`);
+      }
+      if (currentAlert.changePercent !== undefined && Number.isFinite(currentAlert.changePercent)) {
+        parts.push(`单日剧烈波动 ≥ ±${currentAlert.changePercent}%`);
+      }
+      mdText += `\n\n---\n🔔 **到价与波动预警（已生效）**\n• ${parts.join("\n• ")}`;
+    }
+
     this.tooltip = new vscode.MarkdownString(mdText);
     this.tooltip.isTrusted = true;
 
@@ -205,6 +248,12 @@ export class WatchlistProvider
   readonly dropMimeTypes = ["application/vnd.code.tree.marketlens.watchlist"];
   readonly dragMimeTypes = ["application/vnd.code.tree.marketlens.watchlist"];
 
+  public onBatchReorderCallback?: (
+    items: Array<{ sourceGroup: string; sourceSymbol: string }>,
+    targetGroup: string,
+    targetSymbol?: string
+  ) => void | Promise<void>;
+
   public onReorderCallback?: (
     sourceGroup: string,
     sourceSymbol: string,
@@ -219,11 +268,41 @@ export class WatchlistProvider
 
   private groups: GroupItem[] = [];
   private stockMap = new Map<string, StockItem[]>();
+  private alertsConfig: AlertsConfig = {};
 
   constructor(
     private maskMode: boolean,
     private colorNeutral: boolean = false
   ) {}
+
+  public setAlerts(alerts: AlertsConfig): void {
+    this.alertsConfig = alerts || {};
+    for (const node of this.getAllUniqueNodes()) {
+      const alertRule = this.getAlertRule(node.confSymbol, node.item);
+      node.refresh(node.item, this.isMasked(), this.colorNeutral, alertRule);
+    }
+    this._onDidChangeTreeData.fire();
+  }
+
+  public getAlertRule(confSymbol: string, item?: MarketItem): PriceAlertItem | undefined {
+    const alerts = this.alertsConfig;
+    if (!alerts || Object.keys(alerts).length === 0) return undefined;
+    const normKey = normalizeSymbolKey(confSymbol);
+    const idKey = item?.id ? normalizeSymbolKey(item.id) : undefined;
+    const symKey = item?.symbol ? normalizeSymbolKey(item.symbol) : undefined;
+    const rawTicker = confSymbol.toLowerCase().replace(/^(us|hk|sh|sz|bj)[\._\-\/]?/i, "");
+
+    return (
+      (normKey && alerts[normKey] ? alerts[normKey] : undefined) ||
+      (idKey && alerts[idKey] ? alerts[idKey] : undefined) ||
+      (symKey && alerts[symKey] ? alerts[symKey] : undefined) ||
+      alerts[confSymbol] ||
+      alerts[confSymbol.toLowerCase()] ||
+      (rawTicker && alerts[rawTicker] ? alerts[rawTicker] : undefined) ||
+      (item?.symbol && alerts[item.symbol] ? alerts[item.symbol] : undefined) ||
+      (item?.symbol && alerts[item.symbol.toLowerCase()] ? alerts[item.symbol.toLowerCase()] : undefined)
+    );
+  }
 
   handleDrag(
     source: readonly (GroupItem | StockItem)[],
@@ -292,11 +371,16 @@ export class WatchlistProvider
         target.item?.id;
     }
 
-    if (!targetGroup || !this.onReorderCallback) {
+    if (!targetGroup) {
       return;
     }
 
-    // 支持多选拖拽：按原顺序依次重排或跨组转移所有拖拽选中的标的
+    if (!this.onBatchReorderCallback && !this.onReorderCallback) {
+      return;
+    }
+
+    // 提取所有拖拽选中的有效标的列表
+    const itemsToMove: Array<{ sourceGroup: string; sourceSymbol: string }> = [];
     for (const dragged of rawList) {
       const sourceGroup = dragged.groupName;
       const sourceSymbol =
@@ -305,16 +389,32 @@ export class WatchlistProvider
         dragged.id ||
         (dragged.item ? (dragged.item.symbol || dragged.item.id) : undefined);
 
-      if (!sourceGroup || !sourceSymbol) {
-        continue;
+      if (sourceGroup && sourceSymbol) {
+        itemsToMove.push({ sourceGroup, sourceSymbol });
       }
+    }
 
-      await this.onReorderCallback(
-        sourceGroup,
-        sourceSymbol,
-        targetGroup,
-        targetSymbol
-      );
+    if (itemsToMove.length === 0) {
+      return;
+    }
+
+    // 严格限制：只能在当前分组内移动，禁止跨分组拖拽
+    if (itemsToMove.some((item) => item.sourceGroup !== targetGroup)) {
+      return;
+    }
+
+    // 优先使用原子化批量重排回调（单次落盘与重绘）
+    if (this.onBatchReorderCallback) {
+      await this.onBatchReorderCallback(itemsToMove, targetGroup, targetSymbol);
+    } else if (this.onReorderCallback) {
+      for (const item of itemsToMove) {
+        await this.onReorderCallback(
+          item.sourceGroup,
+          item.sourceSymbol,
+          targetGroup,
+          targetSymbol
+        );
+      }
     }
   }
 
@@ -425,7 +525,8 @@ export class WatchlistProvider
             changePercent: 0,
           };
 
-        const node = new StockItem(found, groupName, conf.symbol, this.isMasked(), this.colorNeutral);
+        const alertRule = this.getAlertRule(conf.symbol, found);
+        const node = new StockItem(found, groupName, conf.symbol, this.isMasked(), this.colorNeutral, alertRule, conf.name);
         // 使用规范化 key 存储，辅以原始 conf.symbol 索引，支持同一标的在不同分组中均能刷新
         const registerKey = (k?: string) => {
           if (!k) return;
@@ -466,7 +567,8 @@ export class WatchlistProvider
         const nodes = this.stockMap.get(key as string);
         if (nodes && nodes.length > 0) {
           for (const node of nodes) {
-            node.refresh(q, this.isMasked(), this.colorNeutral);
+            const alertRule = this.getAlertRule(node.confSymbol, q);
+            node.refresh(q, this.isMasked(), this.colorNeutral, alertRule);
           }
           break;
         }

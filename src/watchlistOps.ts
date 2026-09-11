@@ -1,12 +1,10 @@
-// src/watchlistOps.ts
 import * as vscode from "vscode";
 import { StockItem } from "./ui/watchlistProvider";
-import { MarketItem } from "./types";
-import { isSameSymbol, normalizeSymbolKey } from "./utils/symbolHelper";
+import { MarketItem, PriceAlertItem } from "./types";
+import { isSameSymbol, normalizeSymbolKey, resolveItemDisplayName, batchReorderWatchlist, ReorderItemDescriptor } from "./utils/symbolHelper";
 import { validateAndParseInput } from "./utils/inputValidator";
 import { readConfig } from "./utils/config";
-
-import { reorderWatchlist } from "./utils/symbolHelper";
+import { SettingsWebviewPanel } from "./ui/settingsWebview";
 
 export interface WatchlistOpsContext {
   quoteCache: Map<string, MarketItem>;
@@ -23,19 +21,21 @@ export class WatchlistOps {
   }
 
   /**
-   * 处理自选标的拖拽重排（同组与跨组）
+   * 批量处理自选标的拖拽重排（原子化单次磁盘写入）
    */
-  public async handleReorder(
-    sourceGroup: string,
-    sourceSymbol: string,
+  public async handleBatchReorder(
+    itemsToMove: ReorderItemDescriptor[],
     targetGroup: string,
     targetSymbol?: string
   ): Promise<void> {
+    if (!itemsToMove || itemsToMove.length === 0) {
+      return;
+    }
+
     const cfg = readConfig();
-    const newWatchlist = reorderWatchlist(
+    const newWatchlist = batchReorderWatchlist(
       cfg.watchlist,
-      sourceGroup,
-      sourceSymbol,
+      itemsToMove,
       targetGroup,
       targetSymbol
     );
@@ -50,9 +50,26 @@ export class WatchlistOps {
         .update("watchlist", newWatchlist, vscode.ConfigurationTarget.Global);
 
       this.rebuildTree(newWatchlist);
+      SettingsWebviewPanel.syncSettings();
     } catch (err: any) {
       vscode.window.showErrorMessage(`调整标的顺序失败: ${err?.message || err}`);
     }
+  }
+
+  /**
+   * 处理自选标的拖拽重排（同组与跨组，单项兼容入口）
+   */
+  public async handleReorder(
+    sourceGroup: string,
+    sourceSymbol: string,
+    targetGroup: string,
+    targetSymbol?: string
+  ): Promise<void> {
+    return this.handleBatchReorder(
+      [{ sourceGroup, sourceSymbol }],
+      targetGroup,
+      targetSymbol
+    );
   }
 
   /**
@@ -145,6 +162,7 @@ export class WatchlistOps {
 
       // 主动重建树视图，与 pinToTop / removeItem / handleReorder 行为保持一致
       this.rebuildTree(updated);
+      SettingsWebviewPanel.syncSettings();
 
       vscode.window.showInformationMessage(
         `✅ 已添加 "${sym}" 到 ${targetGroup}`
@@ -239,6 +257,7 @@ export class WatchlistOps {
         .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
 
       this.rebuildTree(watchlist);
+      SettingsWebviewPanel.syncSettings();
 
       vscode.window.showInformationMessage(`📌 已将 "${targetName || targetSymbol}" 置顶`);
     } catch (err: any) {
@@ -362,12 +381,171 @@ export class WatchlistOps {
 
       // 重新构建树视图
       this.rebuildTree(watchlist);
+      SettingsWebviewPanel.syncSettings();
 
       vscode.window.showInformationMessage(`✅ 已删除 "${targetName || targetSymbol}"`);
     } catch (err: any) {
       vscode.window.showErrorMessage(
         `无法更新设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
       );
+    }
+  }
+
+  /**
+   * 设置标的价格预警（向导式 QuickPick）
+   */
+  public async setAlert(node?: StockItem): Promise<void> {
+    let targetSymbol: string | undefined;
+    let targetName: string | undefined;
+    let currentPrice: number | undefined;
+
+    if (node && node.item) {
+      targetSymbol = node.confSymbol || node.item.symbol;
+      targetName = resolveItemDisplayName(node.confName, node.confSymbol, node.item);
+      currentPrice = node.item.price;
+    } else {
+      // 若非右键点击触发，则提供自选标的列表以供选择
+      const cfg = readConfig();
+      const allItems: Array<{ label: string; description: string; symbol: string; currentPrice?: number }> = [];
+      for (const [grp, items] of Object.entries(cfg.watchlist)) {
+        for (const item of items) {
+          const normKey = normalizeSymbolKey(item.symbol);
+          const cached = this.quoteCache.get(normKey) || this.quoteCache.get(item.symbol);
+          const finalName = resolveItemDisplayName(item.name, item.symbol, cached);
+          allItems.push({
+            label: finalName,
+            description: `${grp} · ${item.symbol} ${cached?.price ? `(现价: ${cached.price})` : ""}`,
+            symbol: item.symbol,
+            currentPrice: cached?.price,
+          });
+        }
+      }
+
+      if (allItems.length === 0) {
+        vscode.window.showInformationMessage("自选列表为空，请先添加自选标的");
+        return;
+      }
+
+      const picked = await vscode.window.showQuickPick(allItems, {
+        title: "选择要设置预警的自选标的",
+        placeHolder: "搜索股票、币对或合约地址",
+      });
+      if (!picked) return;
+      targetSymbol = picked.symbol;
+      targetName = picked.label;
+      currentPrice = picked.currentPrice;
+    }
+
+    if (!targetSymbol) return;
+    const normKey = normalizeSymbolKey(targetSymbol) || targetSymbol.toLowerCase();
+
+    const cfg = readConfig();
+    const existingAlerts = { ...(cfg.alerts || {}) };
+    const existing = existingAlerts[normKey] || { symbol: targetSymbol, name: targetName, enabled: true };
+
+    const priceHint = currentPrice ? `当前现价: ${currentPrice}` : "暂无现价";
+    const aboveHint = existing.above !== undefined ? ` (当前: ≥ ${existing.above})` : "";
+    const belowHint = existing.below !== undefined ? ` (当前: ≤ ${existing.below})` : "";
+    const pctHint   = existing.changePercent !== undefined ? ` (当前: ±${existing.changePercent}%)` : "";
+
+    const conditionOptions = [
+      {
+        label: `$(arrow-up) 突破上限预警 (高于目标价)${aboveHint}`,
+        action: "above",
+        description: "现价大于等于目标值时提醒",
+      },
+      {
+        label: `$(arrow-down) 跌破下限预警 (低于目标价)${belowHint}`,
+        action: "below",
+        description: "现价小于等于目标值时提醒",
+      },
+      {
+        label: `$(pulse) 单日剧烈波动预警 (涨跌幅突破)${pctHint}`,
+        action: "changePercent",
+        description: "日内涨跌幅绝对值超过阈值百分比时提醒",
+      },
+      {
+        label: "$(trash) 清除此标的预警",
+        action: "clear",
+        description: "删除该标的所有预警规则",
+      },
+    ];
+
+    const pickedCond = await vscode.window.showQuickPick(conditionOptions, {
+      title: `为【${targetName || targetSymbol}】设置预警 (${priceHint})`,
+      placeHolder: "选择预警类型",
+    });
+
+    if (!pickedCond) return;
+
+    if (pickedCond.action === "clear") {
+      delete existingAlerts[normKey];
+      await vscode.workspace
+        .getConfiguration("marketlens")
+        .update("alerts", existingAlerts, vscode.ConfigurationTarget.Global);
+      this.rebuildTree();
+      SettingsWebviewPanel.syncSettings();
+      vscode.window.showInformationMessage(`✅ 已清除【${targetName || targetSymbol}】的所有预警`);
+      return;
+    }
+
+    let prompt = "";
+    let defaultValue = "";
+    if (pickedCond.action === "above") {
+      prompt = `请输入【${targetName || targetSymbol}】突破上限价格（需大于 0，现价 ${currentPrice || "--"}）:`;
+      defaultValue = existing.above ? String(existing.above) : currentPrice ? String(currentPrice) : "";
+    } else if (pickedCond.action === "below") {
+      prompt = `请输入【${targetName || targetSymbol}】跌破下限价格（需大于 0，现价 ${currentPrice || "--"}）:`;
+      defaultValue = existing.below ? String(existing.below) : currentPrice ? String(currentPrice) : "";
+    } else if (pickedCond.action === "changePercent") {
+      prompt = `请输入【${targetName || targetSymbol}】单日涨跌幅阈值百分比（如输入 5 表示涨跌超 5% 预警）:`;
+      defaultValue = existing.changePercent ? String(existing.changePercent) : "5";
+    }
+
+    const inputVal = await vscode.window.showInputBox({
+      title: `设置预警阈值 · ${targetName || targetSymbol}`,
+      prompt,
+      value: defaultValue,
+      validateInput: (val) => {
+        const num = parseFloat(val);
+        if (isNaN(num) || num <= 0) {
+          return "请输入大于 0 的有效正数";
+        }
+        return null;
+      },
+    });
+
+    if (!inputVal) return;
+    const numVal = parseFloat(inputVal);
+
+    const updatedItem: PriceAlertItem = {
+      ...existing,
+      symbol: targetSymbol,
+      name: targetName,
+      enabled: true,
+    };
+
+    if (pickedCond.action === "above") {
+      updatedItem.above = numVal;
+    } else if (pickedCond.action === "below") {
+      updatedItem.below = numVal;
+    } else if (pickedCond.action === "changePercent") {
+      updatedItem.changePercent = numVal;
+    }
+
+    existingAlerts[normKey] = updatedItem;
+
+    try {
+      await vscode.workspace
+        .getConfiguration("marketlens")
+        .update("alerts", existingAlerts, vscode.ConfigurationTarget.Global);
+      this.rebuildTree();
+      SettingsWebviewPanel.syncSettings();
+      vscode.window.showInformationMessage(
+        `✅ 已成功为【${targetName || targetSymbol}】设置预警！`
+      );
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`保存预警失败: ${err?.message || err}`);
     }
   }
 }

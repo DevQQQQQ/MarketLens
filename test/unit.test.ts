@@ -2,12 +2,12 @@
 import assert from "node:assert";
 import test from "node:test";
 
-// 直接导入真实的源码模块，杜绝测试代码与生产代码漂移
-import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, resolveItemAssetType, getWatchlistFingerprint, reorderWatchlist, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled } from "../src/utils/symbolHelper.ts";
+import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled } from "../src/utils/symbolHelper.ts";
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, getZonedTimeParts, beijingFormatter, newYorkFormatter } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache } from "../src/services/network.ts";
 import { isDisplayMasked } from "../src/utils/maskState.ts";
+import { AlertManager } from "../src/services/alertManager.ts";
 
 test("symbolHelper - 真实源码逻辑校验", () => {
   // A股
@@ -57,6 +57,8 @@ test("symbolHelper - 真实源码逻辑校验", () => {
   // 加密货币
   assert.strictEqual(isSameSymbol("BTCUSDT", "btcusdt"), true);
   assert.strictEqual(normalizeSymbolKey("BTCUSDT"), "btcusdt");
+  assert.strictEqual(isSameSymbol("SOL/USDT", "SOLUSDT"), true);
+  assert.strictEqual(normalizeSymbolKey("SOL/USDT"), "solusdt");
 });
 
 test("inputValidator - 真实源码输入识别与非法拦截", () => {
@@ -427,22 +429,204 @@ test("reorderWatchlist - 自选标的同组重排与跨组位移测试", () => {
   assert.ok(pinRes);
   assert.deepStrictEqual(pinRes["A股"].map((x) => x.symbol), ["sz002385", "sh600030", "sz000839"]);
 
-  // 4. 跨组移动到指定标的前：把 sh600030 移到 Binance 组的 ETHUSDT 之前
+  // 4. 跨组拖拽拦截：禁止跨组移动到其它组，必须返回 null
   const crossRes = reorderWatchlist(initList(), "A股", "sh600030", "Binance", "ETHUSDT");
-  assert.ok(crossRes);
-  assert.deepStrictEqual(crossRes["A股"].map((x) => x.symbol), ["sz000839", "sz002385"]);
-  assert.deepStrictEqual(crossRes["Binance"].map((x) => x.symbol), ["BTCUSDT", "sh600030", "ETHUSDT"]);
+  assert.strictEqual(crossRes, null);
 
-  // 5. 跨组移动到组名：把 sh600030 移到 Binance 组末尾（未指定 targetSymbol）
+  // 5. 跨组拖拽到其他组名拦截：必须返回 null
   const crossAppend = reorderWatchlist(initList(), "A股", "sh600030", "Binance");
-  assert.ok(crossAppend);
-  assert.deepStrictEqual(crossAppend["A股"].map((x) => x.symbol), ["sz000839", "sz002385"]);
-  assert.deepStrictEqual(crossAppend["Binance"].map((x) => x.symbol), ["BTCUSDT", "ETHUSDT", "sh600030"]);
+  assert.strictEqual(crossAppend, null);
 
   // 6. 异常与无效保护：源标的不存在、组不存在、拖到自己上面
   assert.strictEqual(reorderWatchlist(initList(), "不存在的组", "sh600030", "A股"), null);
   assert.strictEqual(reorderWatchlist(initList(), "A股", "non_existent", "A股", "sz000839"), null);
   assert.strictEqual(reorderWatchlist(initList(), "A股", "sh600030", "A股", "sh600030"), null);
+});
+
+test("batchReorderWatchlist - 多选批量拖拽原子重排测试", () => {
+  const initList = () => ({
+    "A股": [
+      { symbol: "sh600030", name: "中信证券" },
+      { symbol: "sz000839", name: "国安股份" },
+      { symbol: "sz002385", name: "大北农" },
+      { symbol: "sh601398", name: "工商银行" },
+    ],
+    "Binance": [
+      { symbol: "BTCUSDT", name: "BTC" },
+      { symbol: "ETHUSDT", name: "ETH" },
+      { symbol: "SOLUSDT", name: "SOL" },
+    ],
+  });
+
+  // 1. 同组向下批量拖拽：将 [sh600030, sz000839] 拖到 sz002385 后面
+  const downRes = batchReorderWatchlist(
+    initList(),
+    [
+      { sourceGroup: "A股", sourceSymbol: "sh600030" },
+      { sourceGroup: "A股", sourceSymbol: "sz000839" },
+    ],
+    "A股",
+    "sz002385"
+  );
+  assert.ok(downRes);
+  assert.deepStrictEqual(
+    downRes["A股"].map((x) => x.symbol),
+    ["sz002385", "sh600030", "sz000839", "sh601398"]
+  );
+
+  // 2. 同组向上批量拖拽：将 [sz002385, sh601398] 拖到 sh600030 前面
+  const upRes = batchReorderWatchlist(
+    initList(),
+    [
+      { sourceGroup: "A股", sourceSymbol: "sz002385" },
+      { sourceGroup: "A股", sourceSymbol: "sh601398" },
+    ],
+    "A股",
+    "sh600030"
+  );
+  assert.ok(upRes);
+  assert.deepStrictEqual(
+    upRes["A股"].map((x) => x.symbol),
+    ["sz002385", "sh601398", "sh600030", "sz000839"]
+  );
+
+  // 3. 同组拖到组名（targetSymbol 未传）：整批置顶
+  const pinRes = batchReorderWatchlist(
+    initList(),
+    [
+      { sourceGroup: "A股", sourceSymbol: "sz000839" },
+      { sourceGroup: "A股", sourceSymbol: "sh601398" },
+    ],
+    "A股"
+  );
+  assert.ok(pinRes);
+  assert.deepStrictEqual(
+    pinRes["A股"].map((x) => x.symbol),
+    ["sz000839", "sh601398", "sh600030", "sz002385"]
+  );
+
+  // 4. 跨组批量拖拽拦截：禁止跨组移入其它组，必须返回 null
+  const crossTargetRes = batchReorderWatchlist(
+    initList(),
+    [
+      { sourceGroup: "A股", sourceSymbol: "sh600030" },
+      { sourceGroup: "A股", sourceSymbol: "sz000839" },
+    ],
+    "Binance",
+    "ETHUSDT"
+  );
+  assert.strictEqual(crossTargetRes, null);
+
+  // 5. 跨组批量移动到其他组名拦截：必须返回 null
+  const crossAppendRes = batchReorderWatchlist(
+    initList(),
+    [
+      { sourceGroup: "A股", sourceSymbol: "sh600030" },
+      { sourceGroup: "A股", sourceSymbol: "sz000839" },
+    ],
+    "Binance"
+  );
+  assert.strictEqual(crossAppendRes, null);
+
+  // 6. 自拖拽保护（Self-drop guard）：目标标的本身在移动项中，必须返回 null 防止产生脏数据
+  const selfDropRes = batchReorderWatchlist(
+    initList(),
+    [
+      { sourceGroup: "A股", sourceSymbol: "sh600030" },
+      { sourceGroup: "A股", sourceSymbol: "sz000839" },
+    ],
+    "A股",
+    "sh600030"
+  );
+  assert.strictEqual(selfDropRes, null);
+
+  // 7. 空项保护与非法目标组保护
+  assert.strictEqual(batchReorderWatchlist(initList(), [], "A股"), null);
+  assert.strictEqual(
+    batchReorderWatchlist(initList(), [{ sourceGroup: "A股", sourceSymbol: "sh600030" }], "不存在的分组"),
+    null
+  );
+  assert.strictEqual(
+    batchReorderWatchlist(initList(), [{ sourceGroup: "不存在的组", sourceSymbol: "sh600030" }], "A股"),
+    null
+  );
+});
+
+test("pruneQuoteCache - 活跃集对齐与死缓存回收测试 (Active-Set Prune)", () => {
+  const activeWatchlist = {
+    "A股": [
+      { symbol: "sh600030", name: "中信证券" },
+      { symbol: "sh600519", name: "贵州茅台" }, // 闭市标的，必须保留收盘价
+    ],
+    "Binance": [
+      { symbol: "BTCUSDT", name: "BTC" },
+    ],
+    "Alpha": [
+      { symbol: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", name: "WBNB", id: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" },
+    ],
+  };
+
+  const quoteCache = new Map<string, any>();
+
+  // 1. 灌入当前在自选中的标的缓存（含多别名注册）
+  quoteCache.set("sh600030", { symbol: "sh600030", name: "中信证券", price: 28.5 });
+  quoteCache.set("sh600519", { symbol: "sh600519", name: "贵州茅台", price: 1780.0 });
+  quoteCache.set("btcusdt", { symbol: "BTCUSDT", name: "BTC", price: 65000 });
+  quoteCache.set("BTCUSDT", { symbol: "BTCUSDT", name: "BTC", price: 65000 });
+  // Alpha 代币合约与代币名
+  quoteCache.set("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", {
+    symbol: "WBNB",
+    id: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+    price: 580,
+  });
+  quoteCache.set("WBNB", {
+    symbol: "WBNB",
+    id: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+    price: 580,
+  });
+
+  // 2. 灌入历史死标的缓存（用户之前添加过、现已删除或替换的垃圾 Meme 币 / 旧股票）
+  quoteCache.set("0x1111111111111111111111111111111111111111", {
+    symbol: "DEADCOIN",
+    id: "0x1111111111111111111111111111111111111111",
+    price: 0.000001,
+  });
+  quoteCache.set("DEADCOIN", {
+    symbol: "DEADCOIN",
+    id: "0x1111111111111111111111111111111111111111",
+    price: 0.000001,
+  });
+  quoteCache.set("sz000002", { symbol: "sz000002", name: "万科A", price: 9.2 });
+
+  assert.strictEqual(quoteCache.size, 9);
+
+  // 3. 执行活跃集对齐修剪
+  const prunedCount = pruneQuoteCache(activeWatchlist, quoteCache);
+
+  // 验证死缓存被彻底清理：0x1111..., DEADCOIN, sz000002 共 3 条
+  assert.strictEqual(prunedCount, 3);
+  assert.strictEqual(quoteCache.size, 6);
+
+  // 验证死缓存完全不存在
+  assert.strictEqual(quoteCache.has("0x1111111111111111111111111111111111111111"), false);
+  assert.strictEqual(quoteCache.has("DEADCOIN"), false);
+  assert.strictEqual(quoteCache.has("sz000002"), false);
+
+  // 验证当前自选中的所有标的（包括闭市的贵州茅台、Alpha 合约与名称）均完整保留
+  assert.strictEqual(quoteCache.get("sh600030")?.price, 28.5);
+  assert.strictEqual(quoteCache.get("sh600519")?.price, 1780.0);
+  assert.strictEqual(quoteCache.get("btcusdt")?.price, 65000);
+  assert.strictEqual(quoteCache.get("BTCUSDT")?.price, 65000);
+  assert.strictEqual(quoteCache.get("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")?.price, 580);
+  assert.strictEqual(quoteCache.get("WBNB")?.price, 580);
+
+  // 4. 测试一键清空自选场景：所有缓存必须被安全回收
+  const prunedAllCount = pruneQuoteCache({}, quoteCache);
+  assert.strictEqual(prunedAllCount, 6);
+  assert.strictEqual(quoteCache.size, 0);
+
+  // 5. 空 Map 容错保护
+  assert.strictEqual(pruneQuoteCache(activeWatchlist, new Map()), 0);
 });
 
 test("extractTargetsFromWatchlist - 标的分桶过滤与闭市跳过测试", () => {
@@ -807,6 +991,271 @@ test("computeStatusBarEnabled - 状态栏总控与分板块开关聚合判定", 
   assert.strictEqual(computeStatusBarEnabled(undefined, true), true, "未显式配置且有活跃板块时，状态栏默认开启");
   assert.strictEqual(computeStatusBarEnabled(undefined, false), false, "未显式配置但无活跃板块时，状态栏默认关闭");
 });
+
+test("AlertManager - 价格上限突破预警 (above > threshold)", () => {
+  const manager = new AlertManager();
+  const config: any = {
+    alerts: {
+      sh600519: { symbol: "sh600519", name: "贵州茅台", above: 1800, enabled: true },
+    },
+    alertNotificationMode: "notification",
+    alertCooldownMinutes: 15,
+  };
+
+  const quotes: any[] = [
+    { id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1850, changePercent: 2.5 },
+    { id: "sz000001", symbol: "sz000001", name: "平安银行", price: 12, changePercent: 0.5 },
+  ];
+
+  const events = manager.checkQuotes(quotes, config);
+  assert.strictEqual(events.length, 1);
+  assert.strictEqual(events[0].symbolKey, "sh600519");
+  assert.strictEqual(events[0].type, "above");
+  assert.strictEqual(events[0].currentValue, 1850);
+  assert.strictEqual(events[0].thresholdValue, 1800);
+
+  // 未突破上限不触发
+  manager.resetCooldown();
+  const belowThresholdQuotes: any[] = [
+    { id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1799, changePercent: -0.5 },
+  ];
+  const noEvents = manager.checkQuotes(belowThresholdQuotes, config);
+  assert.strictEqual(noEvents.length, 0);
+});
+
+test("AlertManager - 价格下限跌破预警 (below < threshold)", () => {
+  const manager = new AlertManager();
+  const config: any = {
+    alerts: {
+      btcusdt: { symbol: "BTCUSDT", name: "比特币", below: 60000, enabled: true },
+    },
+    alertNotificationMode: "notification",
+    alertCooldownMinutes: 15,
+  };
+
+  const breachedQuotes: any[] = [
+    { id: "BTCUSDT", symbol: "BTCUSDT", name: "比特币", price: 59500, changePercent: -3.2 },
+  ];
+  const events = manager.checkQuotes(breachedQuotes, config);
+  assert.strictEqual(events.length, 1);
+  assert.strictEqual(events[0].type, "below");
+  assert.strictEqual(events[0].currentValue, 59500);
+  assert.strictEqual(events[0].thresholdValue, 60000);
+
+  // 未跌破下限不触发
+  manager.resetCooldown();
+  const safeQuotes: any[] = [
+    { id: "BTCUSDT", symbol: "BTCUSDT", name: "比特币", price: 60001, changePercent: 0.1 },
+  ];
+  const noEvents = manager.checkQuotes(safeQuotes, config);
+  assert.strictEqual(noEvents.length, 0);
+});
+
+test("AlertManager - 单日剧烈涨跌幅绝对值预警 (|%| >= threshold)", () => {
+  const manager = new AlertManager();
+  const config: any = {
+    alerts: {
+      aapl: { symbol: "AAPL", name: "Apple", changePercent: 5.0, enabled: true },
+    },
+    alertNotificationMode: "notification",
+    alertCooldownMinutes: 15,
+  };
+
+  // 剧烈上涨
+  const rallyQuotes: any[] = [
+    { id: "AAPL", symbol: "AAPL", name: "Apple", price: 200, changePercent: 6.2 },
+  ];
+  const rallyEvents = manager.checkQuotes(rallyQuotes, config);
+  assert.strictEqual(rallyEvents.length, 1);
+  assert.strictEqual(rallyEvents[0].type, "changePercent");
+  assert.strictEqual(rallyEvents[0].currentValue, 6.2);
+
+  // 剧烈暴跌 (| -7.5% | >= 5.0%)
+  manager.resetCooldown();
+  const crashQuotes: any[] = [
+    { id: "AAPL", symbol: "AAPL", name: "Apple", price: 170, changePercent: -7.5 },
+  ];
+  const crashEvents = manager.checkQuotes(crashQuotes, config);
+  assert.strictEqual(crashEvents.length, 1);
+  assert.strictEqual(crashEvents[0].type, "changePercent");
+  assert.strictEqual(crashEvents[0].currentValue, -7.5);
+
+  // 正常波动不触发
+  manager.resetCooldown();
+  const normalQuotes: any[] = [
+    { id: "AAPL", symbol: "AAPL", name: "Apple", price: 185, changePercent: 3.1 },
+  ];
+  const normalEvents = manager.checkQuotes(normalQuotes, config);
+  assert.strictEqual(normalEvents.length, 0);
+});
+
+test("AlertManager - 冷却防轰炸机制与静音拦截", () => {
+  const manager = new AlertManager();
+  const config: any = {
+    alerts: {
+      sh600519: { symbol: "sh600519", name: "贵州茅台", above: 1800, enabled: true },
+    },
+    alertNotificationMode: "notification",
+    alertCooldownMinutes: 15,
+  };
+
+  const quotes: any[] = [
+    { id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1850, changePercent: 2.5 },
+  ];
+
+  // 第一次触发
+  const first = manager.checkQuotes(quotes, config);
+  assert.strictEqual(first.length, 1);
+
+  // 15分钟冷静期内再次检测同一标的：被内存冷却拦截，返回 0 条
+  const second = manager.checkQuotes(quotes, config);
+  assert.strictEqual(second.length, 0, "冷却期内应彻底静音拦截");
+
+  // 手动重置冷却后，恢复触发
+  manager.resetCooldown();
+  const third = manager.checkQuotes(quotes, config);
+  assert.strictEqual(third.length, 1, "重置冷却后恢复触发");
+
+  // 手动设置静音
+  manager.mute("sh600519", 15);
+  const muted = manager.checkQuotes(quotes, config);
+  assert.strictEqual(muted.length, 0, "手动静音后不触发");
+});
+
+test("AlertManager - 老板键激活状态一票否决与静音守卫", () => {
+  let isBossActive = true;
+  const mockStatusBar: any = {
+    isBossKeyActive: () => isBossActive,
+    flashAlert: () => {},
+  };
+  const manager = new AlertManager(mockStatusBar);
+  const config: any = {
+    alerts: {
+      sh600519: { symbol: "sh600519", name: "贵州茅台", above: 1800, enabled: true },
+    },
+    alertNotificationMode: "both",
+    alertCooldownMinutes: 15,
+  };
+
+  const quotes: any[] = [
+    { id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1900, changePercent: 5.0 },
+  ];
+
+  // 老板键激活时：一票否决，绝对静音
+  const suppressed = manager.checkQuotes(quotes, config);
+  assert.strictEqual(suppressed.length, 0, "老板键状态下必须完全禁止触发预警");
+
+  // 老板键退出后：恢复正常监测
+  isBossActive = false;
+  const resumed = manager.checkQuotes(quotes, config);
+  assert.strictEqual(resumed.length, 1, "老板键退出后正常响应");
+});
+
+test("AlertManager - 状态栏与通知通道联动分发", () => {
+  let flashedText = "";
+  const mockStatusBar: any = {
+    isBossKeyActive: () => false,
+    flashAlert: (text: string) => { flashedText = text; },
+  };
+  const manager = new AlertManager(mockStatusBar);
+
+  // 1. 仅通知通道 (notification)：不闪烁状态栏
+  const configNotification: any = {
+    alerts: {
+      sh600519: { symbol: "sh600519", name: "贵州茅台", above: 1800, enabled: true },
+    },
+    alertNotificationMode: "notification",
+    alertCooldownMinutes: 15,
+  };
+  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1850, changePercent: 1.0 }], configNotification);
+  assert.strictEqual(flashedText, "", "notification 模式下不应触发状态栏闪烁");
+
+  // 2. 状态栏通道 (statusBarOnly)：触发状态栏闪烁
+  manager.resetCooldown();
+  const configStatusBarOnly: any = {
+    ...configNotification,
+    alertNotificationMode: "statusBarOnly",
+  };
+  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1850, changePercent: 1.0 }], configStatusBarOnly);
+  assert.ok(flashedText.includes("突破预警") && flashedText.includes("贵州茅台"), "statusBarOnly 模式下必须调用 flashAlert");
+
+  // 3. 模态脱敏模式 (maskMode)
+  manager.resetCooldown();
+  flashedText = "";
+  const configMasked: any = {
+    ...configNotification,
+    alertNotificationMode: "statusBarOnly",
+    maskMode: true,
+  };
+  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1850, changePercent: 1.0 }], configMasked);
+  assert.ok(flashedText.includes("****"), "maskMode 开启时标的名称必须脱敏");
+});
+
+test("AlertManager - 禁用开关与空配置容错保护", () => {
+  const manager = new AlertManager();
+
+  // 规则被禁用 enabled: false
+  const configDisabled: any = {
+    alerts: {
+      sh600519: { symbol: "sh600519", name: "贵州茅台", above: 1800, enabled: false },
+    },
+    alertNotificationMode: "notification",
+    alertCooldownMinutes: 15,
+  };
+  const disabledEvents = manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1900, changePercent: 2.0 }], configDisabled);
+  assert.strictEqual(disabledEvents.length, 0, "enabled: false 规则不应被触发");
+
+  // 空预警字典或空行情
+  assert.strictEqual(manager.checkQuotes([], configDisabled).length, 0);
+  assert.strictEqual(manager.checkQuotes([{ symbol: "sh600519" } as any], { alerts: {} } as any).length, 0);
+});
+
+test("AlertManager - 币对斜杠 (SOL/USDT vs SOLUSDT) 跨格式匹配预警", () => {
+  const manager = new AlertManager();
+  const config: any = {
+    alerts: {
+      solusdt: { symbol: "SOL/USDT", name: "SOL", below: 110, enabled: true },
+    },
+    alertNotificationMode: "notification",
+    alertCooldownMinutes: 15,
+  };
+
+  const quotes: any[] = [
+    { id: "SOLUSDT", symbol: "SOLUSDT", name: "SOL", price: 100, changePercent: -3.63 },
+  ];
+
+  const events = manager.checkQuotes(quotes, config);
+  assert.strictEqual(events.length, 1);
+  assert.strictEqual(events[0].type, "below");
+  assert.strictEqual(events[0].currentValue, 100);
+});
+
+test("resolveItemDisplayName - 侧边栏与设置面板标的名称一致性与优先级解析", () => {
+  // 1. 用户显式配置自定义名称（如 usNET 配置为 Cloudflare），即便腾讯接口返回机器译名“科赋锐”，仍应锁定展示 Cloudflare
+  const cfName = resolveItemDisplayName("Cloudflare", "usNET", { name: "科赋锐", symbol: "NET" });
+  assert.strictEqual(cfName, "Cloudflare", "应优先使用用户配置的 Cloudflare");
+
+  // 2. 指数全称（usIXIC 配置为 纳斯达克综合指数），即便接口缩写为“纳斯达克”，应保留全称
+  const ixicName = resolveItemDisplayName("纳斯达克综合指数", "usIXIC", { name: "纳斯达克", symbol: "IXIC" });
+  assert.strictEqual(ixicName, "纳斯达克综合指数", "应保留纳斯达克综合指数全称");
+
+  // 3. 用户添加标的时未填名称或名称与代码相同（如 600030），行情到达后应智能使用接口标准名称（中信证券）
+  const stockName = resolveItemDisplayName("600030", "600030", { name: "中信证券", symbol: "600030" });
+  assert.strictEqual(stockName, "中信证券", "未自定义名称时应回退到实时行情标准名称");
+
+  // 4. 用户给加密货币自定义昵称（BTCUSDT 备注为 大饼），应显示自定义昵称
+  const btcCustom = resolveItemDisplayName("大饼", "BTCUSDT", { name: "BTC/USDT", symbol: "BTCUSDT" });
+  assert.strictEqual(btcCustom, "大饼", "自定义币种昵称应生效");
+
+  // 5. 标的名称为币对斜杠格式（BTC/USDT 与 BTCUSDT 属于同一标的），非自定义昵称，行情到达后使用 BTC/USDT
+  const btcNormal = resolveItemDisplayName("BTC/USDT", "BTCUSDT", { name: "BTC/USDT", symbol: "BTCUSDT" });
+  assert.strictEqual(btcNormal, "BTC/USDT", "标准币对格式正常使用");
+
+  // 6. 行情未到达且无自定义名称时，兜底展示代码
+  const fallbackSym = resolveItemDisplayName("000001", "000001", undefined);
+  assert.strictEqual(fallbackSym, "000001", "行情未到达时兜底展示代码");
+});
+
 
 
 

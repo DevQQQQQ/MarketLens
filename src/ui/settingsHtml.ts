@@ -31,6 +31,10 @@ export interface SettingsFormData {
 	alphaStatusBar?: boolean;
 	alphaNetworkMode?: string;
 	alphaProxyUrl?: string;
+	alerts?: Record<string, any>;
+	alertNotificationMode?: string;
+	alertCooldownMinutes?: number;
+	watchlist?: Record<string, any[]>;
 }
 
 export function getSettingsWebviewHtml(
@@ -89,6 +93,10 @@ export function getSettingsWebviewHtml(
 			initialData.alphaStatusBar !== undefined ? initialData.alphaStatusBar : true,
 		alphaNetworkMode: initialData.alphaNetworkMode || 'proxy',
 		alphaProxyUrl: initialData.alphaProxyUrl || 'http://127.0.0.1:7890',
+		alerts: initialData.alerts || {},
+		alertNotificationMode: initialData.alertNotificationMode || 'notification',
+		alertCooldownMinutes: initialData.alertCooldownMinutes || 15,
+		watchlist: initialData.watchlist || {},
 	};
 
 	return `<!DOCTYPE html>
@@ -165,6 +173,7 @@ export function getSettingsWebviewHtml(
 
     /* 激活的 nav-item 样式 */
     #tab-r-general:checked ~ .layout .sidebar label[for="tab-r-general"],
+    #tab-r-alerts:checked  ~ .layout .sidebar label[for="tab-r-alerts"],
     #tab-r-ashare:checked  ~ .layout .sidebar label[for="tab-r-ashare"],
     #tab-r-hkstock:checked ~ .layout .sidebar label[for="tab-r-hkstock"],
     #tab-r-usstock:checked ~ .layout .sidebar label[for="tab-r-usstock"],
@@ -186,6 +195,7 @@ export function getSettingsWebviewHtml(
 
     /* 激活的 tab-pane */
     #tab-r-general:checked ~ .layout .content #tab-general,
+    #tab-r-alerts:checked  ~ .layout .content #tab-alerts,
     #tab-r-ashare:checked  ~ .layout .content #tab-ashare,
     #tab-r-hkstock:checked ~ .layout .content #tab-hkstock,
     #tab-r-usstock:checked ~ .layout .content #tab-usstock,
@@ -366,6 +376,13 @@ export function getSettingsWebviewHtml(
       color: #ffffff;
     }
 
+    .alert-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .alert-table th { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--card-border); color: var(--desc-fg); font-weight: 500; }
+    .alert-table td { padding: 9px 10px; border-bottom: 1px solid var(--card-border); vertical-align: middle; }
+    .alert-table tr:hover td { background: var(--hover-bg); }
+    .alert-input { width: 85px; padding: 4px 8px; font-size: 12px; text-align: right; }
+    .alert-grp-row td { background: rgba(255,255,255,0.03); font-weight: 600; color: var(--primary); font-size: 12px; border-bottom: 1px solid var(--card-border); }
+
     .toast {
       position: fixed; bottom: 24px; right: 24px;
       background: #333; color: #fff; padding: 10px 16px;
@@ -378,6 +395,7 @@ export function getSettingsWebviewHtml(
 <body>
   <!-- Radio inputs for pure-CSS tab switching (MUST be direct siblings of .layout) -->
   <input class="tab-radio" type="radio" name="tab" id="tab-r-general" checked>
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-alerts">
   <input class="tab-radio" type="radio" name="tab" id="tab-r-ashare">
   <input class="tab-radio" type="radio" name="tab" id="tab-r-hkstock">
   <input class="tab-radio" type="radio" name="tab" id="tab-r-usstock">
@@ -393,6 +411,7 @@ export function getSettingsWebviewHtml(
       <p>极客行情与摸鱼配置中心</p>
     </div>
     <label class="nav-item" for="tab-r-general"><span class="icon">⚙️</span><span>通用设置</span></label>
+    <label class="nav-item" for="tab-r-alerts"><span class="icon">⚡</span><span>到价预警</span></label>
     <label class="nav-item" for="tab-r-ashare"><span class="icon">🇨🇳</span><span>A股板块</span></label>
     <label class="nav-item" for="tab-r-hkstock"><span class="icon">🇭🇰</span><span>港股板块</span></label>
     <label class="nav-item" for="tab-r-usstock"><span class="icon">🇺🇸</span><span>美股板块</span></label>
@@ -414,7 +433,7 @@ export function getSettingsWebviewHtml(
         <div class="card">
           <div class="card-info">
             <div class="card-title">恢复出厂默认设置</div>
-            <div class="card-desc">将所有自选标的列表（A股、港股、美股、Binance、Alpha）恢复为首次安装时的初始预设，并还原所有配置项。</div>
+            <div class="card-desc">将所有自选标的列表（A股、港股、美股、Binance、Alpha）恢复为首次安装时的初始预设，清空所有到价预警规则，并还原所有配置项。</div>
           </div>
           <button class="btn-restore" id="btnRestoreDefaults">🔄 恢复默认设置</button>
         </div>
@@ -493,7 +512,62 @@ export function getSettingsWebviewHtml(
       </div>
     </div>
 
-    <!-- 2. A 股板块 -->
+    <!-- 2. 到价预警板块 -->
+    <div id="tab-alerts" class="tab-pane">
+      <div class="section-header">
+        <h1>到价预警与剧烈波动监控</h1>
+        <p>设定目标突破价、跌破价或单日涨跌幅阈值，触发时通过通知浮窗或状态栏闪烁精准预警</p>
+      </div>
+      <div class="card-list">
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">预警提醒方式</div>
+            <div class="card-desc">选择预警触发时的展现形式。浮窗通知在右下角轻量提示并支持快速静音；状态栏闪烁仅在底栏高亮切换，静默不打扰工作。</div>
+          </div>
+          <select id="alertNotificationMode" class="select-box" style="padding: 6px 12px; border-radius: 4px; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--border); font-size: 13px;">
+            <option value="notification" ${d.alertNotificationMode === 'notification' ? 'selected' : ''}>仅 VS Code 浮窗通知</option>
+            <option value="statusBarOnly" ${d.alertNotificationMode === 'statusBarOnly' ? 'selected' : ''}>仅底部状态栏闪烁</option>
+            <option value="both" ${d.alertNotificationMode === 'both' ? 'selected' : ''}>同时弹窗与状态栏闪烁</option>
+          </select>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">预警静默冷却间隔 (分钟)</div>
+            <div class="card-desc">同一标的触发预警后的冷静期（防止在关键点位来回震荡造成连续提示轰炸）。默认 15 分钟。</div>
+          </div>
+          <input type="number" id="alertCooldownMinutes" value="${d.alertCooldownMinutes}" min="1" max="1440" style="width: 80px; text-align: center; font-family: monospace; font-size: 13px; font-weight: 500; padding: 6px 8px; border-radius: 4px; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--border);">
+        </div>
+
+        <div class="card" style="flex-direction: column; align-items: stretch; gap: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="card-info">
+              <div class="card-title">自选标的预警监控矩阵</div>
+              <div class="card-desc">在下方表格中为每个标的配置触发条件。留空项不生效；修改后即时自动保存。</div>
+            </div>
+            <button class="btn-clear" id="btnClearAllAlerts" style="font-size: 12px; padding: 5px 12px;">🗑️ 清空所有预警</button>
+          </div>
+          <div style="overflow-x: auto;">
+            <table class="alert-table">
+              <thead>
+                <tr>
+                  <th style="width: 28%;">标的名称 / 代码</th>
+                  <th style="width: 22%;">高于目标价 (突破 &gt;)</th>
+                  <th style="width: 22%;">低于目标价 (跌破 &lt;)</th>
+                  <th style="width: 18%;">单日涨跌幅 |%| ≥</th>
+                  <th style="width: 10%; text-align: center;">监控开关</th>
+                </tr>
+              </thead>
+              <tbody id="alertTableBody">
+                <tr><td colspan="5" style="text-align: center; color: var(--desc-fg); padding: 24px;">加载自选标的列表中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. A 股板块 -->
     <div id="tab-ashare" class="tab-pane">
       <div class="section-header">
         <h1>A股市场设置</h1>
@@ -840,6 +914,7 @@ export function getSettingsWebviewHtml(
       // ── Tab 切换逻辑（联动 CSS Radio） ──
       var TAB_RADIOS = {
         'tab-general': 'tab-r-general',
+        'tab-alerts':  'tab-r-alerts',
         'tab-ashare':  'tab-r-ashare',
         'tab-hkstock': 'tab-r-hkstock',
         'tab-usstock': 'tab-r-usstock',
@@ -858,6 +933,168 @@ export function getSettingsWebviewHtml(
         }
       }
       window.switchTab = switchTab;
+
+      // ── 到价预警监控数据管理 ──
+      var currentAlerts = ${JSON.stringify(d.alerts).replace(/</g, '\\u003c')};
+      var currentWatchlist = ${JSON.stringify(d.watchlist).replace(/</g, '\\u003c')};
+      var alertSaveTimer = null;
+
+      function getSymbolKey(sym) {
+        if (!sym) return '';
+        var s = sym.trim();
+        var clean = s.toLowerCase().replace(/[\\._\\-\\/]/g, '');
+        if (/^hk\\d+$/.test(clean)) return 'hk' + clean.slice(2).replace(/^0+/, '');
+        if (/^\\d{5}$/.test(clean)) return 'hk' + clean.replace(/^0+/, '');
+        if (/^us[\\._\\-]/i.test(s)) return s.replace(/^us[\\._\\-]/i, '').toLowerCase().replace(/[\\._\\-\\/]/g, '');
+        if (/^us[A-Z]/.test(s)) return s.slice(2).toLowerCase().replace(/[\\._\\-\\/]/g, '');
+        return clean;
+      }
+
+      function renderAlertTable(watchlist, alerts) {
+        var tbody = document.getElementById('alertTableBody');
+        if (!tbody) return;
+        watchlist = watchlist || {};
+        alerts = alerts || {};
+
+        var html = '';
+        var totalCount = 0;
+
+        var groupKeys = Object.keys(watchlist);
+        for (var i = 0; i < groupKeys.length; i++) {
+          var grpName = groupKeys[i];
+          var list = watchlist[grpName];
+          if (Array.isArray(list) && list.length > 0) {
+            html += '<tr class="alert-grp-row"><td colspan="5">分组: ' + grpName + ' (' + list.length + ' 个标的)</td></tr>';
+            for (var j = 0; j < list.length; j++) {
+              var item = list[j];
+              var sym = (typeof item === 'string') ? item : (item.symbol || item.code || '');
+              var name = (typeof item === 'object' && item.name) ? item.name : sym;
+              var key = getSymbolKey(sym);
+              var rawTicker = sym.toLowerCase().replace(/^(us|hk|sh|sz|bj)[\\._\\-\\/]?/i, '');
+              var rule = alerts[key] || alerts[sym] || (sym ? alerts[sym.toLowerCase()] : undefined) || (rawTicker ? alerts[rawTicker] : undefined) || {};
+
+              var aboveVal = (rule.above !== undefined && rule.above !== null) ? rule.above : '';
+              var belowVal = (rule.below !== undefined && rule.below !== null) ? rule.below : '';
+              var pctVal = (rule.changePercent !== undefined && rule.changePercent !== null) ? rule.changePercent : '';
+              var isEnabled = rule.enabled !== false;
+
+              html += '<tr data-key="' + key + '" data-symbol="' + sym + '" data-name="' + name + '">'
+                + '<td>'
+                + '<div style="font-weight: 500; font-size: 13px;">' + name + '</div>'
+                + '<div style="font-size: 11px; color: var(--desc-fg); font-family: monospace;">' + sym + '</div>'
+                + '</td>'
+                + '<td><input type="number" step="any" class="alert-input alert-above" placeholder="未设置" value="' + aboveVal + '"></td>'
+                + '<td><input type="number" step="any" class="alert-input alert-below" placeholder="未设置" value="' + belowVal + '"></td>'
+                + '<td><input type="number" step="any" class="alert-input alert-pct" placeholder="未设置" value="' + pctVal + '"></td>'
+                + '<td style="text-align: center;"><label class="switch"><input type="checkbox" class="alert-enabled" ' + (isEnabled ? 'checked' : '') + '><span class="slider"></span></label></td>'
+                + '</tr>';
+              totalCount++;
+            }
+          }
+        }
+
+        if (totalCount === 0) {
+          html = '<tr><td colspan="5" style="text-align: center; color: var(--desc-fg); padding: 24px;">暂无自选标的。请在左侧侧边栏添加自选后，即可在此配置到价预警。</td></tr>';
+        }
+
+        // 保存当前正在编辑的输入框焦点，防止实时重渲染时失去焦点
+        var activeEl = document.activeElement;
+        var activeKey = null;
+        var activeClass = null;
+        var activeSelStart = null;
+        var activeSelEnd = null;
+        if (activeEl && tbody.contains(activeEl)) {
+          var trParent = activeEl.closest('tr');
+          if (trParent) {
+            activeKey = trParent.getAttribute('data-key');
+            if (activeEl.classList.contains('alert-above')) activeClass = 'alert-above';
+            else if (activeEl.classList.contains('alert-below')) activeClass = 'alert-below';
+            else if (activeEl.classList.contains('alert-pct')) activeClass = 'alert-pct';
+            if (activeEl.selectionStart !== undefined) {
+              activeSelStart = activeEl.selectionStart;
+              activeSelEnd = activeEl.selectionEnd;
+            }
+          }
+        }
+
+        tbody.innerHTML = html;
+        bindAlertTableEvents(tbody);
+
+        // 恢复焦点
+        if (activeKey && activeClass) {
+          var targetTr = tbody.querySelector('tr[data-key="' + activeKey + '"]');
+          if (targetTr) {
+            var targetInput = targetTr.querySelector('.' + activeClass);
+            if (targetInput) {
+              targetInput.focus();
+              if (activeSelStart !== null && targetInput.setSelectionRange) {
+                try {
+                  targetInput.setSelectionRange(activeSelStart, activeSelEnd);
+                } catch(e) {}
+              }
+            }
+          }
+        }
+      }
+
+      function updateAlertRuleFromRow(tr) {
+        var key = tr.getAttribute('data-key');
+        var sym = tr.getAttribute('data-symbol');
+        var name = tr.getAttribute('data-name');
+        var aboveInput = tr.querySelector('.alert-above');
+        var belowInput = tr.querySelector('.alert-below');
+        var pctInput = tr.querySelector('.alert-pct');
+        var enabledInput = tr.querySelector('.alert-enabled');
+
+        var above = aboveInput && aboveInput.value.trim() !== '' ? parseFloat(aboveInput.value) : undefined;
+        var below = belowInput && belowInput.value.trim() !== '' ? parseFloat(belowInput.value) : undefined;
+        var pct = pctInput && pctInput.value.trim() !== '' ? parseFloat(pctInput.value) : undefined;
+        var enabled = enabledInput ? enabledInput.checked : true;
+
+        if (above !== undefined && isNaN(above)) above = undefined;
+        if (below !== undefined && isNaN(below)) below = undefined;
+        if (pct !== undefined && isNaN(pct)) pct = undefined;
+
+        if (above === undefined && below === undefined && pct === undefined) {
+          delete currentAlerts[key];
+        } else {
+          currentAlerts[key] = {
+            symbol: sym,
+            name: name,
+            above: above,
+            below: below,
+            changePercent: pct,
+            enabled: enabled
+          };
+        }
+      }
+
+      function bindAlertTableEvents(tbody) {
+        var rows = tbody.querySelectorAll('tr[data-key]');
+        for (var i = 0; i < rows.length; i++) {
+          (function(tr) {
+            var inputs = tr.querySelectorAll('.alert-input');
+            for (var k = 0; k < inputs.length; k++) {
+              inputs[k].addEventListener('input', function() {
+                updateAlertRuleFromRow(tr);
+                clearTimeout(alertSaveTimer);
+                alertSaveTimer = setTimeout(function() {
+                  sendUpdate('alerts', currentAlerts);
+                  showToast('⚡ 预警规则已保存');
+                }, 500);
+              });
+            }
+            var chk = tr.querySelector('.alert-enabled');
+            if (chk) {
+              chk.addEventListener('change', function() {
+                updateAlertRuleFromRow(tr);
+                sendUpdate('alerts', currentAlerts);
+                showToast(chk.checked ? '✅ 已开启预警监控' : '⚪ 已暂停预警监控');
+              });
+            }
+          })(rows[i]);
+        }
+      }
 
       // ── 网络标签模式控制 ──
       function applyProxyCardVisibility(section, mode) {
@@ -970,7 +1207,23 @@ export function getSettingsWebviewHtml(
       });
       on('btnDetectGlobal', 'click', function() { triggerDetect('global'); });
 
-      // 2. 关于与交流事件
+      // 2. 到价预警事件
+      on('alertNotificationMode', 'change', function() {
+        sendUpdate('alertNotificationMode', this.value);
+        showToast('⚡ 预警提醒方式已更新');
+      });
+      on('alertCooldownMinutes', 'change', function() {
+        var val = parseInt(this.value, 10);
+        if (isNaN(val) || val < 1) val = 15;
+        this.value = val;
+        sendUpdate('alertCooldownMinutes', val);
+        showToast('⚡ 预警冷却时间已更新为 ' + val + ' 分钟');
+      });
+      on('btnClearAllAlerts', 'click', function() {
+        postCmd('clearAllAlerts');
+      });
+
+      // 3. 关于与交流事件
       on('btnOpenIssues', 'click', function() {
         postCmd('openExternal', { url: 'https://github.com/DevQQQQQ/MarketLens/issues' });
       });
@@ -1138,6 +1391,13 @@ export function getSettingsWebviewHtml(
             setChecked('alphaNetDirect', true);
           }
 
+          // 到价预警
+          setValue('alertNotificationMode', d.alertNotificationMode || 'notification');
+          setValue('alertCooldownMinutes', d.alertCooldownMinutes !== undefined ? d.alertCooldownMinutes : 15);
+          if (d.alerts !== undefined) currentAlerts = d.alerts || {};
+          if (d.watchlist !== undefined) currentWatchlist = d.watchlist || {};
+          renderAlertTable(currentWatchlist, currentAlerts);
+
         } else if (msg.command === 'proxyDetected' || msg.command === 'portDetected') {
           var port = msg.port;
           if (!port && msg.url) {
@@ -1157,6 +1417,14 @@ export function getSettingsWebviewHtml(
           }
         }
       });
+
+      // 当面板获得焦点（如从侧边栏切换回设置面板）时主动拉取最新配置，确保即时同频
+      window.addEventListener('focus', function() {
+        postCmd('getSettings');
+      });
+
+      // 首次即时渲染到价预警表格
+      renderAlertTable(currentWatchlist, currentAlerts);
 
       // 发起双重握手获取最新配置
       postCmd('getSettings');

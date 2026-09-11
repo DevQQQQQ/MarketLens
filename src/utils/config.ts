@@ -56,6 +56,9 @@ export function readConfig(): MarketLensConfig {
     alpha,
 
     watchlist: cfg.get("watchlist", {}),
+    alerts: cfg.get("alerts", {}),
+    alertNotificationMode: cfg.get<"notification" | "statusBarOnly" | "both">("alertNotificationMode", "notification"),
+    alertCooldownMinutes: cfg.get<number>("alertCooldownMinutes", 15),
   };
 }
 

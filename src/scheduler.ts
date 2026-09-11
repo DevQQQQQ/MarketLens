@@ -9,7 +9,8 @@ import { logger } from "./utils/logger";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen } from "./utils/marketHours";
 import { readConfig } from "./utils/config";
 
-import { extractTargetsFromWatchlist, extractStatusBarQuotes } from "./utils/symbolHelper";
+import { extractTargetsFromWatchlist, extractStatusBarQuotes, pruneQuoteCache } from "./utils/symbolHelper";
+import { AlertManager } from "./services/alertManager";
 
 export interface SchedulerContext {
   marketManager: MarketManager;
@@ -27,6 +28,7 @@ export class RefreshScheduler implements vscode.Disposable {
   private isRefreshing = false;
 
   public readonly quoteCache = new Map<string, MarketItem>();
+  public readonly alertManager: AlertManager;
 
   private readonly marketManager: MarketManager;
   private readonly treeProvider: WatchlistProvider;
@@ -38,6 +40,7 @@ export class RefreshScheduler implements vscode.Disposable {
     this.treeProvider = context.treeProvider;
     this.statusBar = context.statusBar;
     this.treeView = context.treeView;
+    this.alertManager = new AlertManager(this.statusBar);
   }
 
   /**
@@ -79,7 +82,10 @@ export class RefreshScheduler implements vscode.Disposable {
    */
   public rebuildTree(customWatchlist?: Record<string, any[]>): void {
     const currentCfg = readConfig();
-    this.treeProvider.buildTree(customWatchlist || currentCfg.watchlist, this.quoteCache, {
+    const activeWatchlist = customWatchlist || currentCfg.watchlist;
+    this.treeProvider.setAlerts(currentCfg.alerts || {});
+    pruneQuoteCache(activeWatchlist, this.quoteCache);
+    this.treeProvider.buildTree(activeWatchlist, this.quoteCache, {
       aShare: currentCfg.aShare.enabled,
       hkStock: currentCfg.hkStock.enabled,
       usStock: currentCfg.usStock.enabled,
@@ -165,6 +171,10 @@ export class RefreshScheduler implements vscode.Disposable {
       for (const q of quotes) {
         this.saveToQuoteCache(q);
       }
+      pruneQuoteCache(config.watchlist, this.quoteCache);
+
+      // 评估价格预警与剧烈波动
+      this.alertManager.checkQuotes(quotes, config);
 
       const wasFirstLoad = !this.hasLoadedInitialQuotes;
       if (quotes.length > 0 || this.hasLoadedInitialQuotes) {
@@ -209,6 +219,10 @@ export class RefreshScheduler implements vscode.Disposable {
       for (const q of quotes) {
         this.saveToQuoteCache(q);
       }
+      pruneQuoteCache(config.watchlist, this.quoteCache);
+
+      // 评估价格预警与剧烈波动
+      this.alertManager.checkQuotes(quotes, config);
 
       this.treeProvider.applyQuotes(quotes);
       this.updateStatusBar(config);

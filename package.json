@@ -2,7 +2,7 @@
 	"name": "marketlens",
 	"displayName": "MarketLens - 全球行情看板 (A股/港股/美股/加密货币)",
 	"description": "专为开发者打造的行情看板与效率工具，实时查看 A股、港股、美股、主流加密货币、DEX 资产，支持快捷键隐藏、简洁模式及网络代理配置。",
-	"version": "1.1.3",
+	"version": "1.1.4",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
@@ -111,6 +111,11 @@
 				"command": "marketlens.pinToTop",
 				"title": "置顶",
 				"icon": "$(pin)"
+			},
+			{
+				"command": "marketlens.setAlert",
+				"title": "设置价格预警...",
+				"icon": "$(bell)"
 			}
 		],
 		"keybindings": [
@@ -186,7 +191,7 @@
 					"group": "inline"
 				},
 				{
-					"command": "marketlens.pinToTop",
+					"command": "marketlens.setAlert",
 					"when": "view == marketlens.watchlist && viewItem == stockItem",
 					"group": "inline@1"
 				},
@@ -194,6 +199,11 @@
 					"command": "marketlens.removeItem",
 					"when": "view == marketlens.watchlist && viewItem == stockItem",
 					"group": "inline@2"
+				},
+				{
+					"command": "marketlens.pinToTop",
+					"when": "view == marketlens.watchlist && viewItem == stockItem",
+					"group": "2_manage@1"
 				}
 			]
 		},
@@ -685,6 +695,36 @@
 							}
 						]
 					}
+				},
+				"marketlens.alerts": {
+					"type": "object",
+					"default": {},
+					"order": 12,
+					"description": "【到价预警】各标的价格突破、跌破与涨跌幅预警配置字典"
+				},
+				"marketlens.alertNotificationMode": {
+					"type": "string",
+					"enum": [
+						"notification",
+						"statusBarOnly",
+						"both"
+					],
+					"enumDescriptions": [
+						"右下角轻量弹窗浮窗",
+						"仅底部状态栏静默提醒",
+						"右下角浮窗与状态栏同时提醒"
+					],
+					"default": "notification",
+					"order": 13,
+					"description": "【到价预警】触碰阈值时的提醒展示形式"
+				},
+				"marketlens.alertCooldownMinutes": {
+					"type": "number",
+					"default": 15,
+					"minimum": 1,
+					"maximum": 1440,
+					"order": 14,
+					"description": "【到价预警】同一标的连续报警的冷却静音时间（分钟）"
 				}
 			}
 		}

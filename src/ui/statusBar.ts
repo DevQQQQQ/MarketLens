@@ -278,10 +278,39 @@ export class StatusBar implements vscode.Disposable {
     this.barItem.color = undefined;
   }
 
+  private flashAlertTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * 临时高亮展示预警信息，并在指定时长后恢复日常轮播
+   */
+  flashAlert(text: string, durationMs: number = 15000): void {
+    if (this.bossKeyActive) {
+      return;
+    }
+    if (this.flashAlertTimer !== undefined) {
+      clearTimeout(this.flashAlertTimer);
+      this.flashAlertTimer = undefined;
+    }
+
+    this.stopCarousel();
+    this.barItem.text = text;
+    this.barItem.show();
+
+    this.flashAlertTimer = setTimeout(() => {
+      this.flashAlertTimer = undefined;
+      this.restartCarousel();
+      this.render();
+    }, durationMs);
+  }
+
   // ── 释放 ────────────────────────────────────────────────────────
 
   dispose(): void {
     this.stopCarousel();
+    if (this.flashAlertTimer !== undefined) {
+      clearTimeout(this.flashAlertTimer);
+      this.flashAlertTimer = undefined;
+    }
     this.barItem.dispose();
   }
 }
