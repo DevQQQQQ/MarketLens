@@ -8,8 +8,14 @@ esbuild.js
 **/*.map
 *.vsix
 .workbuddy/**
+.workbuddy-ai/**
 test/**
 .eslintrc.json
 .github/**
 node_modules/**
 RELEASE.md
+docs/**
+AGENTS.md
+*.log
+*.txt
+_verify_*

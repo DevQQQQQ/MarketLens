@@ -29,7 +29,7 @@ npm run package
 
 ### 方式二：指定输出版本文件名
 ```powershell
-npx @vscode/vsce package -o marketlens-1.1.1.vsix --allow-missing-repository --no-dependencies
+npx @vscode/vsce package -o marketlens-1.1.5.vsix --allow-missing-repository --no-dependencies
 ```
 
 > **参数解析**：
@@ -44,7 +44,7 @@ npx @vscode/vsce package -o marketlens-1.1.1.vsix --allow-missing-repository --n
 
 ### 终端一键强制安装
 ```powershell
-code --install-extension marketlens-1.1.1.vsix --force
+code --install-extension marketlens-1.1.5.vsix --force
 ```
 
 ### VS Code 图形界面安装
@@ -55,23 +55,29 @@ code --install-extension marketlens-1.1.1.vsix --force
 
 ---
 
-## 🚀 4. 发布至 VS Code Marketplace 官方市场
+## 🚀 4. 双平台发布 (VS Code Marketplace & Open VSX)
 
-### 网页端管理后台上传（最简单直观）
-1. 访问 [Visual Studio Marketplace Management Portal](https://marketplace.visualstudio.com/manage)；
-2. 登录您的 Publisher 开发者账号（如 `devqqqqq`）；
-3. 点击 **New extension** -> **Visual Studio Code**；
-4. 上传生成的 `.vsix` 文件，平台自动完成病毒扫描与签名，数分钟内全球同步上线。
+### 1. VS Code Marketplace
+- **管理后台上传**：访问 [Marketplace Portal](https://marketplace.visualstudio.com/manage) 上传 `.vsix`；
+- **命令行发布**：
+  ```powershell
+  npx @vscode/vsce publish -p <YOUR_VSCE_PAT> --no-dependencies
+  ```
 
-### 命令行一键发布（需要 Personal Access Token）
-```powershell
-npx @vscode/vsce publish -p <YOUR_PAT_TOKEN>
-```
+### 2. Open VSX Registry (面向 VSCodium / Gitpod)
+- **管理后台上传**：访问 [Open VSX Registry](https://open-vsx.org/)；
+- **命令行发布**：
+  ```powershell
+  npx ovsx publish -p <YOUR_OVSX_PAT> --no-dependencies
+  ```
+
+> 💡 **GitHub Actions 自动化**：推送版本 tag（如 `git tag v1.1.5 && git push origin v1.1.5`）后，`.github/workflows/release.yml` 将自动并发打包并同时发布到双平台。
 
 ---
 
 ## 🏷️ 5. 版本号管理与规范
 
-- 发布新版本前，请确保在 `package.json` 中递增 `version`（遵循 [SemVer 语义化版本](https://semver.org/lang/zh-CN/)，如 `1.1.0` -> `1.1.1`）；
+- 发布新版本前，请确保在 `package.json` 中递增 `version`（遵循 [SemVer 语义化版本](https://semver.org/lang/zh-CN/)，如 `1.1.4` -> `1.1.5`）；
 - 同步在 `CHANGELOG.md` 中记录新版本的更新项；
 - MarketLens 设置中心的【关于与帮助】面板会自动读取运行时的最新版本号展示给用户。
+

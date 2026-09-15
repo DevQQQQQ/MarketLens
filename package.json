@@ -1,8 +1,8 @@
 {
 	"name": "marketlens",
 	"displayName": "MarketLens - 全球行情看板 (A股/港股/美股/加密货币)",
-	"description": "专为开发者打造的行情看板与效率工具，实时查看 A股、港股、美股、主流加密货币、DEX 资产，支持快捷键隐藏、简洁模式及网络代理配置。",
-	"version": "1.1.4",
+	"description": "实时查看A股/港股/美股/主流加密货币与链上DEX资产，支持快捷键隐藏、简洁模式及网络代理。专为开发者打造的摸鱼盯盘与股票看板效率工具，支持自定义自选列表、价格预警、底部状态栏轮播。",
+	"version": "1.1.5",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
@@ -23,15 +23,37 @@
 	],
 	"keywords": [
 		"A股",
-		"港股美股",
+		"港股",
+		"美股",
+		"股票",
 		"行情看板",
-		"Binance",
-		"Crypto"
+		"摸鱼",
+		"盯盘",
+		"加密货币",
+		"炒币",
+		"区块链",
+		"实时行情",
+		"crypto",
+		"stock",
+		"stocks",
+		"binance",
+		"dex",
+		"tracker",
+		"finance",
+		"cryptocurrency",
+		"quote",
+		"ticker",
+		"dashboard"
 	],
 	"activationEvents": [
 		"onStartupFinished"
 	],
 	"main": "./dist/extension.js",
+	"capabilities": {
+		"untrustedWorkspaces": {
+			"supported": true
+		}
+	},
 	"contributes": {
 		"viewsContainers": {
 			"activitybar": [
@@ -116,6 +138,11 @@
 				"command": "marketlens.setAlert",
 				"title": "设置价格预警...",
 				"icon": "$(bell)"
+			},
+			{
+				"command": "marketlens.showLogs",
+				"title": "查看运行日志",
+				"icon": "$(output)"
 			}
 		],
 		"keybindings": [
@@ -236,6 +263,20 @@
 					"order": 4,
 					"description": "【全局】中性色彩模式：关闭红绿色彩标记，使用编辑器默认主题文本颜色"
 				},
+				"marketlens.colorScheme": {
+					"type": "string",
+					"enum": [
+						"greenUpRedDown",
+						"redUpGreenDown"
+					],
+					"enumDescriptions": [
+						"绿涨红跌（国际/加密/美股习惯，默认）",
+						"红涨绿跌（A股/国内传统金融盘面习惯）"
+					],
+					"default": "greenUpRedDown",
+					"order": 5,
+					"description": "【全局】涨跌配色习惯：greenUpRedDown (绿涨红跌，默认) 或 redUpGreenDown (红涨绿跌)"
+				},
 				"marketlens.statusBar.enabled": {
 					"type": "boolean",
 					"default": true,
@@ -248,13 +289,13 @@
 					"maximum": 65535,
 					"default": 10808,
 					"order": 6,
-					"description": "【全局】本地代理端口号（1-65535，如 v2rayN 10808/10809, Clash 7890/7897 等）"
+					"description": "【全局】本地代理端口号（1-65535，默认 10808。未配置时自适应读取系统 HTTP_PROXY / HTTPS_PROXY / ALL_PROXY 或常用代理端口）"
 				},
 				"marketlens.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
 					"order": 7,
-					"description": "【全局】统一代理地址（仅支持 HTTP / 混合代理，自动由代理端口生成）"
+					"description": "【全局】统一代理地址（仅支持 HTTP / 混合代理。未配置时自动感知系统代理环境变量或自动探测工作代理）"
 				},
 				"marketlens.aShare.enabled": {
 					"type": "boolean",
@@ -736,7 +777,8 @@
 		"package": "vsce package --allow-missing-repository --no-dependencies",
 		"lint": "eslint src --ext ts",
 		"typecheck": "tsc --noEmit",
-		"test": "node --experimental-strip-types --no-warnings --test test/unit.test.ts"
+		"test": "node --experimental-strip-types --no-warnings --test test/unit.test.ts",
+		"test:coverage": "node --experimental-strip-types --no-warnings --test --experimental-test-coverage test/unit.test.ts"
 	},
 	"devDependencies": {
 		"@types/node": "^20.11.0",
@@ -749,6 +791,6 @@
 		"typescript": "^5.3.3"
 	},
 	"dependencies": {
-		"axios": "^1.6.7"
+		"axios": "^1.7.9"
 	}
 }

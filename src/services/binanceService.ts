@@ -1,9 +1,10 @@
 // src/services/binanceService.ts
-import { MarketItem } from "../types";
-import { cryptoGet, CryptoNetworkOptions } from "./network";
-import { logger } from "../utils/logger";
+import type { MarketItem } from "../types";
+import { cryptoGet, type CryptoNetworkOptions } from "./network.ts";
+import { logger } from "../utils/logger.ts";
+import { chunkArray } from "../utils/symbolHelper.ts";
 
-interface BinanceTicker24hr {
+export interface BinanceTicker24hr {
   symbol: string;
   priceChange: string;
   priceChangePercent: string;
@@ -24,10 +25,19 @@ export class BinanceService {
   // 记录单币降级时的连续失败次数，防止坏币因超时/网络故障未返回 400 导致每轮反复重演 N 次单查
   private symbolFailureCounts = new Map<string, number>();
   private readonly MAX_CONSECUTIVE_FAILURES = 3;
+  private readonly CHUNK_SIZE = 50;
 
   public clearInvalidCache(): void {
     this.invalidSymbols.clear();
     this.symbolFailureCounts.clear();
+  }
+
+  public isSymbolSuppressed(s: string): boolean {
+    return this.isSymbolInvalid(s);
+  }
+
+  public markSymbolInvalidForTest(s: string): void {
+    this.markSymbolInvalid(s);
   }
 
   private isSymbolInvalid(s: string): boolean {
@@ -45,11 +55,11 @@ export class BinanceService {
     logger.warn(`[BinanceService] 标的 "${s}" 在币安不可用或已下架，已加入临时抑制黑名单(10分钟)`);
   }
 
-  private normalizeSymbol(raw: string): string {
+  public normalizeSymbol(raw: string): string {
     return raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
   }
 
-  private formatDisplayName(symbol: string): string {
+  public formatDisplayName(symbol: string): string {
     const quotes = ["USDT", "USDC", "FDUSD", "BUSD", "BTC", "ETH"];
     for (const q of quotes) {
       if (symbol.endsWith(q) && symbol.length > q.length) {
@@ -59,8 +69,28 @@ export class BinanceService {
     return symbol;
   }
 
+  public parseTickerItem(item: BinanceTicker24hr): MarketItem {
+    const sym = item.symbol;
+    return {
+      id:           sym,
+      name:         this.formatDisplayName(sym),
+      symbol:       sym,
+      type:         "CRYPTO",
+      price:        parseFloat(item.lastPrice)         || 0,
+      changePercent: parseFloat(item.priceChangePercent) || 0,
+      open:         parseFloat(item.openPrice)         || 0,
+      prevClose:    parseFloat(item.prevClosePrice)    || 0,
+      high:         parseFloat(item.highPrice)         || 0,
+      low:          parseFloat(item.lowPrice)          || 0,
+      change:       parseFloat(item.priceChange)       || 0,
+      volume:       parseFloat(item.volume)            || 0,
+      turnover:     parseFloat(item.quoteVolume)       || 0,
+      currency:     "USD",
+    };
+  }
+
   /**
-   * 批量拉取 Binance 行情
+   * 批量拉取 Binance 行情（支持大批量分批切片保护，彻底规避 100 标的上限）
    * @param symbols 币对列表
    * @param options 网络代理配置（强制代理/直连、指定代理URL）
    */
@@ -75,6 +105,18 @@ export class BinanceService {
 
     // 过滤掉当前仍在抑制期内的失效币种，保证批量接口可以一次性成功
     const activeSymbols = cleanSymbols.filter((s) => !this.isSymbolInvalid(s));
+    if (!activeSymbols.length) { return []; }
+
+    const chunks = chunkArray(activeSymbols, this.CHUNK_SIZE);
+    const chunkPromises = chunks.map((batch) => this.fetchBatch(batch, options));
+    const results = await Promise.all(chunkPromises);
+    return results.flat();
+  }
+
+  private async fetchBatch(
+    activeSymbols: string[],
+    options: CryptoNetworkOptions
+  ): Promise<MarketItem[]> {
     if (!activeSymbols.length) { return []; }
 
     const symbolsParam = encodeURIComponent(JSON.stringify(activeSymbols));
@@ -95,25 +137,7 @@ export class BinanceService {
         const rawList = Array.isArray(response.data) ? response.data : [response.data];
         this.symbolFailureCounts.clear();
 
-        return rawList.map((item): MarketItem => {
-          const sym = item.symbol;
-          return {
-            id:           sym,
-            name:         this.formatDisplayName(sym),
-            symbol:       sym,
-            type:         "CRYPTO",
-            price:        parseFloat(item.lastPrice)         || 0,
-            changePercent: parseFloat(item.priceChangePercent) || 0,
-            open:         parseFloat(item.openPrice)         || 0,
-            prevClose:    parseFloat(item.prevClosePrice)    || 0,
-            high:         parseFloat(item.highPrice)         || 0,
-            low:          parseFloat(item.lowPrice)          || 0,
-            change:       parseFloat(item.priceChange)       || 0,
-            volume:       parseFloat(item.volume)            || 0,
-            turnover:     parseFloat(item.quoteVolume)       || 0,
-            currency:     "USD",
-          };
-        });
+        return rawList.map((item) => this.parseTickerItem(item));
       } catch (err: any) {
         if (err?.response?.status === 400 || err?.status === 400 || String(err?.message || "").includes("400")) {
           is400Error = true;
@@ -139,22 +163,7 @@ export class BinanceService {
           const sym = item.symbol;
           this.symbolFailureCounts.delete(sym);
           this.symbolFailureCounts.delete(s);
-          successfulItems.push({
-            id:           sym,
-            name:         this.formatDisplayName(sym),
-            symbol:       sym,
-            type:         "CRYPTO" as const,
-            price:        parseFloat(item.lastPrice)         || 0,
-            changePercent: parseFloat(item.priceChangePercent) || 0,
-            open:         parseFloat(item.openPrice)         || 0,
-            prevClose:    parseFloat(item.prevClosePrice)    || 0,
-            high:         parseFloat(item.highPrice)         || 0,
-            low:          parseFloat(item.lowPrice)          || 0,
-            change:       parseFloat(item.priceChange)       || 0,
-            volume:       parseFloat(item.volume)            || 0,
-            turnover:     parseFloat(item.quoteVolume)       || 0,
-            currency:     "USD" as const,
-          });
+          successfulItems.push(this.parseTickerItem(item));
         } catch (err: any) {
           const is400 = err?.response?.status === 400 || err?.status === 400 || String(err?.message || "").includes("400");
           const failCount = (this.symbolFailureCounts.get(s) || 0) + 1;

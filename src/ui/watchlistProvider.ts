@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig } from "../types";
-import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName } from "../utils/symbolHelper";
+import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme } from "../utils/symbolHelper";
 import { isDisplayMasked } from "../utils/maskState";
 
 /**
@@ -72,6 +72,7 @@ export class GroupItem extends vscode.TreeItem {
 export class StockItem extends vscode.TreeItem {
   public alertRule?: PriceAlertItem;
   public confName?: string;
+  public colorScheme: ColorScheme;
 
   constructor(
     public item: MarketItem,
@@ -80,14 +81,16 @@ export class StockItem extends vscode.TreeItem {
     private maskMode: boolean,
     private colorNeutral: boolean = false,
     alertRule?: PriceAlertItem,
-    confName?: string
+    confName?: string,
+    colorScheme: ColorScheme = "greenUpRedDown"
   ) {
     super(resolveItemDisplayName(confName, confSymbol, item), vscode.TreeItemCollapsibleState.None);
     this.confName = confName;
+    this.colorScheme = colorScheme;
     this.id = `${groupName}_${confSymbol}`;
     this.contextValue = "stockItem";
     this.alertRule = alertRule;
-    this.refresh(item, maskMode, colorNeutral, alertRule, confName);
+    this.refresh(item, maskMode, colorNeutral, alertRule, confName, colorScheme);
   }
 
   /** 更新显示内容与悬停详细信息 */
@@ -96,7 +99,8 @@ export class StockItem extends vscode.TreeItem {
     maskMode: boolean,
     colorNeutral: boolean = false,
     alertRule?: PriceAlertItem,
-    confName?: string
+    confName?: string,
+    colorScheme?: ColorScheme
   ): void {
     this.item = item;
     if (alertRule !== undefined) {
@@ -104,6 +108,9 @@ export class StockItem extends vscode.TreeItem {
     }
     if (confName !== undefined) {
       this.confName = confName;
+    }
+    if (colorScheme !== undefined) {
+      this.colorScheme = colorScheme;
     }
     const currentAlert = this.alertRule;
     const hasAlert = !!(
@@ -122,7 +129,7 @@ export class StockItem extends vscode.TreeItem {
     const sign = item.changePercent >= 0 ? "+" : "";
     const pctStr = maskMode ? "**" : `${sign}${item.changePercent.toFixed(2)}%`;
     const arrow = item.changePercent >= 0 ? "▲" : "▼";
-    const colorHint = colorNeutral ? "•" : (item.changePercent >= 0 ? "🟢" : "🔴");
+    const { colorHint, themeColor } = resolveTrendColors(item.changePercent, colorNeutral, this.colorScheme);
 
     const alertSuffix = hasAlert ? " 🔔" : "";
     const displayName = resolveItemDisplayName(this.confName, this.confSymbol, item);
@@ -220,11 +227,14 @@ export class StockItem extends vscode.TreeItem {
     }
 
     this.tooltip = new vscode.MarkdownString(mdText);
-    this.tooltip.isTrusted = true;
+    // 允许渲染 Markdown 表格，但显式禁用全部命令链接：
+    // mdText 内嵌了 DexScreener 等第三方接口返回的代币名称（外部可控），
+    // 若直接置为 true，恶意名称中的 `[x](command:...)` 将可被点击执行。
+    this.tooltip.isTrusted = { enabledCommands: [] };
 
     if (!hasQuote) {
       this.iconPath = new vscode.ThemeIcon("sync~spin");
-    } else if (colorNeutral) {
+    } else if (colorNeutral || !themeColor) {
       // 颜色脱敏：使用系统默认前景色，杜绝红绿色视觉刺激
       this.iconPath = new vscode.ThemeIcon(
         item.changePercent >= 0 ? "arrow-up" : "arrow-down"
@@ -232,9 +242,7 @@ export class StockItem extends vscode.TreeItem {
     } else {
       this.iconPath = new vscode.ThemeIcon(
         item.changePercent >= 0 ? "arrow-up" : "arrow-down",
-        new vscode.ThemeColor(
-          item.changePercent >= 0 ? "charts.green" : "charts.red"
-        )
+        new vscode.ThemeColor(themeColor)
       );
     }
   }
@@ -272,14 +280,23 @@ export class WatchlistProvider
 
   constructor(
     private maskMode: boolean,
-    private colorNeutral: boolean = false
+    private colorNeutral: boolean = false,
+    private colorScheme: ColorScheme = "greenUpRedDown"
   ) {}
+
+  public setColorScheme(colorScheme: ColorScheme): void {
+    this.colorScheme = colorScheme || "greenUpRedDown";
+    for (const node of this.getAllUniqueNodes()) {
+      node.refresh(node.item, this.isMasked(), this.colorNeutral, undefined, undefined, this.colorScheme);
+    }
+    this._onDidChangeTreeData.fire();
+  }
 
   public setAlerts(alerts: AlertsConfig): void {
     this.alertsConfig = alerts || {};
     for (const node of this.getAllUniqueNodes()) {
       const alertRule = this.getAlertRule(node.confSymbol, node.item);
-      node.refresh(node.item, this.isMasked(), this.colorNeutral, alertRule);
+      node.refresh(node.item, this.isMasked(), this.colorNeutral, alertRule, undefined, this.colorScheme);
     }
     this._onDidChangeTreeData.fire();
   }
@@ -375,7 +392,7 @@ export class WatchlistProvider
       return;
     }
 
-    if (!this.onBatchReorderCallback && !this.onReorderCallback) {
+    if (!this.onBatchReorderCallback) {
       return;
     }
 
@@ -403,18 +420,9 @@ export class WatchlistProvider
       return;
     }
 
-    // 优先使用原子化批量重排回调（单次落盘与重绘）
+    // 使用原子化批量重排（单次落盘与重绘）
     if (this.onBatchReorderCallback) {
       await this.onBatchReorderCallback(itemsToMove, targetGroup, targetSymbol);
-    } else if (this.onReorderCallback) {
-      for (const item of itemsToMove) {
-        await this.onReorderCallback(
-          item.sourceGroup,
-          item.sourceSymbol,
-          targetGroup,
-          targetSymbol
-        );
-      }
     }
   }
 
@@ -526,7 +534,7 @@ export class WatchlistProvider
           };
 
         const alertRule = this.getAlertRule(conf.symbol, found);
-        const node = new StockItem(found, groupName, conf.symbol, this.isMasked(), this.colorNeutral, alertRule, conf.name);
+        const node = new StockItem(found, groupName, conf.symbol, this.isMasked(), this.colorNeutral, alertRule, conf.name, this.colorScheme);
         // 使用规范化 key 存储，辅以原始 conf.symbol 索引，支持同一标的在不同分组中均能刷新
         const registerKey = (k?: string) => {
           if (!k) return;
@@ -568,7 +576,7 @@ export class WatchlistProvider
         if (nodes && nodes.length > 0) {
           for (const node of nodes) {
             const alertRule = this.getAlertRule(node.confSymbol, q);
-            node.refresh(q, this.isMasked(), this.colorNeutral, alertRule);
+            node.refresh(q, this.isMasked(), this.colorNeutral, alertRule, undefined, this.colorScheme);
           }
           break;
         }
@@ -593,7 +601,7 @@ export class WatchlistProvider
   setBossKey(active: boolean): void {
     this.bossKeyActive = active;
     for (const node of this.getAllUniqueNodes()) {
-      node.refresh(node.item, this.isMasked(), this.colorNeutral);
+      node.refresh(node.item, this.isMasked(), this.colorNeutral, undefined, undefined, this.colorScheme);
     }
     this._onDidChangeTreeData.fire();
   }
@@ -609,7 +617,7 @@ export class WatchlistProvider
   setMaskMode(enabled: boolean): void {
     this.maskMode = enabled;
     for (const node of this.getAllUniqueNodes()) {
-      node.refresh(node.item, this.isMasked(), this.colorNeutral);
+      node.refresh(node.item, this.isMasked(), this.colorNeutral, undefined, undefined, this.colorScheme);
     }
     this._onDidChangeTreeData.fire();
   }
@@ -617,7 +625,7 @@ export class WatchlistProvider
   setColorNeutral(enabled: boolean): void {
     this.colorNeutral = enabled;
     for (const node of this.getAllUniqueNodes()) {
-      node.refresh(node.item, this.isMasked(), this.colorNeutral);
+      node.refresh(node.item, this.isMasked(), this.colorNeutral, undefined, undefined, this.colorScheme);
     }
     this._onDidChangeTreeData.fire();
   }

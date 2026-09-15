@@ -2,6 +2,7 @@
 import * as vscode from "vscode";
 import { MarketLensConfig } from "../types";
 import { computeStatusBarEnabled } from "./symbolHelper";
+import { getSystemProxyUrl } from "../services/network";
 
 function getSectionConfig(
   cfg: vscode.WorkspaceConfiguration,
@@ -23,8 +24,27 @@ function getSectionConfig(
  */
 export function readConfig(): MarketLensConfig {
   const cfg = vscode.workspace.getConfiguration("marketlens");
-  const proxyPort = cfg.get<number>("proxyPort", 10808);
-  const globalProxy = cfg.get<string>("proxyUrl") || `http://127.0.0.1:${proxyPort}`;
+  const portInspect = cfg.inspect<number>("proxyPort");
+  const urlInspect = cfg.inspect<string>("proxyUrl");
+  const isCustomPort = portInspect?.globalValue !== undefined || portInspect?.workspaceValue !== undefined;
+  const isCustomUrl = urlInspect?.globalValue !== undefined || urlInspect?.workspaceValue !== undefined;
+
+  let proxyPort = cfg.get<number>("proxyPort", 10808);
+  let globalProxy = cfg.get<string>("proxyUrl") || `http://127.0.0.1:${proxyPort}`;
+
+  // 若用户未主动在 VS Code 设置中显式配置自定义代理端口与地址，自适应读取操作系统代理环境变量
+  if (!isCustomPort && !isCustomUrl) {
+    const sysProxy = getSystemProxyUrl();
+    if (sysProxy) {
+      globalProxy = sysProxy;
+      try {
+        const u = new URL(sysProxy);
+        if (u.port) {
+          proxyPort = parseInt(u.port, 10);
+        }
+      } catch (_) {}
+    }
+  }
 
   const aShare  = getSectionConfig(cfg, "aShare",  { networkMode: "direct", proxyUrl: globalProxy, stopOnMarketClosed: true });
   const hkStock = getSectionConfig(cfg, "hkStock", { networkMode: "direct", proxyUrl: globalProxy, stopOnMarketClosed: true });
@@ -42,6 +62,7 @@ export function readConfig(): MarketLensConfig {
     refreshInterval: cfg.get<number>("refreshInterval", 5000),
     maskMode:        cfg.get<boolean>("maskMode", false),
     colorNeutral:    cfg.get<boolean>("colorNeutral", false),
+    colorScheme:     cfg.get<"greenUpRedDown" | "redUpGreenDown">("colorScheme", "greenUpRedDown"),
     proxyPort,
     proxyUrl:        globalProxy,
 

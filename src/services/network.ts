@@ -49,18 +49,29 @@ export function resetProxyCache(): void {
 }
 
 /**
- * 校验并规范化代理地址（防止用户输入为空、带特殊协议或格式残缺导致崩溃）
- * 1. 支持纯端口号输入（如 10808 或 "10808"），自动规范化为 http://127.0.0.1:10808
- * 2. 彻底纠偏 https://：本地代理服务器均为明文 HTTP 监听，自动规整为 http://
- * 3. 友好支持 socks5:// / socks://：提取其中的 host 与 port，将其转换为 Node.js HTTP 代理形式
- * 4. 完整保留认证信息 (http://user:pass@host:port)
- * 5. 缺省返回当前可用工作端口或 10808
+ * 读取操作系统代理环境变量（自适应支持 HTTPS_PROXY / HTTP_PROXY / ALL_PROXY 及其小写形式）
  */
-export function validateAndNormalizeProxyUrl(rawUrl: string | undefined): string {
-  if (!rawUrl || !rawUrl.trim()) {
-    return cachedWorkingPort ? `http://127.0.0.1:${cachedWorkingPort}` : "http://127.0.0.1:10808";
+export function getSystemProxyUrl(): string | undefined {
+  const env = process.env;
+  const raw =
+    env.HTTPS_PROXY ||
+    env.https_proxy ||
+    env.HTTP_PROXY ||
+    env.http_proxy ||
+    env.ALL_PROXY ||
+    env.all_proxy;
+
+  if (!raw || typeof raw !== "string" || !raw.trim()) {
+    return undefined;
   }
-  let str = rawUrl.trim();
+  return normalizeProxyUrlString(raw.trim());
+}
+
+/**
+ * 核心规范化逻辑：剥离协议头、解析端口与认证信息，规整为标准 http://[user:pass@]host:port
+ */
+export function normalizeProxyUrlString(rawStr: string): string {
+  let str = rawStr.trim();
 
   // 若用户直接输入纯数字端口（例如 "10808"）
   if (/^\d{1,5}$/.test(str)) {
@@ -94,6 +105,28 @@ export function validateAndNormalizeProxyUrl(rawUrl: string | undefined): string
   } catch {
     return "http://127.0.0.1:10808";
   }
+}
+
+/**
+ * 校验并规范化代理地址（防止用户输入为空、带特殊协议或格式残缺导致崩溃）
+ * 1. 支持纯端口号输入（如 10808 或 "10808"），自动规范化为 http://127.0.0.1:10808
+ * 2. 彻底纠偏 https://：本地代理服务器均为明文 HTTP 监听，自动规整为 http://
+ * 3. 友好支持 socks5:// / socks://：提取其中的 host 与 port，将其转换为 Node.js HTTP 代理形式
+ * 4. 完整保留认证信息 (http://user:pass@host:port)
+ * 5. 缺省优先返回当前可用工作端口、操作系统环境变量代理、或默认 10808
+ */
+export function validateAndNormalizeProxyUrl(rawUrl: string | undefined): string {
+  if (!rawUrl || !rawUrl.trim()) {
+    if (cachedWorkingPort) {
+      return `http://127.0.0.1:${cachedWorkingPort}`;
+    }
+    const sysProxy = getSystemProxyUrl();
+    if (sysProxy) {
+      return sysProxy;
+    }
+    return "http://127.0.0.1:10808";
+  }
+  return normalizeProxyUrlString(rawUrl);
 }
 
 /**
@@ -166,6 +199,18 @@ export async function detectAvailablePort(): Promise<number | null> {
   if (cachedWorkingPort && (await testLocalPort(cachedWorkingPort))) {
     return cachedWorkingPort;
   }
+  // 优先探测操作系统环境变量中配置的代理端口（若为本地端口）
+  const sysUrl = getSystemProxyUrl();
+  if (sysUrl) {
+    const sysProxy = parseProxy(sysUrl);
+    if (sysProxy.host === "127.0.0.1" || sysProxy.host === "localhost") {
+      const ok = await testLocalPort(sysProxy.port);
+      if (ok) {
+        cachedWorkingPort = sysProxy.port;
+        return sysProxy.port;
+      }
+    }
+  }
   for (const port of COMMON_PROXY_PORTS) {
     const ok = await testLocalPort(port);
     if (ok) {
@@ -201,7 +246,7 @@ export async function smartNetworkGet<T = any>(
   }
 
   // 2. 强制代理模式（绝不直连）
-  // 优先使用用户输入的代理或缺省/缓存代理（若 proxyUrl 为空，validateAndNormalizeProxyUrl 已自适应返回 cachedWorkingPort/7890）
+  // 优先使用用户输入的代理或缺省/缓存代理（若 proxyUrl 为空，validateAndNormalizeProxyUrl 已自适应返回 cachedWorkingPort/系统代理/10808）
   const targetProxy = parseProxy(proxyUrl || "");
 
   // 第一优先级：尝试目标代理端口
@@ -226,7 +271,26 @@ export async function smartNetworkGet<T = any>(
       );
     }
 
-    // 第二优先级：自动自适应探测其他主流端口
+    // 第二优先级：自适应探测操作系统环境变量代理（若配置了环境变量且与 targetProxy 不同）
+    const sysUrl = getSystemProxyUrl();
+    if (sysUrl) {
+      const sysProxy = parseProxy(sysUrl);
+      if (sysProxy.host !== targetProxy.host || sysProxy.port !== targetProxy.port) {
+        try {
+          const res = await axios.get<T>(url, {
+            ...mergedConfig,
+            timeout: 2500,
+            proxy: sysProxy,
+          });
+          cachedWorkingPort = sysProxy.port;
+          return res;
+        } catch {
+          // 继续回退到主流常见端口探测池
+        }
+      }
+    }
+
+    // 第三优先级：自动自适应探测其他主流端口
     for (const port of COMMON_PROXY_PORTS) {
       if (port === targetProxy.port) continue;
       try {

@@ -1,4 +1,8 @@
 // src/utils/inputValidator.ts
+// 注意：此处必须显式携带 .ts 扩展名 —— 本模块处于 node:test 类型剥离运行时的加载链路上，
+// 与 src/services/alertManager.ts 保持同一约定；esbuild 打包同样兼容该写法。
+import { inferAShareExchange, isContractAddress } from "./symbolHelper.ts";
+export { isContractAddress };
 
 export interface ParsedItemInput {
   symbol: string;
@@ -7,10 +11,6 @@ export interface ParsedItemInput {
   hint: string;
   alternativeGroup?: string;
   alternativeType?: "A_SHARE" | "HK_STOCK" | "US_STOCK" | "CRYPTO" | "ALPHA_TOKEN";
-}
-
-export function isContractAddress(str: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(str) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(str);
 }
 
 /**
@@ -107,7 +107,8 @@ export function validateAndParseInput(input: string): { error?: string; parsed?:
   if (aShareMatch) {
     const prefix = aShareMatch[1] ? aShareMatch[1].toLowerCase() : "";
     const code = aShareMatch[2];
-    const fullSymbol = prefix ? `${prefix}${code}` : (/^[69]/.test(code) ? `sh${code}` : (/^[03]/.test(code) ? `sz${code}` : `bj${code}`));
+    // 无显式前缀时，按代码段精确推断交易所（沪/深/北），与行情抓取端共用同一规则
+    const fullSymbol = prefix ? `${prefix}${code}` : `${inferAShareExchange(code)}${code}`;
     return {
       parsed: {
         symbol: fullSymbol,

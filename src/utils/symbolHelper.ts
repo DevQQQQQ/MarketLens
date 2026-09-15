@@ -1,6 +1,6 @@
 // src/utils/symbolHelper.ts
-
-export type AssetType = "A_SHARE" | "HK_STOCK" | "US_STOCK" | "CRYPTO" | "BSC_TOKEN" | "ALPHA_TOKEN";
+import type { AssetType } from "../types";
+export type { AssetType };
 
 export function isContractAddress(str: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(str) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(str);
@@ -134,6 +134,69 @@ export function normalizeUSCode(raw: string): string {
   // 否则原生美股 ticker（如 AAPL, B, USB, USFD, BRK.B, BRK-B），类股连字符统一映射为点号
   const ticker = clean.toUpperCase().replace(/[\-_/]/g, ".");
   return `us${ticker}`;
+}
+
+/**
+ * 依据 6 位 A 股代码推断所属交易所前缀（沪 sh / 深 sz / 北 bj）
+ *
+ * 采用「明确代码段优先 + 首位兜底」两级判定，供输入解析与行情抓取共用，确保两端规则绝对一致。
+ * 修复此前「6/9→sh，0/3→sz，其余一律 bj」的粗暴推断所导致的严重误判：
+ * - 5xxxxx（沪市基金/ETF，如 510300）曾被误判为 bj；
+ * - 1xxxxx（深市债/基金，如 159915）曾被误判为 bj；
+ * - 2xxxxx（深市 B 股，如 200011）曾被误判为 bj。
+ * 上述标的加前缀后腾讯接口始终返回空，表现为永久「获取行情中…」。
+ */
+export function inferAShareExchange(code: string): "sh" | "sz" | "bj" {
+  const c = String(code || "").trim();
+  if (!/^\d{6}$/.test(c)) {
+    return "sh";
+  }
+
+  // 1. 北交所 / 新三板：43 / 83 / 87 / 88 / 92 开头
+  if (/^(43|83|87|88|92)/.test(c)) {
+    return "bj";
+  }
+
+  // 2. 沪市债券与可转债：110/111/113/118 可转债，122 企业债，019/018/010/020 国债企债
+  if (/^(110|111|113|118|122|019|018|010|020)/.test(c)) {
+    return "sh";
+  }
+
+  // 3. 深市债券与可转债：123/127/128 可转债，100/112 债
+  if (/^(100|112|123|127|128)/.test(c)) {
+    return "sz";
+  }
+
+  // 4. 首位兜底 —— 沪市：5 基金/ETF/LOF、6 股票、9 B股
+  if (/^[569]/.test(c)) {
+    return "sh";
+  }
+
+  // 5. 首位兜底 —— 深市：0 股票、1 债/基金、2 B股、3 创业板
+  if (/^[0123]/.test(c)) {
+    return "sz";
+  }
+
+  // 6. 剩余未识别段位（4xxxxx 老三板等）归入北交所
+  return "bj";
+}
+
+/**
+ * 规范化 A 股代码：已带 sh/sz/bj 前缀则原样返回，否则按代码段补齐正确交易所前缀
+ */
+export function normalizeAShareCode(raw: string): string {
+  const code = String(raw || "").trim().toLowerCase();
+  if (/^(sh|sz|bj)/.test(code)) {
+    return code;
+  }
+  if (/^\d{6}$/.test(code)) {
+    return `${inferAShareExchange(code)}${code}`;
+  }
+  // 非标准 6 位代码保持既有兜底语义，避免影响历史自定义配置
+  if (/^[69]/.test(code)) { return `sh${code}`; }
+  if (/^[03]/.test(code)) { return `sz${code}`; }
+  if (/^[48]/.test(code)) { return `bj${code}`; }
+  return `sh${code}`;
 }
 
 /**
@@ -751,5 +814,103 @@ export function pruneQuoteCache<T extends { symbol?: string; id?: string }>(
   return deadKeys.length;
 }
 
+export type ColorScheme = "greenUpRedDown" | "redUpGreenDown";
 
+/**
+ * 根据涨跌幅及配色方案解析对应的颜色提示符号与主题色
+ * - greenUpRedDown (默认，国际习惯): 涨为绿，跌为红
+ * - redUpGreenDown (国内A股传统习惯): 涨为红，跌为绿
+ * - colorNeutral (中性脱敏): 使用中性点号，不暴露红绿
+ */
+export function resolveTrendColors(
+  changePercent: number,
+  colorNeutral: boolean = false,
+  colorScheme: ColorScheme = "greenUpRedDown"
+): {
+  colorHint: string;
+  themeColor: "charts.green" | "charts.red" | undefined;
+  isUp: boolean;
+} {
+  const isUp = changePercent >= 0;
+  if (colorNeutral) {
+    return {
+      colorHint: "•",
+      themeColor: undefined,
+      isUp,
+    };
+  }
+  const isRedUp = colorScheme === "redUpGreenDown";
+  const upColor = isRedUp ? "charts.red" : "charts.green";
+  const downColor = isRedUp ? "charts.green" : "charts.red";
+  const upEmoji = isRedUp ? "🔴" : "🟢";
+  const downEmoji = isRedUp ? "🟢" : "🔴";
 
+  return {
+    colorHint: isUp ? upEmoji : downEmoji,
+    themeColor: isUp ? upColor : downColor,
+    isUp,
+  };
+}
+
+/**
+ * 将数组按指定批次大小切片分块，用于大批量标的请求切片保护
+ */
+export function chunkArray<T>(arr: T[], size: number): T[][] {
+  if (!arr || !arr.length || size <= 0) return [];
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
+let gbkDecoderSupported: boolean | undefined = undefined;
+let cachedGbkDecoder: TextDecoder | null = null;
+
+/**
+ * 健壮的原生 GBK 解码函数（0 外部依赖，三级自适应安全兜底）
+ * 1. 优先使用 WHATWG 标准 TextDecoder("gbk") 解码（VS Code 桌面端与官方 Node.js 均为 Full-ICU 100% 原生支持）；
+ * 2. 若宿主环境处于极端裁剪（如 small-icu / --with-intl=none）抛出 RangeError，自动降级为 UTF-8；
+ * 3. 极端末梢容错：若 UTF-8 亦异常，通过单字节逐位映射（Latin-1）兜底，确保行情核心数字、逗号与波浪号等 ASCII 数据 100% 可解析。
+ */
+export function decodeGbk(buffer: ArrayBuffer | Uint8Array): string {
+  if (gbkDecoderSupported !== false) {
+    try {
+      if (!cachedGbkDecoder) {
+        cachedGbkDecoder = new TextDecoder("gbk");
+      }
+      const result = cachedGbkDecoder.decode(buffer);
+      gbkDecoderSupported = true;
+      return result;
+    } catch {
+      gbkDecoderSupported = false;
+      cachedGbkDecoder = null;
+    }
+  }
+
+  try {
+    return new TextDecoder("utf-8").decode(buffer);
+  } catch {
+    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    let str = "";
+    for (let i = 0; i < bytes.length; i++) {
+      str += String.fromCharCode(bytes[i]);
+    }
+    return str;
+  }
+}
+
+/**
+ * 健壮的 HTML 实体转义函数，防御 XSS 与属性引号逃逸 (CWE-79)
+ */
+export function escapeHtml(str: any): string {
+  if (str === null || str === undefined) {
+    return "";
+  }
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}

@@ -135,6 +135,17 @@ export class WatchlistOps {
       return;
     }
 
+    // ── Step 3.5: 可选输入友好显示名称（如：特斯拉、比特币） ───────
+    const customNameInput = await vscode.window.showInputBox({
+      title: `为 "${sym}" 设置显示名称（可选）`,
+      prompt: "直接按 Enter 默认使用标的代码作为显示名称",
+      placeHolder: `如：${detected.type === "US_STOCK" && sym.toUpperCase() === "TSLA" ? "特斯拉" : sym}`,
+    });
+    if (customNameInput === undefined) {
+      return; // 用户按下 Esc 取消
+    }
+    const finalName = customNameInput.trim() || sym;
+
     // ── Step 4: 写入 settings.json ───────────────────────────────
     let finalType = detected.type;
     if (detected.alternativeType) {
@@ -151,7 +162,7 @@ export class WatchlistOps {
       ...watchlist,
       [targetGroup]: [
         ...groupItems,
-        { symbol: sym, name: sym, type: finalType },
+        { symbol: sym, name: finalName, type: finalType },
       ],
     };
 
@@ -164,8 +175,9 @@ export class WatchlistOps {
       this.rebuildTree(updated);
       SettingsWebviewPanel.syncSettings();
 
+      const displayDesc = finalName !== sym ? `${finalName} (${sym})` : sym;
       vscode.window.showInformationMessage(
-        `✅ 已添加 "${sym}" 到 ${targetGroup}`
+        `✅ 已添加 "${displayDesc}" 到 ${targetGroup}`
       );
     } catch (err: any) {
       vscode.window.showErrorMessage(

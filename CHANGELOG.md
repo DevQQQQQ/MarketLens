@@ -3,6 +3,88 @@
 All notable changes to the "MarketLens" extension will be documented in this file.  
 本项目的所有重要版本更新与改动记录均将在此文档中呈现。
 
+## [1.1.5] - 2026-09-12
+
+### 🚀 新增特性与核心优化 (New Features & Improvements)
+
+- **🎨 涨跌配色方案自由切换 (Color Scheme)**：
+    - 新增 `marketlens.colorScheme` 设置项，支持国际习惯 `greenUpRedDown`（绿涨红跌，默认）与国内传统习惯 `redUpGreenDown`（红涨绿跌）；
+    - 切换配色方案时自动联动关闭 `colorNeutral` 颜色脱敏模式，并在左侧侧边栏与底部状态栏毫秒级双向同频。
+- **📅 交易时段法定节假日日历与休市自适应降频**：
+    - 内置 2024~2027 年 A股、港股、美股法定节假日离线日历，彻底杜绝假日期间误判开盘；
+    - 休市自适应降频：在法定节假日、闭市或长时间无行情变动时，轮询间隔自适应降频至 60s~120s，显著降低网络与 CPU 消耗。
+- **🌐 操作系统环境变量代理自适应回退**：
+    - 自适应探测读取 `process.env.HTTPS_PROXY / HTTP_PROXY / ALL_PROXY`，解决局域网软路由（如 OpenClash）或环境变量代理免配置即开即用。
+- **🛡️ 大批量自选请求切片保护**：
+    - 引入 `chunkArray` 切片并发机制，针对 A股、港股、美股按 40 只/批、Binance 按 50 只/批安全分片，彻底杜绝 HTTP 414 URI Too Long 风险。
+- **🔤 原生 0 依赖 GBK 解码三级防御与容错**：
+    - 采用单例原生 `decodeGbk`，提供 Full-ICU GBK -> UTF-8 降级 -> Latin-1 单字节映射三级安全保底，行情数字与标的 100% 不丢失、盘面不空白。
+- **🧹 代码清洁度与单一事实源收敛 (A1~A4 重构)**：
+    - 统一 alerts 预警更新路径并清理死分支；
+    - Webview 面板统一复用 `readConfig()` 作为单一事实来源，消除配置漂移风险；
+    - 多板块状态栏与代理样板代码封装，去除源码中所有硬编码版本号。
+
+### 🐛 缺陷修复 (Bug Fixes)
+
+- **🇨🇳 A 股交易所前缀推断错误导致 ETF / 债券 / 深市 B 股永久无行情**：
+    - 修复原「6/9 开头 → sh，0/3 开头 → sz，其余一律 → bj」的粗暴推断逻辑，该逻辑会将 `510300`（沪深300ETF）、`159915`（创业板ETF）、`200011`（深市B股）、`113050`（沪市可转债）等合法标的错误加上 `bj` 前缀，导致腾讯接口始终返回空、侧边栏永久停留在「获取行情中…」；
+    - 新增统一裁决函数 `inferAShareExchange`，按「明确代码段优先 + 首位兜底」两级判定交易所：北交所 `43/83/87/88/92`、沪市 `110/111/113/118/122/019/018/010/020` 债券段与 `5/6/9` 首位、深市 `100/112/123/127/128` 债券段与 `0/1/2/3` 首位；
+    - 输入解析端（`inputValidator`）与行情抓取端（`aShareService`）改为共用同一函数，彻底消除两端规则漂移；
+    - 新增 3 组回归测试用例（`inferAShareExchange` / `normalizeAShareCode` / `validateAndParseInput` 端到端），单测由 32 例扩充至 35 例。
+- **⚡ 设置面板调整预警后 🔔 图标出现瞬时回退**：
+    - 修复 Webview「先同步更新内存、后异步落盘」流程中，`rebuildTree()` 内部仍从磁盘 `readConfig()` 读回旧值、导致预警图标与板块开关「对 → 错 → 对」抖动的问题；
+    - `RefreshScheduler.rebuildTree()` 新增 `configOverride` 参数，由调用方透传内存中已即时更新的配置。
+- **📊 状态栏总控开关显示失真**：
+    - 修复「仅关闭 A 股参与轮播」时总控开关被误显示为关闭的问题（原实现取五个板块 `statusBar` 的逻辑与），改用全局 `statusBar.enabled` 语义判定。
+- **🛡️ 悬停气泡信任策略收敛**：
+    - `MarkdownString.isTrusted` 由 `true` 改为 `{ enabledCommands: [] }`，保留 Markdown 表格渲染的同时禁用全部命令链接，消除第三方数据源（DexScreener 代币名称）注入 `command:` 链接的可执行风险。
+- **⛓️ Alpha 链上代币无效/已下架地址 10 分钟临时抑制机制 (Anti-Storm Blacklist)**：
+    - 对齐 Binance 架构设计，在 `DexScreenerService` 中引入 `invalidAddresses` 临时黑名单（10 分钟 TTL）与连续失败计数机制；
+    - 修复此前对撤池、归零或无效合约地址每轮轮询反复重试两次（切片批查 + 单查补漏）所导致的降级风暴，彻底杜绝触发 DexScreener HTTP 429 速率限制；
+    - 手动强制刷新（`marketlens.refresh`）或配置变动时自适应复位黑名单，保证新加池代币即时可查；单测扩充至 36 例。
+- **📝 显式暴露诊断日志命令**：
+    - 注册 `marketlens.showLogs` 命令（`MarketLens: 查看运行日志`），用户在遇到网络或代理问题时可一键调起 OutputChannel 排查。
+- **🧪 腾讯行情报文 Golden Sample 契约测试与三角数学自洽自愈 (Data Sanity Guard)**：
+    - 针对 A股、港股、美股解析模块抽离标准 `parseResponse` API，并补齐真实 Golden Sample 报文端到端字段契约单测；
+    - 引入三角数学交叉校验：基于 $\text{Price} - \text{PrevClose} \approx \text{ChangeAmt}$ 实时监控字段自洽性，若上游出现异常位移或空值自动发出 `logger.warn` 并触发自愈纠偏，彻底根除“静默解析错值”隐患；单测由 36 例扩充至 37 例。
+- **🔄 代理与轮询设置变更消除重复全量刷新 (Deduplicate Network Refreshes)**：
+    - 修复在图形化设置面板中修改代理端口/地址、轮询间隔或开启自动刷新时，`onDidUpdateSetting` 与 VS Code 核心配置监听 `onDidChangeConfiguration` 竞态并发触发 `scheduler.start()`，导致 1 秒内产生 2~3 次全量多市场并发打网与重试队列的问题；
+    - 收敛调度重启逻辑至 `onDidChangeConfiguration` 单一事实来源，在保持内存即时响应与代理缓存清理的同时，彻底消除并发网络风暴。
+- **🛡️ 预警矩阵 Webview XSS 与属性引号逃逸全方位防护 (HTML Injection / CWE-79 Guard)**：
+    - 修复 `settingsHtml.ts` 中 `renderAlertTable` 客户端动态拼接 `tbody.innerHTML` 时未转义 `grpName`、`sym`、`name` 及数值字段，可能被不可控的上游链上代币名（DexScreener `baseToken.name`）利用双引号逃逸 `data-*` 属性并注入内联遮罩样式与 HTML 标签的漏洞隐患；
+    - 内置标准 `escapeHtml` 实体转义机制，原生防御属性突破与标签注入；单测用例由 37 例扩充至 38 例。
+- **🚀 双平台自动化发布与受限工作区信任 (Dual-Platform CI & Workspace Trust)**：
+    - CI 流水线（`.github/workflows/release.yml`）补充 Open VSX Registry 自动化发布（`ovsx publish`），严格践行双平台发布铁律；
+    - `package.json` 补充 `capabilities.untrustedWorkspaces: { supported: true }`，在受限制工作区模式下免警告流畅运行；
+    - 补充 `package.nls.json` 英文元数据与 `README.en.md` 英文技术文档，提升海外生态曝光。
+- **🧹 仓库卫生与打包排除规范 (Packaging Hygiene Guard)**：
+    - `.vscodeignore` 严格排除 `docs/**`、`AGENTS.md`、`*.log`、`*.txt` 等内部开发准则与临时文件，杜绝内部 Prompt 与草稿泄露并极致瘦身 VSIX 包；
+    - `.gitignore` 补充日志与临时断言文件过滤规则。
+- **📐 架构单一事实源收敛与代理端口统一 (Structural Refactoring)**：
+    - 收敛 `AssetType` 定义至 `src/types/index.ts` 单一事实源，消除双份定义；
+    - 统一设置面板各板块代理默认回退端口为 `10808`，消除 `7890` 硬编码割裂；
+    - 清理 `WatchlistProvider` 中拖拽重排的回调死分支；
+    - `README.md` 剔除未实现的「换手率」描述，`RELEASE.md` 全面更新至 1.1.5 双平台发布规范。
+- **🧪 Binance 报文契约单测与原生覆盖率统计 (Test Suite Enhancement)**：
+    - 补齐 `BinanceService` 24hr 行情报文解析、展示名格式化及失效抑制黑名单单测（Subtest 39）；
+    - `package.json` 新增 `npm run test:coverage` 原生零依赖测试覆盖率统计命令。
+- **⌨️ 快捷键文档说明统一与勘误 (Shortcut Alignment)**：
+    - 统一全文档颜色脱敏快捷键为 `Ctrl + Alt + L` / `Alt + L`（Mac: `Cmd + Alt + L`），纠正了历史日志与英文文档中曾残留的 `Ctrl + Alt + C`，与 `package.json` 实际注册键位保持绝对一致。
+- **🏷️ 自选新增向导支持备注友好名称 (Custom Display Name on Addition)**：
+    - 新增标的时（`marketlens.addItem`）提供第二步友好名称（如“特斯拉 / TSLA”）快捷输入提示，回车或留空默认采用标的代码，彻底解决新添标的在侧边栏与状态栏仅显示代码、缺乏友好名识别的问题。
+- **🛡️ 工具函数单一来源去重 (Deduplication Guard)**：
+    - 收敛 `isContractAddress()` 至 `src/utils/symbolHelper.ts` 单一事实源，`src/utils/inputValidator.ts` 统一复用导出，杜绝校验分化。
+- **📡 行情异常静默丢弃防御与可观测性强化 (Quote Discard Observability)**：
+    - 在 A股、港股、美股数据抓取服务中，针对上游报文长度异常（如美股 `f.length < 10`、A股/港股 `f.length < 35`）补充结构化诊断警告（`logger.warn`），使标的不存在、已退市或接口协议变更即时可观测，杜绝静默失效。
+- **🔒 核心依赖安全补丁升级 (Security Patch)**：
+    - `axios` 从 `^1.6.7` 升级至最新安全稳定版本 `^1.7.9`，消除潜在安全漏洞。
+- **⏱️ 闭市轮询判定解耦与可测试性强化 (Polling Decision Decoupling)**：
+    - 将 `scheduler.ts` 中针对 A股、港股、美股的闭市跳过复合条件（结合配置、开休市状态、首轮冷启动兜底、强制刷新与单组刷新 5 维判定）抽离为独立的无状态纯函数 `shouldSkipMarketPolling`，消除重复样板代码；
+    - 针对决策矩阵补充完整边界单元测试（Subtest 40）。
+- **🧪 内存活跃集修剪基准测试与表述严谨化 (Memory Footprint Benchmark)**：
+    - 补充 `Active-Set Prune` 循环堆内存基准测试（Subtest 41），验证高频自选变动与缓存回收下的内存稳定性（Heap Used 增量稳定 < 15MB~25MB）；
+    - 修订中英文文档关于内存占用的措辞，使工程描述更加科学严谨。
+
 ## [1.1.4] - 2026-09-11
 
 ### 🚀 新增特性与核心优化 (New Features & Improvements)
@@ -20,7 +102,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 单次原子化写入配置，防止并发 I/O 冲突，排序变更实时推送到设置面板。
 - **🧹 内存行情缓存活跃集对齐与动态垃圾回收 (Active-Set Pruning & LRU)**：
     - 实现全量自选活跃集指纹比对算法，自动清理已删除标的的历史残留死缓存；
-    - 深度优化后台长期运行的内存占用（通常 <15MB），彻底杜绝内存泄漏。
+    - 深度优化后台长期运行的内存占用（增量堆内存通常 <15MB~25MB），彻底杜绝内存泄漏。
 - **🔄 恢复出厂设置联动清空预警**：
     - 执行“恢复出厂默认设置”时，同步清空重置所有价格预警规则字典与冷却状态，彻底还原为最干净的安装初态。
 - **🏷️ 标的名称跨端一致性修复**：
@@ -146,7 +228,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **Focus & Workplace Privacy**:
     - **Focus Mode**: Instant toggle (`Ctrl + Alt + M` / `Alt + M` on Win/Linux, `Cmd + Alt + M` on Mac) to hide or restore the sidebar, status bar tickers, and settings webview simultaneously.
     - **Compact Mode**: Shortcut (`Ctrl + Alt + K` / `Alt + K`) to display status bar prices in compact build log format (e.g. `git:(main) build: 65.2k`).
-    - **Color Neutral Mode**: Shortcut (`Ctrl + Alt + C` / `Alt + C`) to eliminate red/green color stimulation, rendering all tickers in neutral editor colors.
+    - **Color Neutral Mode**: Shortcut (`Ctrl + Alt + L` / `Alt + L`, Mac: `Cmd + Alt + L`) to eliminate red/green color stimulation, rendering all tickers in neutral editor colors.
     - **Customizable Shortcuts**: One-click quick link to VS Code native keyboard shortcuts configuration.
 - **Network & Enterprise Security**:
     - Zero-latency direct domestic connection for A-Shares.
@@ -167,7 +249,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **工作区隐私与专注模式**：
     - **专注模式（一键隐藏/恢复）**：快捷键 `Ctrl + Alt + M` 或 `Alt + M`（Mac: `Cmd + Alt + M`），瞬间收起自选侧边栏、隐藏状态栏行情、关闭设置面板，再次按下瞬间复原。
     - **极简展示模式**：快捷键 `Ctrl + Alt + K` 或 `Alt + K`，将状态栏行情展示为简洁构建日志样式（如 `git:(main) build: 65.2k`）。
-    - **颜色脱敏模式**：快捷键 `Ctrl + Alt + C` 或 `Alt + C`，一键褪去红绿色视觉刺激，所有涨跌幅与图标采用编辑器默认中性色。
+    - **颜色脱敏模式**：快捷键 `Ctrl + Alt + L` 或 `Alt + L`（Mac: `Cmd + Alt + L`），一键褪去红绿色视觉刺激，所有涨跌幅与图标采用编辑器默认中性色。
     - **自定义快捷键**：设置面板提供一键直达 VS Code 原生快捷键配置界面的按钮，随心改键。
 - **网络代理支持**：
     - A股默认境内零延迟直连。

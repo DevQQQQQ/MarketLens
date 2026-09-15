@@ -6,7 +6,7 @@ import { StatusBar } from "./ui/statusBar";
 import { MarketLensConfig, MarketItem } from "./types";
 import { normalizeSymbolKey } from "./utils/symbolHelper";
 import { logger } from "./utils/logger";
-import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen } from "./utils/marketHours";
+import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, evaluateAdaptiveThrottle, shouldSkipMarketPolling } from "./utils/marketHours";
 import { readConfig } from "./utils/config";
 
 import { extractTargetsFromWatchlist, extractStatusBarQuotes, pruneQuoteCache } from "./utils/symbolHelper";
@@ -20,12 +20,18 @@ export interface SchedulerContext {
 }
 
 export class RefreshScheduler implements vscode.Disposable {
-  private timer: ReturnType<typeof setInterval> | undefined;
+  private timer: ReturnType<typeof setTimeout> | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private retryCount = 0;
   private readonly MAX_RETRY_COUNT = 2;
   private hasLoadedInitialQuotes = false;
   private isRefreshing = false;
+
+  // 休市与无行情变动自适应降频
+  private consecutiveUnchangedCount = 0;
+  private isThrottled = false;
+  public readonly THROTTLED_INTERVAL_MS = 60000;
+  public readonly UNCHANGED_THRESHOLD = 3;
 
   public readonly quoteCache = new Map<string, MarketItem>();
   public readonly alertManager: AlertManager;
@@ -51,9 +57,27 @@ export class RefreshScheduler implements vscode.Disposable {
     specificGroupName?: string,
     forceAll: boolean = false
   ) {
-    const skipHK = !!(config.hkStock.stopOnMarketClosed && !isHKMarketOpen() && this.hasLoadedInitialQuotes && !forceAll && !specificGroupName);
-    const skipUS = !!(config.usStock.stopOnMarketClosed && !isUSMarketOpen() && this.hasLoadedInitialQuotes && !forceAll && !specificGroupName);
-    const skipA = !!(config.aShare.stopOnMarketClosed && !isAShareMarketOpen() && this.hasLoadedInitialQuotes && !forceAll && !specificGroupName);
+    const skipHK = shouldSkipMarketPolling({
+      stopOnMarketClosed: config.hkStock.stopOnMarketClosed,
+      isMarketOpen: isHKMarketOpen(),
+      hasLoadedInitialQuotes: this.hasLoadedInitialQuotes,
+      forceAll,
+      specificGroupName,
+    });
+    const skipUS = shouldSkipMarketPolling({
+      stopOnMarketClosed: config.usStock.stopOnMarketClosed,
+      isMarketOpen: isUSMarketOpen(),
+      hasLoadedInitialQuotes: this.hasLoadedInitialQuotes,
+      forceAll,
+      specificGroupName,
+    });
+    const skipA = shouldSkipMarketPolling({
+      stopOnMarketClosed: config.aShare.stopOnMarketClosed,
+      isMarketOpen: isAShareMarketOpen(),
+      hasLoadedInitialQuotes: this.hasLoadedInitialQuotes,
+      forceAll,
+      specificGroupName,
+    });
 
     return extractTargetsFromWatchlist(config.watchlist, {
       aShareEnabled: config.aShare.enabled,
@@ -79,9 +103,18 @@ export class RefreshScheduler implements vscode.Disposable {
 
   /**
    * 统一收口树视图构建，避免多处重复传递相同的 enabledSections 参数
+   *
+   * @param customWatchlist 可选：直接使用调用方已计算好的自选列表，跳过磁盘读取
+   * @param configOverride  可选：内存中已即时更新的配置。Webview 面板的 updateSetting 是
+   *                        「先同步更新内存、后异步落盘」，此时若仍从磁盘 readConfig() 会读回旧值，
+   *                        导致预警 🔔 图标与板块开关出现「对 → 错 → 对」的瞬时回退。
+   *                        由调用方透传内存配置即可彻底消除该时序抖动。
    */
-  public rebuildTree(customWatchlist?: Record<string, any[]>): void {
-    const currentCfg = readConfig();
+  public rebuildTree(
+    customWatchlist?: Record<string, any[]>,
+    configOverride?: MarketLensConfig
+  ): void {
+    const currentCfg = configOverride || readConfig();
     const activeWatchlist = customWatchlist || currentCfg.watchlist;
     this.treeProvider.setAlerts(currentCfg.alerts || {});
     pruneQuoteCache(activeWatchlist, this.quoteCache);
@@ -118,6 +151,14 @@ export class RefreshScheduler implements vscode.Disposable {
     }
   }
 
+  public isAdaptiveThrottled(): boolean {
+    return this.isThrottled;
+  }
+
+  public getConsecutiveUnchangedCount(): number {
+    return this.consecutiveUnchangedCount;
+  }
+
   // ── 全量刷新 ────────────────────────────────────────────────────
 
   public async refresh(forceRefreshAll: boolean = false): Promise<void> {
@@ -126,6 +167,7 @@ export class RefreshScheduler implements vscode.Disposable {
     const isStatusBarActive = config.statusBar?.enabled !== false;
     const isTreeViewActive = this.treeView.visible;
     if (!isStatusBarActive && !isTreeViewActive && !forceRefreshAll) {
+      this.scheduleNextTick();
       return;
     }
 
@@ -145,8 +187,11 @@ export class RefreshScheduler implements vscode.Disposable {
     this.retryCount = 0;
     this.isRefreshing = true;
     try {
-      // 首次加载或明确要求强制刷新时，确保必定拉取
+      // 首次加载或明确要求强制刷新时，确保必定拉取并复位失效抑制黑名单
       const forceAll = forceRefreshAll || !this.hasLoadedInitialQuotes;
+      if (forceRefreshAll) {
+        this.marketManager.clearInvalidCache();
+      }
       const targets = this.extractTargets(config, undefined, forceAll);
       const quotes  = await this.marketManager.pollAll(
         targets,
@@ -168,10 +213,42 @@ export class RefreshScheduler implements vscode.Disposable {
         this.quoteCache.clear();
       }
 
+      // 行情变动与休市降频评估
+      let hasPriceChanged = false;
+      if (!forceRefreshAll && this.hasLoadedInitialQuotes && quotes.length > 0) {
+        for (const q of quotes) {
+          const cached = this.quoteCache.get(normalizeSymbolKey(q.symbol)) || this.quoteCache.get(q.symbol);
+          if (!cached || cached.price !== q.price) {
+            hasPriceChanged = true;
+            break;
+          }
+        }
+      } else if (!this.hasLoadedInitialQuotes) {
+        hasPriceChanged = true;
+      }
+
       for (const q of quotes) {
         this.saveToQuoteCache(q);
       }
       pruneQuoteCache(config.watchlist, this.quoteCache);
+
+      // 评估休市与自适应降频状态
+      const has24HourCrypto =
+        (config.binance.enabled && targets.cryptos.length > 0) ||
+        (config.alpha.enabled && targets.bscTokens.length > 0);
+
+      const throttleResult = evaluateAdaptiveThrottle({
+        aShareEnabled: config.aShare.enabled,
+        hkStockEnabled: config.hkStock.enabled,
+        usStockEnabled: config.usStock.enabled,
+        has24HourCrypto,
+        hasPriceChanged,
+        consecutiveUnchangedCount: this.consecutiveUnchangedCount,
+        unchangedThreshold: this.UNCHANGED_THRESHOLD,
+      });
+
+      this.isThrottled = throttleResult.isThrottled;
+      this.consecutiveUnchangedCount = throttleResult.consecutiveUnchangedCount;
 
       // 评估价格预警与剧烈波动
       this.alertManager.checkQuotes(quotes, config);
@@ -193,6 +270,7 @@ export class RefreshScheduler implements vscode.Disposable {
       logger.error("全量刷新失败", err);
     } finally {
       this.isRefreshing = false;
+      this.scheduleNextTick();
     }
   }
 
@@ -235,24 +313,36 @@ export class RefreshScheduler implements vscode.Disposable {
 
   // ── 定时器生命周期 ──────────────────────────────────────────────
 
-  public start(): void {
-    this.stop();
-    // 首次启动时无条件强制刷新一次，确保即使处于闭市/休市/周末也能看到最新收盘数据
-    void this.refresh(true);
-
+  private scheduleNextTick(forcedDelayMs?: number): void {
+    if (this.timer !== undefined) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
     const config = readConfig();
-    // 如果关闭了自动刷新，则不挂载 setInterval
+    // 如果关闭了自动刷新，则不调度下一次轮询
     if (!config.autoRefresh) {
       return;
     }
 
-    const interval = Math.max(1000, config.refreshInterval || 5000);
-    this.timer = setInterval(() => void this.refresh(), interval);
+    const standardInterval = Math.max(1000, config.refreshInterval || 5000);
+    const delay = forcedDelayMs ?? (this.isThrottled ? Math.max(this.THROTTLED_INTERVAL_MS, standardInterval) : standardInterval);
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.refresh();
+    }, delay);
+  }
+
+  public start(): void {
+    this.stop();
+    this.consecutiveUnchangedCount = 0;
+    this.isThrottled = false;
+    // 首次启动时无条件强制刷新一次，确保即使处于闭市/休市/周末也能看到最新收盘数据
+    void this.refresh(true);
   }
 
   public stop(): void {
     if (this.timer !== undefined) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = undefined;
     }
     if (this.retryTimer !== undefined) {
@@ -260,6 +350,8 @@ export class RefreshScheduler implements vscode.Disposable {
       this.retryTimer = undefined;
     }
     this.retryCount = 0;
+    this.isThrottled = false;
+    this.consecutiveUnchangedCount = 0;
   }
 
   public dispose(): void {

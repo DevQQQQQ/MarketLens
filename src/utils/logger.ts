@@ -1,12 +1,17 @@
 // src/utils/logger.ts
-import * as vscode from "vscode";
+import type * as vscodeTypes from "vscode";
+
+let vscodeModule: typeof vscodeTypes | undefined;
+try {
+  vscodeModule = require("vscode");
+} catch (_) {}
 
 class LoggerService {
-  private channel: vscode.OutputChannel | undefined;
+  private channel: vscodeTypes.OutputChannel | undefined;
 
-  public init(context: vscode.ExtensionContext): vscode.OutputChannel {
-    if (!this.channel) {
-      this.channel = vscode.window.createOutputChannel("MarketLens");
+  public init(context: vscodeTypes.ExtensionContext): vscodeTypes.OutputChannel | undefined {
+    if (!this.channel && vscodeModule?.window) {
+      this.channel = vscodeModule.window.createOutputChannel("MarketLens");
       context.subscriptions.push(this.channel);
     }
     return this.channel;

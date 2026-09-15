@@ -10,6 +10,7 @@ import { RefreshScheduler } from "./scheduler";
 import { WatchlistOps } from "./watchlistOps";
 import { registerCommands } from "./commands";
 import { SettingsWebviewPanel } from "./ui/settingsWebview";
+import { MarketLensConfig } from "./types";
 
 // ── 模块级句柄：让 deactivate() 可以显式清理，防止热重载内存泄漏 ──
 let _scheduler: RefreshScheduler | undefined;
@@ -22,10 +23,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let config = readConfig();
 
   const marketManager = new MarketManager();
-  const treeProvider  = new WatchlistProvider(config.maskMode, config.colorNeutral);
+  const treeProvider  = new WatchlistProvider(config.maskMode, config.colorNeutral, config.colorScheme);
   const statusBar     = new StatusBar({
     maskMode:     config.maskMode,
     colorNeutral: config.colorNeutral,
+    colorScheme:  config.colorScheme,
   });
   if (config.statusBar?.enabled === false) {
     statusBar.hide();
@@ -81,6 +83,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeProvider,
   });
 
+  function applyStatusBarToAllSections(cfg: MarketLensConfig, enabled: boolean): void {
+    cfg.statusBar.enabled = enabled;
+    cfg.aShare.statusBar = enabled;
+    cfg.hkStock.statusBar = enabled;
+    cfg.usStock.statusBar = enabled;
+    cfg.binance.statusBar = enabled;
+    cfg.alpha.statusBar = enabled;
+  }
+
+  function applyProxyToAllSections(cfg: MarketLensConfig, proxyUrl: string, port?: number): void {
+    if (port !== undefined) {
+      cfg.proxyPort = port;
+    } else {
+      try {
+        const u = new URL(proxyUrl);
+        if (u.port) {
+          cfg.proxyPort = parseInt(u.port, 10);
+        }
+      } catch (_) {}
+    }
+    cfg.proxyUrl = proxyUrl;
+    cfg.aShare.proxyUrl = proxyUrl;
+    cfg.hkStock.proxyUrl = proxyUrl;
+    cfg.usStock.proxyUrl = proxyUrl;
+    cfg.binance.proxyUrl = proxyUrl;
+    cfg.alpha.proxyUrl = proxyUrl;
+  }
+
   // 监听 Webview 设置面板即时操作（0延迟同步更新内存，无需等待异步磁盘 I/O）
   SettingsWebviewPanel.onDidUpdateSetting = (key: string, value: any) => {
     if (key === "restoreDefaults") {
@@ -89,7 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       scheduler.alertManager.resetCooldown();
       treeProvider.setAlerts({});
       scheduler.updateStatusBar(config);
-      scheduler.rebuildTree();
+      scheduler.rebuildTree(undefined, config);
       SettingsWebviewPanel.syncSettings();
       return;
     }
@@ -97,7 +127,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (key === "alerts") {
       config.alerts = value || {};
       treeProvider.setAlerts(config.alerts);
-      scheduler.rebuildTree();
+      scheduler.rebuildTree(undefined, config);
       SettingsWebviewPanel.syncSettings();
       return;
     }
@@ -105,18 +135,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (key === "watchlist") {
       config.watchlist = value;
       scheduler.updateStatusBar(config);
-      scheduler.rebuildTree();
+      scheduler.rebuildTree(value, config);
       return;
     }
 
     if (key === "statusBar.enabled") {
-      const enableAll = !!value;
-      config.statusBar.enabled = enableAll;
-      config.aShare.statusBar = enableAll;
-      config.hkStock.statusBar = enableAll;
-      config.usStock.statusBar = enableAll;
-      config.binance.statusBar = enableAll;
-      config.alpha.statusBar = enableAll;
+      applyStatusBarToAllSections(config, !!value);
     } else if (key === "maskMode") {
       config.maskMode = !!value;
       statusBar.setMaskMode(config.maskMode);
@@ -125,49 +149,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       config.colorNeutral = !!value;
       statusBar.setColorNeutral(config.colorNeutral);
       treeProvider.setColorNeutral(config.colorNeutral);
+    } else if (key === "colorScheme") {
+      config.colorScheme = value || "greenUpRedDown";
+      config.colorNeutral = false;
+      statusBar.setColorNeutral(false);
+      treeProvider.setColorNeutral(false);
+      statusBar.setColorScheme(config.colorScheme);
+      treeProvider.setColorScheme(config.colorScheme);
     } else if (key === "autoRefresh") {
       config.autoRefresh = !!value;
-      if (config.autoRefresh) {
-        scheduler.start();
-      } else {
+      if (!config.autoRefresh) {
         scheduler.stop();
       }
     } else if (key === "refreshInterval") {
       config.refreshInterval = Number(value) || 5000;
-      if (config.autoRefresh) {
-        scheduler.start();
-      }
     } else if (key === "proxyPort") {
       const port = Number(value) || 10808;
-      const pUrl = `http://127.0.0.1:${port}`;
-      config.proxyPort = port;
-      config.proxyUrl = pUrl;
-      config.aShare.proxyUrl = pUrl;
-      config.hkStock.proxyUrl = pUrl;
-      config.usStock.proxyUrl = pUrl;
-      config.binance.proxyUrl = pUrl;
-      config.alpha.proxyUrl = pUrl;
+      applyProxyToAllSections(config, `http://127.0.0.1:${port}`, port);
       resetProxyCache();
-      scheduler.start();
     } else if (key === "proxyUrl") {
       const pUrl = String(value || "http://127.0.0.1:10808");
-      try {
-        const u = new URL(pUrl);
-        if (u.port) {
-          config.proxyPort = parseInt(u.port, 10);
-        }
-      } catch (_) {}
-      config.proxyUrl = pUrl;
-      config.aShare.proxyUrl = pUrl;
-      config.hkStock.proxyUrl = pUrl;
-      config.usStock.proxyUrl = pUrl;
-      config.binance.proxyUrl = pUrl;
-      config.alpha.proxyUrl = pUrl;
+      applyProxyToAllSections(config, pUrl);
       resetProxyCache();
-      scheduler.start();
-    } else if (key === "alerts") {
-      config.alerts = value || {};
-      treeProvider.setAlerts(config.alerts);
     } else if (key === "alertNotificationMode") {
       config.alertNotificationMode = value || "notification";
     } else if (key === "alertCooldownMinutes") {
@@ -193,7 +196,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 
     scheduler.updateStatusBar(config);
-    scheduler.rebuildTree();
+    scheduler.rebuildTree(undefined, config);
   };
 
   // 配置变更监听
@@ -203,13 +206,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const prevFingerprint = getWatchlistFingerprint(config.watchlist);
         config = readConfig();
 
+        if (e.affectsConfiguration("marketlens.colorScheme") && !e.affectsConfiguration("marketlens.colorNeutral")) {
+          const cfg = vscode.workspace.getConfiguration("marketlens");
+          if (cfg.get<boolean>("colorNeutral")) {
+            void cfg.update("colorNeutral", false, vscode.ConfigurationTarget.Global);
+            config.colorNeutral = false;
+          }
+        }
+
         const isBossActive = statusBar.isBossKeyActive();
         treeProvider.setBossKey(isBossActive);
         treeProvider.setMaskMode(config.maskMode);
         treeProvider.setColorNeutral(config.colorNeutral);
+        treeProvider.setColorScheme(config.colorScheme);
         treeProvider.setAlerts(config.alerts || {});
         statusBar.setMaskMode(config.maskMode);
         statusBar.setColorNeutral(config.colorNeutral);
+        statusBar.setColorScheme(config.colorScheme);
 
         scheduler.updateStatusBar(config);
         scheduler.rebuildTree();
@@ -245,7 +258,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         if (affectsNetwork || watchlistContentChanged) {
           resetProxyCache();
-          marketManager.clearBinanceInvalidCache();
+          marketManager.clearInvalidCache();
           scheduler.start();
         }
       }

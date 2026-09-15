@@ -31,8 +31,13 @@ export class MarketManager {
     this.dexScreenerService = new DexScreenerService();
   }
 
-  public clearBinanceInvalidCache(): void {
+  public clearInvalidCache(): void {
     this.binanceService.clearInvalidCache();
+    this.dexScreenerService.clearInvalidCache();
+  }
+
+  public clearBinanceInvalidCache(): void {
+    this.clearInvalidCache();
   }
 
   /**

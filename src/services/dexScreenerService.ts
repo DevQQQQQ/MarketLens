@@ -1,7 +1,7 @@
 // src/services/dexScreenerService.ts
-import { MarketItem } from "../types";
-import { cryptoGet, CryptoNetworkOptions } from "./network";
-import { logger } from "../utils/logger";
+import type { MarketItem } from "../types";
+import { cryptoGet, type CryptoNetworkOptions } from "./network.ts";
+import { logger } from "../utils/logger.ts";
 
 interface DexPair {
   chainId: string;
@@ -62,6 +62,42 @@ function pickBestPair(pairs: DexPair[]): DexPair | null {
 }
 
 export class DexScreenerService {
+  // 记录已被确认失效（无流动性池/已下架/不存在）的合约地址，避免每轮轮询重复发起批量与单查重试风暴
+  private invalidAddresses = new Map<string, number>();
+  private readonly INVALID_CACHE_TTL = 10 * 60 * 1000; // 10分钟后允许重新探测一次
+
+  // 记录连续未检索到流动性池的失败次数，防止偶发网络抖动误判
+  private addressFailureCounts = new Map<string, number>();
+  private readonly MAX_CONSECUTIVE_FAILURES = 2; // 连续 2 轮确认无池子即加入抑制
+
+  public clearInvalidCache(): void {
+    this.invalidAddresses.clear();
+    this.addressFailureCounts.clear();
+  }
+
+  public isAddressSuppressed(addr: string): boolean {
+    return this.isAddressInvalid(addr);
+  }
+
+  private isAddressInvalid(addr: string): boolean {
+    const key = addr.toLowerCase();
+    const expireAt = this.invalidAddresses.get(key);
+    if (!expireAt) return false;
+    if (Date.now() > expireAt) {
+      this.invalidAddresses.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  private markAddressInvalid(addr: string): void {
+    const key = addr.toLowerCase();
+    this.invalidAddresses.set(key, Date.now() + this.INVALID_CACHE_TTL);
+    logger.warn(
+      `[DexScreenerService] 合约地址 "${addr}" 未检索到流动性池或已下架，已加入临时抑制黑名单(10分钟)`
+    );
+  }
+
   /**
    * 全链 Alpha 抓取（支持代理模式与直连模式配置）
    */
@@ -88,13 +124,17 @@ export class DexScreenerService {
 
     if (!validAddresses.length) { return []; }
 
+    // 过滤掉当前正处于 10 分钟临时抑制期内的失效合约地址，彻底消除降级风暴与重复单查
+    const activeAddresses = validAddresses.filter((a) => !this.isAddressInvalid(a));
+    if (!activeAddresses.length) { return []; }
+
     // DexScreener API 单次响应硬限制最多返回 30 个流动性池（pairs）。
     // 若代币较为热门，单个代币常包含 4~5 个交易池，若每批包含较多代币，总池数超过 30 就会导致排在后面的代币被服务端截断挤掉（如 quq）。
     // 因此将分批切片大小限制为安全的 5 个地址/批，既保证极低的 HTTP 开销，又彻底杜绝代币被截断丢失。
     const CHUNK_SIZE = 5;
     const chunks: string[][] = [];
-    for (let i = 0; i < validAddresses.length; i += CHUNK_SIZE) {
-      chunks.push(validAddresses.slice(i, i + CHUNK_SIZE));
+    for (let i = 0; i < activeAddresses.length; i += CHUNK_SIZE) {
+      chunks.push(activeAddresses.slice(i, i + CHUNK_SIZE));
     }
 
     const chunkResults = await Promise.allSettled(
@@ -118,7 +158,9 @@ export class DexScreenerService {
           for (const item of r.value.items) {
             items.push(item);
             if (item.id) {
-              acquiredAddresses.add(item.id.toLowerCase());
+              const lowId = item.id.toLowerCase();
+              acquiredAddresses.add(lowId);
+              this.addressFailureCounts.delete(lowId);
             }
           }
         }
@@ -127,7 +169,7 @@ export class DexScreenerService {
 
     // 自动漏网探测（Self-Healing）：仅对 HTTP 成功但因池子过多被截断的地址补查
     // 网络/代理故障的地址直接跳过，防止代理断开时 N 次单查重演
-    const missingAddresses = validAddresses.filter((a) => {
+    const missingAddresses = activeAddresses.filter((a) => {
       const lower = a.toLowerCase();
       return !acquiredAddresses.has(lower) && !networkFailedAddresses.has(lower);
     });
@@ -135,9 +177,22 @@ export class DexScreenerService {
       const fallbackResults = await Promise.allSettled(
         missingAddresses.map((addr) => this.fetchBatch([addr], options))
       );
-      for (const fr of fallbackResults) {
+      for (let i = 0; i < fallbackResults.length; i++) {
+        const fr = fallbackResults[i];
+        const targetAddr = missingAddresses[i];
+        const lower = targetAddr.toLowerCase();
         if (fr.status === "fulfilled" && !fr.value.networkError) {
-          items.push(...fr.value.items);
+          if (fr.value.items.length > 0) {
+            items.push(...fr.value.items);
+            this.addressFailureCounts.delete(lower);
+          } else {
+            // 明确返回 HTTP 成功但依然无交易对（已归零/撤池/无效地址）
+            const count = (this.addressFailureCounts.get(lower) || 0) + 1;
+            this.addressFailureCounts.set(lower, count);
+            if (count >= this.MAX_CONSECUTIVE_FAILURES) {
+              this.markAddressInvalid(targetAddr);
+            }
+          }
         }
       }
     }

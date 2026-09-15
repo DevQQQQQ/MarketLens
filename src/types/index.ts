@@ -52,12 +52,15 @@ export interface PriceAlertItem {
 
 export type AlertsConfig = Record<string, PriceAlertItem>;
 
+export type ColorScheme = "greenUpRedDown" | "redUpGreenDown";
+
 export interface MarketLensConfig {
   // ── 全局设置 ──
   autoRefresh: boolean;
   refreshInterval: number;
   maskMode: boolean;
   colorNeutral: boolean;
+  colorScheme: ColorScheme;
   statusBar: { enabled: boolean };
   proxyPort?: number;
   proxyUrl?: string;

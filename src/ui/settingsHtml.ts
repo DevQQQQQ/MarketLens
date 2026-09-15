@@ -5,6 +5,7 @@ export interface SettingsFormData {
 	refreshInterval?: number;
 	maskMode?: boolean;
 	colorNeutral?: boolean;
+	colorScheme?: "greenUpRedDown" | "redUpGreenDown";
 	statusBarEnabled?: boolean;
 	proxyPort?: number;
 	proxyUrl?: string;
@@ -44,15 +45,17 @@ export function getSettingsWebviewHtml(
 	initialData: SettingsFormData = {}
 ): string {
 	const defaultPort = initialData.proxyPort || 10808;
+	const defaultProxyUrl = initialData.proxyUrl || `http://127.0.0.1:${defaultPort}`;
 	const d: Required<SettingsFormData> = {
 		autoRefresh: initialData.autoRefresh !== undefined ? initialData.autoRefresh : true,
 		refreshInterval: initialData.refreshInterval || 5000,
 		maskMode: !!initialData.maskMode,
 		colorNeutral: !!initialData.colorNeutral,
+		colorScheme: initialData.colorScheme || "greenUpRedDown",
 		statusBarEnabled:
 			initialData.statusBarEnabled !== undefined ? initialData.statusBarEnabled : true,
 		proxyPort: defaultPort,
-		proxyUrl: initialData.proxyUrl || `http://127.0.0.1:${defaultPort}`,
+		proxyUrl: defaultProxyUrl,
 		aShareEnabled: initialData.aShareEnabled !== undefined ? initialData.aShareEnabled : true,
 		aShareStatusBar:
 			initialData.aShareStatusBar !== undefined ? initialData.aShareStatusBar : true,
@@ -61,7 +64,7 @@ export function getSettingsWebviewHtml(
 				? initialData.aShareStopOnMarketClosed
 				: true,
 		aShareNetworkMode: initialData.aShareNetworkMode || 'direct',
-		aShareProxyUrl: initialData.aShareProxyUrl || 'http://127.0.0.1:7890',
+		aShareProxyUrl: initialData.aShareProxyUrl || defaultProxyUrl,
 		hkStockEnabled:
 			initialData.hkStockEnabled !== undefined ? initialData.hkStockEnabled : true,
 		hkStockStatusBar:
@@ -71,7 +74,7 @@ export function getSettingsWebviewHtml(
 				? initialData.hkStockStopOnMarketClosed
 				: true,
 		hkStockNetworkMode: initialData.hkStockNetworkMode || 'direct',
-		hkStockProxyUrl: initialData.hkStockProxyUrl || 'http://127.0.0.1:7890',
+		hkStockProxyUrl: initialData.hkStockProxyUrl || defaultProxyUrl,
 		usStockEnabled:
 			initialData.usStockEnabled !== undefined ? initialData.usStockEnabled : true,
 		usStockStatusBar:
@@ -81,18 +84,18 @@ export function getSettingsWebviewHtml(
 				? initialData.usStockStopOnMarketClosed
 				: true,
 		usStockNetworkMode: initialData.usStockNetworkMode || 'direct',
-		usStockProxyUrl: initialData.usStockProxyUrl || 'http://127.0.0.1:7890',
+		usStockProxyUrl: initialData.usStockProxyUrl || defaultProxyUrl,
 		binanceEnabled:
 			initialData.binanceEnabled !== undefined ? initialData.binanceEnabled : true,
 		binanceStatusBar:
 			initialData.binanceStatusBar !== undefined ? initialData.binanceStatusBar : true,
 		binanceNetworkMode: initialData.binanceNetworkMode || 'proxy',
-		binanceProxyUrl: initialData.binanceProxyUrl || 'http://127.0.0.1:7890',
+		binanceProxyUrl: initialData.binanceProxyUrl || defaultProxyUrl,
 		alphaEnabled: initialData.alphaEnabled !== undefined ? initialData.alphaEnabled : true,
 		alphaStatusBar:
 			initialData.alphaStatusBar !== undefined ? initialData.alphaStatusBar : true,
 		alphaNetworkMode: initialData.alphaNetworkMode || 'proxy',
-		alphaProxyUrl: initialData.alphaProxyUrl || 'http://127.0.0.1:7890',
+		alphaProxyUrl: initialData.alphaProxyUrl || defaultProxyUrl,
 		alerts: initialData.alerts || {},
 		alertNotificationMode: initialData.alertNotificationMode || 'notification',
 		alertCooldownMinutes: initialData.alertCooldownMinutes || 15,
@@ -498,10 +501,21 @@ export function getSettingsWebviewHtml(
           </div>
         </div>
 
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">涨跌配色方案</div>
+            <div class="card-desc">选择符合您看盘习惯的涨跌视觉色彩。greenUpRedDown (绿涨红跌，国际/加密/美股习惯，默认) 或 redUpGreenDown (红涨绿跌，符合国内传统金融盘面习惯)。</div>
+          </div>
+          <select id="colorScheme" class="select-box" style="padding: 6px 12px; border-radius: 4px; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--card-border); font-size: 13px;">
+            <option value="greenUpRedDown" ${d.colorScheme === 'greenUpRedDown' ? 'selected' : ''}>🟢 绿涨红跌 (国际 / 加密货币 / 美股习惯，默认)</option>
+            <option value="redUpGreenDown" ${d.colorScheme === 'redUpGreenDown' ? 'selected' : ''}>🔴 红涨绿跌 (国内 A股 传统金融盘面习惯)</option>
+          </select>
+        </div>
+
         <div class="card" id="globalProxyCard">
           <div class="card-info">
             <div class="card-title">本地代理端口 (仅支持 HTTP / 混合代理)</div>
-            <div class="card-desc">全插件统一网络代理端口。只需输入端口号（1 ~ 65535，默认 10808，v2rayN 为 10808/10809，Clash/Verge 为 7890/7897）。支持自动感知与一键探测。</div>
+            <div class="card-desc">全插件统一网络代理端口。只需输入端口号（1 ~ 65535，默认 10808，v2rayN 为 10808/10809，Clash/Verge 为 7890/7897）。未自定义时自动自适应读取系统代理环境变量 (HTTP_PROXY / HTTPS_PROXY / ALL_PROXY) 或探测可用端口。</div>
           </div>
           <div class="proxy-input-box">
             <span style="font-family: monospace; color: var(--desc-fg); font-size: 13px;"></span>
@@ -939,6 +953,16 @@ export function getSettingsWebviewHtml(
       var currentWatchlist = ${JSON.stringify(d.watchlist).replace(/</g, '\\u003c')};
       var alertSaveTimer = null;
 
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
       function getSymbolKey(sym) {
         if (!sym) return '';
         var s = sym.trim();
@@ -964,7 +988,7 @@ export function getSettingsWebviewHtml(
           var grpName = groupKeys[i];
           var list = watchlist[grpName];
           if (Array.isArray(list) && list.length > 0) {
-            html += '<tr class="alert-grp-row"><td colspan="5">分组: ' + grpName + ' (' + list.length + ' 个标的)</td></tr>';
+            html += '<tr class="alert-grp-row"><td colspan="5">分组: ' + escapeHtml(grpName) + ' (' + list.length + ' 个标的)</td></tr>';
             for (var j = 0; j < list.length; j++) {
               var item = list[j];
               var sym = (typeof item === 'string') ? item : (item.symbol || item.code || '');
@@ -978,14 +1002,18 @@ export function getSettingsWebviewHtml(
               var pctVal = (rule.changePercent !== undefined && rule.changePercent !== null) ? rule.changePercent : '';
               var isEnabled = rule.enabled !== false;
 
-              html += '<tr data-key="' + key + '" data-symbol="' + sym + '" data-name="' + name + '">'
+              var keyEsc = escapeHtml(key);
+              var symEsc = escapeHtml(sym);
+              var nameEsc = escapeHtml(name);
+
+              html += '<tr data-key="' + keyEsc + '" data-symbol="' + symEsc + '" data-name="' + nameEsc + '">'
                 + '<td>'
-                + '<div style="font-weight: 500; font-size: 13px;">' + name + '</div>'
-                + '<div style="font-size: 11px; color: var(--desc-fg); font-family: monospace;">' + sym + '</div>'
+                + '<div style="font-weight: 500; font-size: 13px;">' + nameEsc + '</div>'
+                + '<div style="font-size: 11px; color: var(--desc-fg); font-family: monospace;">' + symEsc + '</div>'
                 + '</td>'
-                + '<td><input type="number" step="any" class="alert-input alert-above" placeholder="未设置" value="' + aboveVal + '"></td>'
-                + '<td><input type="number" step="any" class="alert-input alert-below" placeholder="未设置" value="' + belowVal + '"></td>'
-                + '<td><input type="number" step="any" class="alert-input alert-pct" placeholder="未设置" value="' + pctVal + '"></td>'
+                + '<td><input type="number" step="any" class="alert-input alert-above" placeholder="未设置" value="' + escapeHtml(aboveVal) + '"></td>'
+                + '<td><input type="number" step="any" class="alert-input alert-below" placeholder="未设置" value="' + escapeHtml(belowVal) + '"></td>'
+                + '<td><input type="number" step="any" class="alert-input alert-pct" placeholder="未设置" value="' + escapeHtml(pctVal) + '"></td>'
                 + '<td style="text-align: center;"><label class="switch"><input type="checkbox" class="alert-enabled" ' + (isEnabled ? 'checked' : '') + '><span class="slider"></span></label></td>'
                 + '</tr>';
               totalCount++;
@@ -1190,6 +1218,14 @@ export function getSettingsWebviewHtml(
         sendUpdate('colorNeutral', this.checked);
         showToast(this.checked ? '🎨 颜色脱敏模式已开启' : '🔴 颜色脱敏模式已关闭');
       });
+      on('colorScheme', 'change', function() {
+        var neutralEl = document.getElementById('colorNeutral');
+        if (neutralEl) {
+          neutralEl.checked = false;
+        }
+        sendUpdate('colorScheme', this.value);
+        showToast(this.value === 'redUpGreenDown' ? '🔴 已切换为红涨绿跌 (已自动关闭颜色脱敏)' : '🟢 已切换为绿涨红跌 (已自动关闭颜色脱敏)');
+      });
       on('btnKeybindMask', 'click', function() {
         postCmd('openKeybindings', { query: 'marketlens.toggleMask' });
       });
@@ -1330,6 +1366,7 @@ export function getSettingsWebviewHtml(
           setValue('refreshInterval',    d.refreshInterval);
           setChecked('maskMode',         d.maskMode);
           setChecked('colorNeutral',     d.colorNeutral);
+          setValue('colorScheme',        d.colorScheme || 'greenUpRedDown');
           setChecked('statusBarEnabled', d.statusBarEnabled);
           var portVal = d.proxyPort || 10808;
           setValue('globalProxyPort', portVal);

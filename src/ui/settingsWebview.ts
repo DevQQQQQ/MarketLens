@@ -4,6 +4,7 @@ import { getSettingsWebviewHtml } from "./settingsHtml";
 import { logger } from "../utils/logger";
 import { MarketItem } from "../types";
 import { normalizeSymbolKey, resolveItemDisplayName } from "../utils/symbolHelper";
+import { readConfig } from "../utils/config";
 
 const ALLOWED_CONFIG_KEYS = new Set([
   "proxyPort",
@@ -12,6 +13,7 @@ const ALLOWED_CONFIG_KEYS = new Set([
   "refreshInterval",
   "maskMode",
   "colorNeutral",
+  "colorScheme",
   "statusBar.enabled",
   "aShare.enabled",
   "aShare.statusBar",
@@ -58,7 +60,7 @@ export class SettingsWebviewPanel {
   private readonly _version: string;
   private _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(extensionUri: vscode.Uri, version: string = "1.1.4") {
+  public static createOrShow(extensionUri: vscode.Uri, version?: string) {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
@@ -68,6 +70,11 @@ export class SettingsWebviewPanel {
       SettingsWebviewPanel.currentPanel.sendCurrentSettings();
       return;
     }
+
+    const resolvedVersion =
+      version ||
+      vscode.extensions.getExtension("devqqqqq.marketlens")?.packageJSON?.version ||
+      "";
 
     const panel = vscode.window.createWebviewPanel(
       "marketlensSettings",
@@ -79,7 +86,7 @@ export class SettingsWebviewPanel {
       }
     );
 
-    SettingsWebviewPanel.currentPanel = new SettingsWebviewPanel(panel, extensionUri, version);
+    SettingsWebviewPanel.currentPanel = new SettingsWebviewPanel(panel, extensionUri, resolvedVersion);
   }
 
   private static _generateNonce(): string {
@@ -91,7 +98,7 @@ export class SettingsWebviewPanel {
     return text;
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, version: string = "1.1.4") {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, version: string = "") {
     this._panel = panel;
     this._version = version;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -188,6 +195,12 @@ export class SettingsWebviewPanel {
                   const anyActive = aShareSB || hkStockSB || usStockSB || binanceSB || alphaSB;
                   await cfg.update("statusBar.enabled", anyActive, vscode.ConfigurationTarget.Global);
                   this.sendCurrentSettings();
+                } else if (message.key === "colorScheme") {
+                  await Promise.all([
+                    cfg.update("colorScheme", message.value, vscode.ConfigurationTarget.Global),
+                    cfg.update("colorNeutral", false, vscode.ConfigurationTarget.Global),
+                  ]);
+                  this.sendCurrentSettings();
                 } else {
                   await cfg.update(message.key, message.value, vscode.ConfigurationTarget.Global);
                 }
@@ -233,6 +246,9 @@ export class SettingsWebviewPanel {
             break;
           case "restoreDefaults":
             await SettingsWebviewPanel.restoreDefaults();
+            break;
+          case "showLogs":
+            logger.show();
             break;
           case "clearWatchlist":
             await SettingsWebviewPanel.clearWatchlist();
@@ -323,6 +339,7 @@ export class SettingsWebviewPanel {
       "refreshInterval",
       "maskMode",
       "colorNeutral",
+      "colorScheme",
       "statusBar.enabled",
       "aShare.enabled",
       "aShare.statusBar",
@@ -402,66 +419,52 @@ export class SettingsWebviewPanel {
   }
 
   private _getCurrentSettingsData() {
-    const cfg = vscode.workspace.getConfiguration("marketlens");
-    const aShareSB  = cfg.get<boolean>("aShare.statusBar") ?? (cfg.get<any>("aShare")?.statusBar ?? true);
-    const hkStockSB = cfg.get<boolean>("hkStock.statusBar") ?? (cfg.get<any>("hkStock")?.statusBar ?? true);
-    const usStockSB = cfg.get<boolean>("usStock.statusBar") ?? (cfg.get<any>("usStock")?.statusBar ?? true);
-    const binanceSB = cfg.get<boolean>("binance.statusBar") ?? (cfg.get<any>("binance")?.statusBar ?? true);
-    const alphaSB   = cfg.get<boolean>("alpha.statusBar") ?? (cfg.get<any>("alpha")?.statusBar ?? true);
-    const allActive = aShareSB && hkStockSB && usStockSB && binanceSB && alphaSB;
+    const config = readConfig();
 
     // 解析当前生效的统一代理端口与地址
     const cachedPort = getCachedWorkingPort();
-    let configuredPort = cfg.get<number>("proxyPort");
-    if (!configuredPort) {
-      const pUrl = cfg.get<string>("proxyUrl") || cfg.get<string>("binance.proxyUrl") || cfg.get<string>("alpha.proxyUrl");
-      if (pUrl) {
-        try {
-          const u = new URL(pUrl);
-          if (u.port) configuredPort = parseInt(u.port, 10);
-        } catch (_) {}
-      }
-    }
-    // 优先级：真实探测工作中的端口 > 用户配置端口 > 10808
-    const effectivePort = cachedPort || configuredPort || 10808;
-    const proxyUrl = `http://127.0.0.1:${effectivePort}`;
+    const effectivePort = cachedPort || config.proxyPort || 10808;
+    const proxyUrl = cachedPort ? `http://127.0.0.1:${cachedPort}` : config.proxyUrl;
 
     return {
-      autoRefresh:              cfg.get<boolean>("autoRefresh", true),
-      refreshInterval:          cfg.get<number>("refreshInterval", 5000),
-      maskMode:                 cfg.get<boolean>("maskMode", false),
-      colorNeutral:             cfg.get<boolean>("colorNeutral", false),
-      statusBarEnabled:         allActive,
+      autoRefresh:              config.autoRefresh,
+      refreshInterval:          config.refreshInterval,
+      maskMode:                 config.maskMode,
+      colorNeutral:             config.colorNeutral,
+      colorScheme:              config.colorScheme,
+      // 总控开关直接采用全局 statusBar.enabled 语义（未显式关闭即为开启）。
+      // 此前用五个板块 statusBar 的逻辑与判定，会导致「只关掉 A 股轮播」时总控开关被误显示为关闭。
+      statusBarEnabled:         config.statusBar.enabled,
       proxyPort:                effectivePort,
       proxyUrl:                 proxyUrl,
-      aShareEnabled:            cfg.get<boolean>("aShare.enabled", true),
-      aShareStatusBar:          aShareSB,
-      aShareStopOnMarketClosed: cfg.get<boolean>("aShare.stopOnMarketClosed", true),
-      aShareNetworkMode:        cfg.get<string>("aShare.networkMode", "direct"),
-      aShareProxyUrl:           proxyUrl,
-      hkStockEnabled:           cfg.get<boolean>("hkStock.enabled", true),
-      hkStockStatusBar:         hkStockSB,
-      hkStockStopOnMarketClosed: cfg.get<boolean>("hkStock.stopOnMarketClosed", true),
-      hkStockNetworkMode:       cfg.get<string>("hkStock.networkMode", "direct"),
-      hkStockProxyUrl:          proxyUrl,
-      usStockEnabled:           cfg.get<boolean>("usStock.enabled", true),
-      usStockStatusBar:         usStockSB,
-      usStockStopOnMarketClosed: cfg.get<boolean>("usStock.stopOnMarketClosed", true),
-      usStockNetworkMode:       cfg.get<string>("usStock.networkMode", "direct"),
-      usStockProxyUrl:          proxyUrl,
-      binanceEnabled:           cfg.get<boolean>("binance.enabled", true),
-      binanceStatusBar:         binanceSB,
-      binanceNetworkMode:       cfg.get<string>("binance.networkMode", "proxy"),
-      binanceProxyUrl:          proxyUrl,
-      alphaEnabled:             cfg.get<boolean>("alpha.enabled", true),
-      alphaStatusBar:           alphaSB,
-      alphaNetworkMode:         cfg.get<string>("alpha.networkMode", "proxy"),
-      alphaProxyUrl:            proxyUrl,
-      alerts:                   cfg.get<Record<string, any>>("alerts", {}),
-      alertNotificationMode:    cfg.get<string>("alertNotificationMode", "notification"),
-      alertCooldownMinutes:     cfg.get<number>("alertCooldownMinutes", 15),
+      aShareEnabled:            config.aShare.enabled,
+      aShareStatusBar:          config.aShare.statusBar,
+      aShareStopOnMarketClosed: config.aShare.stopOnMarketClosed,
+      aShareNetworkMode:        config.aShare.networkMode,
+      aShareProxyUrl:           config.aShare.proxyUrl || proxyUrl,
+      hkStockEnabled:           config.hkStock.enabled,
+      hkStockStatusBar:         config.hkStock.statusBar,
+      hkStockStopOnMarketClosed: config.hkStock.stopOnMarketClosed,
+      hkStockNetworkMode:       config.hkStock.networkMode,
+      hkStockProxyUrl:          config.hkStock.proxyUrl || proxyUrl,
+      usStockEnabled:           config.usStock.enabled,
+      usStockStatusBar:         config.usStock.statusBar,
+      usStockStopOnMarketClosed: config.usStock.stopOnMarketClosed,
+      usStockNetworkMode:       config.usStock.networkMode,
+      usStockProxyUrl:          config.usStock.proxyUrl || proxyUrl,
+      binanceEnabled:           config.binance.enabled,
+      binanceStatusBar:         config.binance.statusBar,
+      binanceNetworkMode:       config.binance.networkMode,
+      binanceProxyUrl:          config.binance.proxyUrl || proxyUrl,
+      alphaEnabled:             config.alpha.enabled,
+      alphaStatusBar:           config.alpha.statusBar,
+      alphaNetworkMode:         config.alpha.networkMode,
+      alphaProxyUrl:            config.alpha.proxyUrl || proxyUrl,
+      alerts:                   config.alerts || {},
+      alertNotificationMode:    config.alertNotificationMode,
+      alertCooldownMinutes:     config.alertCooldownMinutes,
       watchlist:                (() => {
-        const rawWatchlist = cfg.get<Record<string, any[]>>("watchlist", {});
+        const rawWatchlist = config.watchlist || {};
         const quoteCache = SettingsWebviewPanel.getQuoteCache?.();
         const resolvedWatchlist: Record<string, any[]> = {};
 

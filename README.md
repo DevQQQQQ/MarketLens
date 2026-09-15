@@ -1,4 +1,4 @@
-# MarketLens — 全球资产行情看板 (A股 / 港股 / 美股 / 加密货币 / 链上DEX)
+# MarketLens 是一款面向开发者的股票看板 / 加密货币行情 / 摸鱼盯盘效率工具，聚合 A股、港股、美股、Binance 主流币与全链 DEX 链上资产，让你在写代码时也能一眼掌握盘面异动。
 
 <p align="center">
   <b>📊 专为开发者打造的专业行情看板与极致效率工具</b><br>
@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/VS_Code-^1.85.0-007ACC?logo=visualstudiocode" alt="VS Code Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Release-v1.1.4-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.1.5-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platform">
 </p>
 
@@ -25,7 +25,7 @@
 - 🖱️ **多选批量拖拽排序**：支持键盘 `Shift` / `Ctrl`（Mac `Cmd`）选中多只标的，一次性批量拖动重排；
 - 🕶️ **极致专注与安全隐秘**：配备老板键一键隐藏、终端日志伪装摸鱼、颜色脱敏模式、休市自动节流；
 - 📊 **状态栏无缝轮播**：底部状态栏按需滚动行情，支持各板块独立开关精细控制；
-- 🧹 **活跃集修剪与极低内存**：自动回收死缓存与 LRU 机制，全天候挂机内存占用稳定 <15MB；
+- 🧹 **活跃集修剪与极低内存占用**：自动回收死缓存与内存对齐机制，常态增量堆内存仅数兆（Heap Used 稳定 < 15MB~25MB），持久挂机无泄漏；
 - 🛡️ **网络安全与防审计**：境内正规源直连，Web3 接口强制走本地代理，杜绝公司网关留痕。
 
 ---
@@ -36,7 +36,7 @@
 
 - 🇨🇳 **A股市场 (沪深京)**：
     - 直连境内正规金融源，零延迟实时拉取；
-    - 覆盖上证、深证、北交所全市场股票与各大指数（如上证指数、沪深300等）；
+    - 覆盖上证、深证、北交所全市场股票与各大指数（如上证指数、沪深300、ETF等）；
     - 智能交易时段判定：仅在工作日交易时段轮询，收盘及周末自动休眠节流。
 - 🇭🇰 **港股市场 (HK Stocks)**：
     - 覆盖恒生指数、腾讯控股、美团、阿里巴巴、小米等核心资产；
@@ -46,7 +46,7 @@
     - 苹果 (`AAPL`)、英伟达 (`NVDA`)、特斯拉 (`TSLA`)、微软 (`MSFT`)、纳指 (`.IXIC`) 实时追踪；
     - 智能识别北京时间夜间交易时段与盘后展示。
 - 🟡 **Binance 币安主流代币**：
-    - 覆盖 BTC、ETH、SOL、BNB、DOGE 等主流加密资产与山寨代币；
+    - 覆盖 BTC、ETH、SOL、BNB、DOGE、SOL、Raydium、Uniswap 等主流加密资产与山寨代币；
     - 24 小时全天候无间断拉取最新价格、日内涨跌幅及波动幅度。
 - 🦄 **Alpha 链上 DEX 聚合 (全链新币)**：
     - 集成 DexScreener 全球去中心化交易所聚合行情；
@@ -210,7 +210,7 @@
 将鼠标悬停在任意自选标的上，即可弹出专业详情气泡：
 
 - 今开、昨收、当日最高价、最低价；
-- 成交量、成交额、换手率（股票）；
+- 成交量、成交额（股票/指数）；
 - 链上全网流动性池深度（DEX 资产）。
 
 ---

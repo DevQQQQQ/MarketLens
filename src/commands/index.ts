@@ -6,6 +6,7 @@ import { StatusBar } from "../ui/statusBar";
 import { WatchlistProvider, GroupItem, StockItem } from "../ui/watchlistProvider";
 import { SettingsWebviewPanel } from "../ui/settingsWebview";
 import { readConfig } from "../utils/config";
+import { logger } from "../utils/logger";
 
 export interface CommandServices {
   scheduler: RefreshScheduler;
@@ -23,7 +24,7 @@ export function registerCommands(
   context.subscriptions.push(
     // 打开设置界面（专属 Webview 控制台面板）
     vscode.commands.registerCommand("marketlens.openSettings", () => {
-      const extVersion = context.extension?.packageJSON?.version || "1.1.4";
+      const extVersion = context.extension?.packageJSON?.version;
       SettingsWebviewPanel.createOrShow(context.extensionUri, extVersion);
     }),
 
@@ -147,6 +148,11 @@ export function registerCommands(
       async (node?: StockItem) => {
         await watchlistOps.setAlert(node);
       }
-    )
+    ),
+
+    // 查看运行日志（OutputChannel）
+    vscode.commands.registerCommand("marketlens.showLogs", () => {
+      logger.show();
+    })
   );
 }

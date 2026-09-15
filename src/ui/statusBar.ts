@@ -55,6 +55,7 @@ function camoBranch(item: MarketItem): string {
 export interface StatusBarOptions {
   maskMode: boolean;
   colorNeutral: boolean;
+  colorScheme?: "greenUpRedDown" | "redUpGreenDown";
 }
 
 export class StatusBar implements vscode.Disposable {
@@ -66,6 +67,7 @@ export class StatusBar implements vscode.Disposable {
   // 状态开关
   private maskMode: boolean;
   private colorNeutral: boolean;
+  private colorScheme: "greenUpRedDown" | "redUpGreenDown";
   private bossKeyActive = false;
 
   // 轮播
@@ -79,6 +81,7 @@ export class StatusBar implements vscode.Disposable {
   constructor(options: StatusBarOptions) {
     this.maskMode    = options.maskMode;
     this.colorNeutral = options.colorNeutral;
+    this.colorScheme  = options.colorScheme || "greenUpRedDown";
 
     this.barItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
@@ -139,6 +142,12 @@ export class StatusBar implements vscode.Disposable {
   /** 切换颜色脱敏模式（纯白/无红绿） */
   setColorNeutral(enabled: boolean): void {
     this.colorNeutral = enabled;
+    this.render();
+  }
+
+  /** 切换涨跌配色方案（绿涨红跌 / 红涨绿跌） */
+  setColorScheme(scheme: "greenUpRedDown" | "redUpGreenDown"): void {
+    this.colorScheme = scheme || "greenUpRedDown";
     this.render();
   }
 
@@ -260,7 +269,9 @@ export class StatusBar implements vscode.Disposable {
   /**
    * 应用涨跌颜色
    * - colorNeutral 开启时：强制无色（白色/主题默认色），不刺眼
-   * - 正常时：下跌使用状态栏红色背景，上涨恢复默认
+   * - 正常时：
+   *   - greenUpRedDown (默认，国际习惯)：下跌使用状态栏红色背景，上涨恢复默认
+   *   - redUpGreenDown (国内习惯)：上涨使用状态栏红色背景，下跌恢复默认
    */
   private applyColor(quote: MarketItem | undefined): void {
     if (!quote || this.colorNeutral) {
@@ -268,7 +279,9 @@ export class StatusBar implements vscode.Disposable {
       this.barItem.color = undefined;
       return;
     }
-    if (quote.changePercent < -0.01) {
+    const isRedUp = this.colorScheme === "redUpGreenDown";
+    const isRed = isRedUp ? quote.changePercent > 0.01 : quote.changePercent < -0.01;
+    if (isRed) {
       this.barItem.backgroundColor = new vscode.ThemeColor(
         "statusBarItem.errorBackground"
       );
