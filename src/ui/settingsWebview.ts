@@ -15,6 +15,11 @@ const ALLOWED_CONFIG_KEYS = new Set([
   "colorNeutral",
   "colorScheme",
   "statusBar.enabled",
+  "fund.enabled",
+  "fund.statusBar",
+  "fund.stopOnMarketClosed",
+  "fund.networkMode",
+  "fund.proxyUrl",
   "aShare.enabled",
   "aShare.statusBar",
   "aShare.stopOnMarketClosed",
@@ -178,6 +183,7 @@ export class SettingsWebviewPanel {
                   ]);
                   this.sendCurrentSettings();
                 } else if (
+                  message.key === "fund.statusBar" ||
                   message.key === "aShare.statusBar" ||
                   message.key === "hkStock.statusBar" ||
                   message.key === "usStock.statusBar" ||
@@ -186,13 +192,14 @@ export class SettingsWebviewPanel {
                 ) {
                   await cfg.update(message.key, message.value, vscode.ConfigurationTarget.Global);
 
+                  const fundSB    = message.key === "fund.statusBar"    ? !!message.value : (cfg.get<boolean>("fund.statusBar") ?? true);
                   const aShareSB  = message.key === "aShare.statusBar"  ? !!message.value : (cfg.get<boolean>("aShare.statusBar") ?? true);
                   const hkStockSB = message.key === "hkStock.statusBar" ? !!message.value : (cfg.get<boolean>("hkStock.statusBar") ?? true);
                   const usStockSB = message.key === "usStock.statusBar" ? !!message.value : (cfg.get<boolean>("usStock.statusBar") ?? true);
                   const binanceSB = message.key === "binance.statusBar" ? !!message.value : (cfg.get<boolean>("binance.statusBar") ?? true);
                   const alphaSB   = message.key === "alpha.statusBar"   ? !!message.value : (cfg.get<boolean>("alpha.statusBar") ?? true);
 
-                  const anyActive = aShareSB || hkStockSB || usStockSB || binanceSB || alphaSB;
+                  const anyActive = fundSB || aShareSB || hkStockSB || usStockSB || binanceSB || alphaSB;
                   await cfg.update("statusBar.enabled", anyActive, vscode.ConfigurationTarget.Global);
                   this.sendCurrentSettings();
                 } else if (message.key === "colorScheme") {
@@ -219,6 +226,7 @@ export class SettingsWebviewPanel {
               await Promise.all([
                 cfg.update("proxyPort", port, vscode.ConfigurationTarget.Global),
                 cfg.update("proxyUrl", url, vscode.ConfigurationTarget.Global),
+                cfg.update("fund.proxyUrl", url, vscode.ConfigurationTarget.Global),
                 cfg.update("aShare.proxyUrl", url, vscode.ConfigurationTarget.Global),
                 cfg.update("hkStock.proxyUrl", url, vscode.ConfigurationTarget.Global),
                 cfg.update("usStock.proxyUrl", url, vscode.ConfigurationTarget.Global),
@@ -310,7 +318,7 @@ export class SettingsWebviewPanel {
 
   public static async restoreDefaults(): Promise<boolean> {
     const confirm = await vscode.window.showWarningMessage(
-      "确定要将 MarketLens 恢复为出厂默认设置吗？\n所有自选标的列表将重置为初始预设（A股10只/港股6只/美股9只/Binance12个/Alpha12个），所有价格预警规则与自定义配置也将全部还原。",
+      "确定要将 MarketLens 恢复为出厂默认设置吗？\n所有自选标的列表将重置为初始预设（基金5只/A股10只/港股6只/美股9只/Binance12个/Alpha12个），所有价格预警规则与自定义配置也将全部还原。",
       { modal: true },
       "确认恢复",
       "取消"
@@ -437,6 +445,11 @@ export class SettingsWebviewPanel {
       statusBarEnabled:         config.statusBar.enabled,
       proxyPort:                effectivePort,
       proxyUrl:                 proxyUrl,
+      fundEnabled:              config.fund.enabled,
+      fundStatusBar:            config.fund.statusBar,
+      fundStopOnMarketClosed:   config.fund.stopOnMarketClosed,
+      fundNetworkMode:          config.fund.networkMode,
+      fundProxyUrl:             config.fund.proxyUrl || proxyUrl,
       aShareEnabled:            config.aShare.enabled,
       aShareStatusBar:          config.aShare.statusBar,
       aShareStopOnMarketClosed: config.aShare.stopOnMarketClosed,

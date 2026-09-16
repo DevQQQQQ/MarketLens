@@ -102,19 +102,25 @@ export function validateAndParseInput(input: string): { error?: string; parsed?:
     };
   }
 
-  // 3. A 股代码校验 (支持 6 位数字，如 600519，或带前缀 sh600519 / sz000001 / bj830001)
+  // 3. A 股代码与场内基金/ETF校验 (支持 6 位数字，如 600519/510300，或带前缀 sh600519 / sz000001 / bj830001)
   const aShareMatch = trimmed.match(/^(sh|sz|bj)?(\d{6})$/i);
   if (aShareMatch) {
     const prefix = aShareMatch[1] ? aShareMatch[1].toLowerCase() : "";
     const code = aShareMatch[2];
     // 无显式前缀时，按代码段精确推断交易所（沪/深/北），与行情抓取端共用同一规则
     const fullSymbol = prefix ? `${prefix}${code}` : `${inferAShareExchange(code)}${code}`;
+
+    // 智能识别场内基金/ETF/LOF代码段：
+    // 沪市：50xxxx, 51xxxx, 56xxxx, 58xxxx (如 510300 沪深300ETF, 588000 科创50ETF)
+    // 深市：15xxxx (ETF), 16xxxx (LOF) (如 159915 创业板ETF, 161725 白酒LOF)
+    const isFund = /^(5[0168]\d{4}|1[56]\d{4})$/.test(code);
+
     return {
       parsed: {
         symbol: fullSymbol,
         type: "A_SHARE",
         defaultGroup: "A股",
-        hint: `A股代码 (${fullSymbol})`,
+        hint: isFund ? `场内基金/ETF (${fullSymbol})` : `A股代码 (${fullSymbol})`,
       },
     };
   }

@@ -46,6 +46,7 @@ export function readConfig(): MarketLensConfig {
     }
   }
 
+  const fund    = getSectionConfig(cfg, "fund",    { networkMode: "direct", proxyUrl: globalProxy, stopOnMarketClosed: true });
   const aShare  = getSectionConfig(cfg, "aShare",  { networkMode: "direct", proxyUrl: globalProxy, stopOnMarketClosed: true });
   const hkStock = getSectionConfig(cfg, "hkStock", { networkMode: "direct", proxyUrl: globalProxy, stopOnMarketClosed: true });
   const usStock = getSectionConfig(cfg, "usStock", { networkMode: "direct", proxyUrl: globalProxy, stopOnMarketClosed: true });
@@ -53,7 +54,7 @@ export function readConfig(): MarketLensConfig {
   const alpha   = getSectionConfig(cfg, "alpha",   { networkMode: "proxy",  proxyUrl: globalProxy });
 
   const explicitStatusBarEnabled = cfg.get<boolean>("statusBar.enabled");
-  const anyTabsStatusBar = aShare.statusBar || hkStock.statusBar || usStock.statusBar || binance.statusBar || alpha.statusBar;
+  const anyTabsStatusBar = fund.statusBar || aShare.statusBar || hkStock.statusBar || usStock.statusBar || binance.statusBar || alpha.statusBar;
   // 总控开关判定：显式关闭时彻底关闭状态栏；未显式关闭时，只要有任意板块开启轮播即保持状态栏展示
   const isStatusBarEnabled = computeStatusBarEnabled(explicitStatusBarEnabled, anyTabsStatusBar);
 
@@ -70,6 +71,7 @@ export function readConfig(): MarketLensConfig {
       enabled: isStatusBarEnabled,
     },
 
+    fund,
     aShare,
     hkStock,
     usStock,

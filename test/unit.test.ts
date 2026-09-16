@@ -1,6 +1,10 @@
 // test/unit.test.ts
 import assert from "node:assert";
 import test from "node:test";
+import { createRequire } from "node:module";
+import os from "node:os";
+import fs from "node:fs";
+import path from "node:path";
 
 import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml } from "../src/utils/symbolHelper.ts";
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
@@ -1950,6 +1954,188 @@ test("Active-Set Prune 内存基准与堆内存稳定性测试", () => {
   // 1000 次循环后增量堆内存应严格低于 10MB（通常近乎 0 增量）
   assert.ok(heapDeltaMB < 10, `循环后堆内存增量过大: ${heapDeltaMB.toFixed(2)} MB`);
 });
+
+test("分组自选排序逻辑 - 涨幅/跌幅/名称/现价/默认 稳定排序规则", () => {
+  const items = [
+    { name: "贵州茅台", confSymbol: "sh600519", item: { price: 1800, changePercent: -1.2, name: "贵州茅台", symbol: "sh600519" } },
+    { name: "比亚迪", confSymbol: "sz002594", item: { price: 260, changePercent: 5.8, name: "比亚迪", symbol: "sz002594" } },
+    { name: "宁德时代", confSymbol: "sz300750", item: { price: 210, changePercent: 2.3, name: "宁德时代", symbol: "sz300750" } },
+    { name: "阿里巴巴", confSymbol: "hk09988", item: { price: 80, changePercent: -3.5, name: "阿里巴巴", symbol: "hk09988" } },
+  ];
+
+  // 1. 默认顺序（保持配置原序）
+  const defaultList = [...items];
+  assert.strictEqual(defaultList[0].name, "贵州茅台");
+  assert.strictEqual(defaultList[1].name, "比亚迪");
+
+  // 2. 按涨幅排序（降序）：比亚迪(+5.8%) -> 宁德时代(+2.3%) -> 贵州茅台(-1.2%) -> 阿里巴巴(-3.5%)
+  const changeDescList = [...items].sort((a, b) => (b.item.changePercent ?? 0) - (a.item.changePercent ?? 0));
+  assert.deepStrictEqual(
+    changeDescList.map((x) => x.name),
+    ["比亚迪", "宁德时代", "贵州茅台", "阿里巴巴"]
+  );
+
+  // 3. 按跌幅排序（升序）：阿里巴巴(-3.5%) -> 贵州茅台(-1.2%) -> 宁德时代(+2.3%) -> 比亚迪(+5.8%)
+  const changeAscList = [...items].sort((a, b) => (a.item.changePercent ?? 0) - (b.item.changePercent ?? 0));
+  assert.deepStrictEqual(
+    changeAscList.map((x) => x.name),
+    ["阿里巴巴", "贵州茅台", "宁德时代", "比亚迪"]
+  );
+
+  // 4. 按名称拼音排序：阿里巴巴 (A) -> 比亚迪 (B) -> 贵州茅台 (G) -> 宁德时代 (N)
+  const nameAscList = [...items].sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN", { numeric: true }));
+  assert.deepStrictEqual(
+    nameAscList.map((x) => x.name),
+    ["阿里巴巴", "比亚迪", "贵州茅台", "宁德时代"]
+  );
+
+  // 5. 按现价排序（降序）：贵州茅台(1800) -> 比亚迪(260) -> 宁德时代(210) -> 阿里巴巴(80)
+  const priceDescList = [...items].sort((a, b) => (b.item.price ?? 0) - (a.item.price ?? 0));
+  assert.deepStrictEqual(
+    priceDescList.map((x) => x.name),
+    ["贵州茅台", "比亚迪", "宁德时代", "阿里巴巴"]
+  );
+});
+
+test("基金分组与场内ETF - 资产推导、输入提示与分组层级校验", () => {
+  // 1. 组名推导：基金与 ETF 组名推导为 A_SHARE
+  assert.strictEqual(resolveItemAssetType({ symbol: "" }, "基金"), "A_SHARE");
+  assert.strictEqual(resolveItemAssetType({ symbol: "" }, "核心ETF"), "A_SHARE");
+  assert.strictEqual(resolveItemAssetType({ symbol: "510300" }, "基金"), "A_SHARE");
+
+  // 2. 输入解析提示：场内基金代码段精准识别提示
+  const fund1 = validateAndParseInput("510300");
+  assert.ok(fund1.parsed?.hint?.includes("场内基金/ETF"), "510300 应提示场内基金/ETF");
+  assert.strictEqual(fund1.parsed?.symbol, "sh510300");
+
+  const fund2 = validateAndParseInput("159915");
+  assert.ok(fund2.parsed?.hint?.includes("场内基金/ETF"), "159915 应提示场内基金/ETF");
+  assert.strictEqual(fund2.parsed?.symbol, "sz159915");
+
+  // 3. 腾讯抓取端与输入解析端前缀完全一致
+  assert.strictEqual(fund1.parsed?.symbol, normalizeAShareCode("510300"));
+  assert.strictEqual(fund2.parsed?.symbol, normalizeAShareCode("159915"));
+});
+
+test("基金板块设置与状态栏轮播/分桶抓取联动", () => {
+  const mockWatchlist = {
+    "基金": [
+      { symbol: "sh510050", name: "上证50ETF" },
+      { symbol: "sz159915", name: "创业板ETF" },
+    ],
+    "A股": [
+      { symbol: "sh600036", name: "招商银行" },
+    ],
+  };
+  const mockQuoteCache = new Map<string, any>([
+    ["sh510050", { symbol: "sh510050", name: "上证50ETF", price: 2.6, changePercent: 1.5 }],
+    ["sz159915", { symbol: "sz159915", name: "创业板ETF", price: 1.8, changePercent: -0.5 }],
+    ["sh600036", { symbol: "sh600036", name: "招商银行", price: 35.0, changePercent: 0.2 }],
+  ]);
+
+  // 1. 基金开启轮播，A股关闭轮播
+  const quotes1 = extractStatusBarQuotes(mockWatchlist, mockQuoteCache, {
+    fund: { enabled: true, statusBar: true },
+    aShare: { enabled: true, statusBar: false },
+  });
+  assert.strictEqual(quotes1.length, 2);
+  assert.deepStrictEqual(quotes1.map((q) => q.symbol), ["sh510050", "sz159915"]);
+
+  // 2. 基金关闭轮播，A股开启轮播
+  const quotes2 = extractStatusBarQuotes(mockWatchlist, mockQuoteCache, {
+    fund: { enabled: true, statusBar: false },
+    aShare: { enabled: true, statusBar: true },
+  });
+  assert.strictEqual(quotes2.length, 1);
+  assert.strictEqual(quotes2[0].symbol, "sh600036");
+
+  // 3. 基金板块禁用，抓取分桶应跳过基金
+  const targets = extractTargetsFromWatchlist(mockWatchlist, {
+    fundEnabled: false,
+    aShareEnabled: true,
+  });
+  assert.deepStrictEqual(targets.aShares, ["sh600036"]);
+});
+
+test("scripts/sync-version - package.json 版本变更全自动同步测试", () => {
+  const req = createRequire(import.meta.url);
+  const { syncVersion } = req("../scripts/sync-version.js");
+
+  // 1. 测试当前仓库版本同步（已对齐状态）
+  const resCurrent = syncVersion();
+  assert.strictEqual(typeof resCurrent.version, "string");
+  assert.strictEqual(resCurrent.version.length > 0, true);
+  assert.strictEqual(Array.isArray(resCurrent.modifiedFiles), true);
+
+  // 2. 隔离环境：测试 package.json 版本变动时，自动更新 README.md 与 RELEASE.md
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "marketlens-sync-test-"));
+  try {
+    fs.writeFileSync(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ version: "2.5.0" }, null, 2),
+      "utf8"
+    );
+    fs.writeFileSync(
+      path.join(tempDir, "README.md"),
+      '<img src="https://img.shields.io/badge/Release-v1.1.5-blue.svg" alt="Version">',
+      "utf8"
+    );
+    fs.writeFileSync(
+      path.join(tempDir, "README.en.md"),
+      '<img src="https://img.shields.io/badge/Release-v1.1.5-blue.svg" alt="Version">',
+      "utf8"
+    );
+    fs.writeFileSync(
+      path.join(tempDir, "RELEASE.md"),
+      "npx @vscode/vsce package -o marketlens-1.1.5.vsix\ngit tag v1.1.5 && git push origin v1.1.5",
+      "utf8"
+    );
+    // 创建历史版本与当前版本的 vsix 测试文件
+    fs.writeFileSync(path.join(tempDir, "marketlens-1.0.0.vsix"), "old-pkg-1", "utf8");
+    fs.writeFileSync(path.join(tempDir, "marketlens-2.4.0.vsix"), "old-pkg-2", "utf8");
+    fs.writeFileSync(path.join(tempDir, "marketlens-2.5.0.vsix"), "current-pkg", "utf8");
+
+    const syncRes = syncVersion(tempDir);
+    assert.strictEqual(syncRes.version, "2.5.0");
+    assert.strictEqual(syncRes.modifiedFiles.length, 3);
+    assert.strictEqual(syncRes.modifiedFiles.includes("README.md"), true);
+    assert.strictEqual(syncRes.modifiedFiles.includes("README.en.md"), true);
+    assert.strictEqual(syncRes.modifiedFiles.includes("RELEASE.md"), true);
+
+    // 验证旧版本 vsix 自动清理，当前版本安全保留
+    assert.strictEqual(Array.isArray(syncRes.deletedVsix), true);
+    assert.strictEqual(syncRes.deletedVsix.length, 2);
+    assert.strictEqual(syncRes.deletedVsix.includes("marketlens-1.0.0.vsix"), true);
+    assert.strictEqual(syncRes.deletedVsix.includes("marketlens-2.4.0.vsix"), true);
+    assert.strictEqual(fs.existsSync(path.join(tempDir, "marketlens-1.0.0.vsix")), false, "旧版 vsix 应被删除");
+    assert.strictEqual(fs.existsSync(path.join(tempDir, "marketlens-2.4.0.vsix")), false, "旧版 vsix 应被删除");
+    assert.strictEqual(fs.existsSync(path.join(tempDir, "marketlens-2.5.0.vsix")), true, "当前版本的 vsix 应被安全保留");
+
+    const updatedReadme = fs.readFileSync(path.join(tempDir, "README.md"), "utf8");
+    assert.strictEqual(
+      updatedReadme.includes("Release-v2.5.0-blue.svg"),
+      true,
+      "README badge 应被自动同步为新版本号"
+    );
+
+    const updatedRelease = fs.readFileSync(path.join(tempDir, "RELEASE.md"), "utf8");
+    assert.strictEqual(
+      updatedRelease.includes("marketlens-2.5.0.vsix"),
+      true,
+      "RELEASE vsix 包名应被自动同步为新版本号"
+    );
+    assert.strictEqual(
+      updatedRelease.includes("git tag v2.5.0 && git push origin v2.5.0"),
+      true,
+      "RELEASE git tag 应被自动同步为新版本号"
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+
+
 
 
 

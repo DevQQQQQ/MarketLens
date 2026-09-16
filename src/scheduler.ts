@@ -71,6 +71,13 @@ export class RefreshScheduler implements vscode.Disposable {
       forceAll,
       specificGroupName,
     });
+    const skipFund = shouldSkipMarketPolling({
+      stopOnMarketClosed: config.fund?.stopOnMarketClosed ?? true,
+      isMarketOpen: isAShareMarketOpen(),
+      hasLoadedInitialQuotes: this.hasLoadedInitialQuotes,
+      forceAll,
+      specificGroupName,
+    });
     const skipA = shouldSkipMarketPolling({
       stopOnMarketClosed: config.aShare.stopOnMarketClosed,
       isMarketOpen: isAShareMarketOpen(),
@@ -80,12 +87,14 @@ export class RefreshScheduler implements vscode.Disposable {
     });
 
     return extractTargetsFromWatchlist(config.watchlist, {
+      fundEnabled: config.fund?.enabled ?? true,
       aShareEnabled: config.aShare.enabled,
       hkStockEnabled: config.hkStock.enabled,
       usStockEnabled: config.usStock.enabled,
       binanceEnabled: config.binance.enabled,
       alphaEnabled: config.alpha.enabled,
       specificGroupName,
+      skipFund,
       skipAShare: skipA,
       skipHKStock: skipHK,
       skipUSStock: skipUS,
@@ -119,6 +128,7 @@ export class RefreshScheduler implements vscode.Disposable {
     this.treeProvider.setAlerts(currentCfg.alerts || {});
     pruneQuoteCache(activeWatchlist, this.quoteCache);
     this.treeProvider.buildTree(activeWatchlist, this.quoteCache, {
+      fund: currentCfg.fund?.enabled ?? true,
       aShare: currentCfg.aShare.enabled,
       hkStock: currentCfg.hkStock.enabled,
       usStock: currentCfg.usStock.enabled,
@@ -136,6 +146,7 @@ export class RefreshScheduler implements vscode.Disposable {
     const config = currentConfig || readConfig();
     const statusBarQuotes = extractStatusBarQuotes(config.watchlist, this.quoteCache, {
       statusBarEnabled: config.statusBar?.enabled,
+      fund: config.fund,
       aShare: config.aShare,
       hkStock: config.hkStock,
       usStock: config.usStock,

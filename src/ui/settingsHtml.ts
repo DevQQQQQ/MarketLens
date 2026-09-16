@@ -5,10 +5,15 @@ export interface SettingsFormData {
 	refreshInterval?: number;
 	maskMode?: boolean;
 	colorNeutral?: boolean;
-	colorScheme?: "greenUpRedDown" | "redUpGreenDown";
+	colorScheme?: 'greenUpRedDown' | 'redUpGreenDown';
 	statusBarEnabled?: boolean;
 	proxyPort?: number;
 	proxyUrl?: string;
+	fundEnabled?: boolean;
+	fundStatusBar?: boolean;
+	fundStopOnMarketClosed?: boolean;
+	fundNetworkMode?: string;
+	fundProxyUrl?: string;
 	aShareEnabled?: boolean;
 	aShareStatusBar?: boolean;
 	aShareStopOnMarketClosed?: boolean;
@@ -51,11 +56,20 @@ export function getSettingsWebviewHtml(
 		refreshInterval: initialData.refreshInterval || 5000,
 		maskMode: !!initialData.maskMode,
 		colorNeutral: !!initialData.colorNeutral,
-		colorScheme: initialData.colorScheme || "greenUpRedDown",
+		colorScheme: initialData.colorScheme || 'greenUpRedDown',
 		statusBarEnabled:
 			initialData.statusBarEnabled !== undefined ? initialData.statusBarEnabled : true,
 		proxyPort: defaultPort,
 		proxyUrl: defaultProxyUrl,
+		fundEnabled: initialData.fundEnabled !== undefined ? initialData.fundEnabled : true,
+		fundStatusBar:
+			initialData.fundStatusBar !== undefined ? initialData.fundStatusBar : true,
+		fundStopOnMarketClosed:
+			initialData.fundStopOnMarketClosed !== undefined
+				? initialData.fundStopOnMarketClosed
+				: true,
+		fundNetworkMode: initialData.fundNetworkMode || 'direct',
+		fundProxyUrl: initialData.fundProxyUrl || defaultProxyUrl,
 		aShareEnabled: initialData.aShareEnabled !== undefined ? initialData.aShareEnabled : true,
 		aShareStatusBar:
 			initialData.aShareStatusBar !== undefined ? initialData.aShareStatusBar : true,
@@ -177,6 +191,7 @@ export function getSettingsWebviewHtml(
     /* 激活的 nav-item 样式 */
     #tab-r-general:checked ~ .layout .sidebar label[for="tab-r-general"],
     #tab-r-alerts:checked  ~ .layout .sidebar label[for="tab-r-alerts"],
+    #tab-r-fund:checked    ~ .layout .sidebar label[for="tab-r-fund"],
     #tab-r-ashare:checked  ~ .layout .sidebar label[for="tab-r-ashare"],
     #tab-r-hkstock:checked ~ .layout .sidebar label[for="tab-r-hkstock"],
     #tab-r-usstock:checked ~ .layout .sidebar label[for="tab-r-usstock"],
@@ -199,6 +214,7 @@ export function getSettingsWebviewHtml(
     /* 激活的 tab-pane */
     #tab-r-general:checked ~ .layout .content #tab-general,
     #tab-r-alerts:checked  ~ .layout .content #tab-alerts,
+    #tab-r-fund:checked    ~ .layout .content #tab-fund,
     #tab-r-ashare:checked  ~ .layout .content #tab-ashare,
     #tab-r-hkstock:checked ~ .layout .content #tab-hkstock,
     #tab-r-usstock:checked ~ .layout .content #tab-usstock,
@@ -399,6 +415,7 @@ export function getSettingsWebviewHtml(
   <!-- Radio inputs for pure-CSS tab switching (MUST be direct siblings of .layout) -->
   <input class="tab-radio" type="radio" name="tab" id="tab-r-general" checked>
   <input class="tab-radio" type="radio" name="tab" id="tab-r-alerts">
+  <input class="tab-radio" type="radio" name="tab" id="tab-r-fund">
   <input class="tab-radio" type="radio" name="tab" id="tab-r-ashare">
   <input class="tab-radio" type="radio" name="tab" id="tab-r-hkstock">
   <input class="tab-radio" type="radio" name="tab" id="tab-r-usstock">
@@ -415,6 +432,7 @@ export function getSettingsWebviewHtml(
     </div>
     <label class="nav-item" for="tab-r-general"><span class="icon">⚙️</span><span>通用设置</span></label>
     <label class="nav-item" for="tab-r-alerts"><span class="icon">⚡</span><span>到价预警</span></label>
+    <label class="nav-item" for="tab-r-fund"><span class="icon">📈</span><span>基金板块</span></label>
     <label class="nav-item" for="tab-r-ashare"><span class="icon">🇨🇳</span><span>A股板块</span></label>
     <label class="nav-item" for="tab-r-hkstock"><span class="icon">🇭🇰</span><span>港股板块</span></label>
     <label class="nav-item" for="tab-r-usstock"><span class="icon">🇺🇸</span><span>美股板块</span></label>
@@ -576,6 +594,53 @@ export function getSettingsWebviewHtml(
                 <tr><td colspan="5" style="text-align: center; color: var(--desc-fg); padding: 24px;">加载自选标的列表中...</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 基金板块 -->
+    <div id="tab-fund" class="tab-pane">
+      <div class="section-header">
+        <h1>基金与ETF设置 (Funds / ETFs)</h1>
+        <p>配置场内 ETF、指数基金与联接基金的抓取策略</p>
+      </div>
+      <div class="card-list">
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">启用基金分组</div>
+            <div class="card-desc">是否在左侧看板展示基金与场内 ETF 自选分组。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="fundEnabled" ${d.fundEnabled ? 'checked' : ''}><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">基金标的参与底部轮播</div>
+            <div class="card-desc">控制基金自选标的是否在 VS Code 底部状态栏循环轮播展示。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="fundStatusBar" ${d.fundStatusBar ? 'checked' : ''}><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">基金闭市期间停止轮询</div>
+            <div class="card-desc">开启后仅在基金与 A 股交易时段（北京时间 9:15–11:30, 13:00–15:05）请求数据，休市与周末停止拉取。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="fundStopOnMarketClosed" ${d.fundStopOnMarketClosed ? 'checked' : ''}><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">网络访问模式</div>
+            <div class="card-desc">
+              腾讯财经接口属于境内正规服务，推荐选择<b>直连</b>（零延迟）。
+              <div id="fundNetTag" class="${d.fundNetworkMode === 'proxy' ? 'security-tag' : 'direct-tag'}">${d.fundNetworkMode === 'proxy' ? '🛡️ 已启用代理（使用通用设置中的全局代理）' : '⚡ 当前为境内直连（推荐）'}</div>
+            </div>
+          </div>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="fundNetwork" value="direct" id="fundNetDirect" ${d.fundNetworkMode !== 'proxy' ? 'checked' : ''}> 直连 (默认)</label>
+            <label class="radio-label"><input type="radio" name="fundNetwork" value="proxy"  id="fundNetProxy" ${d.fundNetworkMode === 'proxy' ? 'checked' : ''}> 强制代理</label>
           </div>
         </div>
       </div>
@@ -747,7 +812,7 @@ export function getSettingsWebviewHtml(
 
         <div class="card">
           <div class="card-info">
-            <div class="card-title">网络访问模式 (防公司审计)</div>
+            <div class="card-title">网络访问模式</div>
             <div class="card-desc">
               在公司网络下强烈建议保持<b>强制代理</b>，插件将绝对阻止直连包，杜绝网关产生访问记录。
               <div id="binanceNetTag" class="${d.binanceNetworkMode === 'direct' ? 'direct-tag' : 'security-tag'}">${d.binanceNetworkMode === 'direct' ? '⚡ 已切换为直连访问' : '🛡️ 已启用杜绝直连保护（使用通用设置中的全局代理）'}</div>
@@ -786,7 +851,7 @@ export function getSettingsWebviewHtml(
 
         <div class="card">
           <div class="card-info">
-            <div class="card-title">网络访问模式 (防公司审计)</div>
+            <div class="card-title">网络访问模式</div>
             <div class="card-desc">
               访问 DexScreener 全球链上聚合接口。建议保持<b>强制代理</b>，防止公司网关检测。
               <div id="alphaNetTag" class="${d.alphaNetworkMode === 'direct' ? 'direct-tag' : 'security-tag'}">${d.alphaNetworkMode === 'direct' ? '⚡ 已切换为直连访问' : '🛡️ 已启用杜绝直连保护（使用通用设置中的全局代理）'}</div>
@@ -929,6 +994,7 @@ export function getSettingsWebviewHtml(
       var TAB_RADIOS = {
         'tab-general': 'tab-r-general',
         'tab-alerts':  'tab-r-alerts',
+        'tab-fund':    'tab-r-fund',
         'tab-ashare':  'tab-r-ashare',
         'tab-hkstock': 'tab-r-hkstock',
         'tab-usstock': 'tab-r-usstock',
@@ -1178,7 +1244,7 @@ export function getSettingsWebviewHtml(
       });
       on('statusBarEnabled', 'change', function() {
         var checked = this.checked;
-        var subIds = ['aShareStatusBar', 'hkStockStatusBar', 'usStockStatusBar', 'binanceStatusBar', 'alphaStatusBar'];
+        var subIds = ['fundStatusBar', 'aShareStatusBar', 'hkStockStatusBar', 'usStockStatusBar', 'binanceStatusBar', 'alphaStatusBar'];
         for (var i = 0; i < subIds.length; i++) {
           var el = document.getElementById(subIds[i]);
           if (el) el.checked = checked;
@@ -1188,12 +1254,13 @@ export function getSettingsWebviewHtml(
       });
 
       function syncMasterSwitch() {
+        var f = document.getElementById('fundStatusBar');
         var a = document.getElementById('aShareStatusBar');
         var h = document.getElementById('hkStockStatusBar');
         var u = document.getElementById('usStockStatusBar');
         var b = document.getElementById('binanceStatusBar');
         var al = document.getElementById('alphaStatusBar');
-        var allChecked = (!a || a.checked) && (!h || h.checked) && (!u || u.checked) && (!b || b.checked) && (!al || al.checked);
+        var allChecked = (!f || f.checked) && (!a || a.checked) && (!h || h.checked) && (!u || u.checked) && (!b || b.checked) && (!al || al.checked);
         var master = document.getElementById('statusBarEnabled');
         if (master) {
           master.checked = allChecked;
@@ -1272,6 +1339,23 @@ export function getSettingsWebviewHtml(
       on('btnOpenRepo', 'click', function() {
         postCmd('openExternal', { url: 'https://github.com/DevQQQQQ/MarketLens' });
       });
+
+      // 基金市场事件
+      on('fundEnabled', 'change', function() {
+        sendUpdate('fund.enabled', this.checked);
+        showToast(this.checked ? '✅ 基金分组已启用' : '⚪ 基金分组已禁用');
+      });
+      on('fundStatusBar', 'change', function() {
+        syncMasterSwitch();
+        sendUpdate('fund.statusBar', this.checked);
+        showToast(this.checked ? '✅ 基金标的参与底部轮播' : '⚪ 基金标的退出底部轮播');
+      });
+      on('fundStopOnMarketClosed', 'change', function() {
+        sendUpdate('fund.stopOnMarketClosed', this.checked);
+        showToast(this.checked ? '🌙 基金休市停刷已开启' : '☀️ 基金持续拉取已开启');
+      });
+      on('fundNetDirect', 'change', function() { handleNetChange('fund', 'direct'); });
+      on('fundNetProxy', 'change', function() { handleNetChange('fund', 'proxy'); });
 
       // 3. A股市场事件
       on('aShareEnabled', 'change', function() {
@@ -1373,6 +1457,17 @@ export function getSettingsWebviewHtml(
           var portInput = document.getElementById('globalProxyPort');
           if (portInput) {
             portInput.setAttribute('data-last-valid', String(portVal));
+          }
+
+          // 基金
+          setChecked('fundEnabled',            d.fundEnabled);
+          setChecked('fundStatusBar',          d.fundStatusBar);
+          setChecked('fundStopOnMarketClosed',  d.fundStopOnMarketClosed);
+          applyProxyCardVisibility('fund', d.fundNetworkMode);
+          if (d.fundNetworkMode === 'proxy') {
+            setChecked('fundNetProxy', true);
+          } else {
+            setChecked('fundNetDirect', true);
           }
 
           // A股

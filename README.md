@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/VS_Code-^1.85.0-007ACC?logo=visualstudiocode" alt="VS Code Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Release-v1.1.5-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.1.6-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platform">
 </p>
 
@@ -20,7 +20,7 @@
 
 **MarketLens** 将全市场行情与效率预警深度融合进 VS Code 编辑器中：
 
-- 🌲 **五合一全能行情**：A股、港股、美股、Binance 主流币、Alpha 链上新币一站式聚合，告别多软件频繁切换；
+- 🌲 **六合一全能行情**：场内ETF/基金、A股、港股、美股、Binance 主流币、Alpha 链上新币一站式聚合，告别多软件频繁切换；
 - ⚡ **到价预警与波动监控**：突破上限、跌破下限、单日暴涨暴跌实时提醒，无需时刻盯盘，专注写代码；
 - 🖱️ **多选批量拖拽排序**：支持键盘 `Shift` / `Ctrl`（Mac `Cmd`）选中多只标的，一次性批量拖动重排；
 - 🕶️ **极致专注与安全隐秘**：配备老板键一键隐藏、终端日志伪装摸鱼、颜色脱敏模式、休市自动节流；
@@ -32,8 +32,12 @@
 
 ## ✨ 核心功能与特性
 
-### 1. 🌐 全市场资产五合一覆盖
+### 1. 🌐 全市场资产六合一覆盖
 
+- 📈 **基金板块 (场内 ETF / 联接指数基金)**：
+    - 专设置顶基金分组与配置中心专属面板；
+    - 支持科创50ETF、创业板ETF、纳指ETF、黄金ETF等场内基金与指数代码智能解析；
+    - 同样支持休市停刷、状态栏轮播与独立排序记忆。
 - 🇨🇳 **A股市场 (沪深京)**：
     - 直连境内正规金融源，零延迟实时拉取；
     - 覆盖上证、深证、北交所全市场股票与各大指数（如上证指数、沪深300、ETF等）；
@@ -129,7 +133,7 @@
 
 ---
 
-### 7. 🛡️ 网络访问、数据源清单与防公司审计隐私说明
+### 7. 🛡️ 网络访问、数据源清单与隐私说明
 
 针对在企业办公环境（存在网关流量审计、DPI 深度包检测、DNS 日志留痕）下的开发者，MarketLens 从底层架构上提供了透明、安全且防穿透的网络设计：
 
@@ -143,7 +147,7 @@
 | **Binance** (加密货币)   | 币安现货公开市场 API     | `api.binance.com`     | HTTPS (公开只读接口)        | 建议开启强制代理   |
 | **Alpha** (全链DEX)      | DexScreener 官方聚合 API | `api.dexscreener.com` | HTTPS (公开只读接口)        | 建议开启强制代理   |
 
-#### 🔒 网络隐私与防公司审计防护原理
+#### 🔒 网络隐私与防护原理
 
 1. **绝对零凭证与零数据上传**：
     - 插件**不需要任何 API Key、Token 或用户账号密码**；

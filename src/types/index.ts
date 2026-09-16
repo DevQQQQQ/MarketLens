@@ -54,6 +54,14 @@ export type AlertsConfig = Record<string, PriceAlertItem>;
 
 export type ColorScheme = "greenUpRedDown" | "redUpGreenDown";
 
+/** 分组排序模式 */
+export type GroupSortMode =
+  | "default"     // 默认顺序（手动排列）
+  | "changeDesc"  // 按涨幅排序（涨跌幅从高到低）
+  | "changeAsc"   // 按跌幅排序（涨跌幅从低到高）
+  | "nameAsc"     // 按名称排序（按股票名称拼音排序）
+  | "priceDesc";  // 按现价排序（按当前价格从高到低）
+
 export interface MarketLensConfig {
   // ── 全局设置 ──
   autoRefresh: boolean;
@@ -66,6 +74,7 @@ export interface MarketLensConfig {
   proxyUrl?: string;
 
   // ── 分板块独立设置 ──
+  fund:    { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean; statusBar: boolean };
   aShare:  { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean; statusBar: boolean };
   hkStock: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean; statusBar: boolean };
   usStock: { enabled: boolean; networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed: boolean; statusBar: boolean };

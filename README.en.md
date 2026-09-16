@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/VS_Code-^1.85.0-007ACC?logo=visualstudiocode" alt="VS Code Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Release-v1.1.5-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.1.6-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platform">
 </p>
 
@@ -20,7 +20,7 @@ As developers, staying focused on code while keeping an eye on your portfolio (s
 
 **MarketLens** seamlessly integrates market data into your editor:
 
-- 🌲 **5-in-1 Unified Market Coverage**: A-Shares, HK Stocks, US Stocks, Binance Crypto, and DEX Tokens in one unified view;
+- 🌲 **6-in-1 Unified Market Coverage**: Funds/ETFs, A-Shares, HK Stocks, US Stocks, Binance Crypto, and DEX Tokens in one unified view;
 - ⚡ **Price Alert System**: Instant notifications for target prices and volatility without constant chart-watching;
 - 🖱️ **Multi-Select Batch Drag & Drop**: Easily select multiple items with `Shift` or `Ctrl`/`Cmd` to reorder in batches;
 - 🕶️ **Privacy & Boss Key**: One-key instant hide (`Ctrl+Alt+M`), disguise mask mode, and color-neutral view;
@@ -33,6 +33,7 @@ As developers, staying focused on code while keeping an eye on your portfolio (s
 ## ✨ Key Features
 
 ### 1. Unified Multi-Market Coverage
+- **Funds & ETFs**: On-chain and exchange-traded index funds (CSI 300, ChiNext, STAR 50, Gold, Nasdaq ETFs) with dedicated settings tab;
 - **A-Shares (Shanghai, Shenzhen, Beijing)**: Low-latency domestic data with intelligent trading hour detection;
 - **Hong Kong Stocks**: Hang Seng Index, Tencent, Meituan, Alibaba with HK$ currency formatting;
 - **US Stocks**: NASDAQ, S&P 500, Dow Jones, AAPL, NVDA, TSLA, and more;

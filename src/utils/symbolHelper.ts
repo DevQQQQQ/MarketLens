@@ -298,11 +298,13 @@ export function resolveItemAssetType(
     return "US_STOCK";
   }
 
-  // 3.5 A股特征
+  // 3.5 A股与场内基金/ETF特征
   if (
     groupName.includes("A股") ||
     groupName.includes("a股") ||
-    lowerGroup.includes("ashare")
+    lowerGroup.includes("ashare") ||
+    groupName.includes("基金") ||
+    /\betf\b/i.test(groupName)
   ) {
     return "A_SHARE";
   }
@@ -341,12 +343,14 @@ export function getWatchlistFingerprint(watchlist: Record<string, any[]>): strin
 }
 
 export interface TargetExtractionOptions {
+  fundEnabled?: boolean;
   aShareEnabled?: boolean;
   hkStockEnabled?: boolean;
   usStockEnabled?: boolean;
   binanceEnabled?: boolean;
   alphaEnabled?: boolean;
   specificGroupName?: string;
+  skipFund?: boolean;
   skipAShare?: boolean;
   skipHKStock?: boolean;
   skipUSStock?: boolean;
@@ -368,12 +372,14 @@ export function extractTargetsFromWatchlist(
   options: TargetExtractionOptions = {}
 ): ExtractedTargets {
   const {
+    fundEnabled = true,
     aShareEnabled = true,
     hkStockEnabled = true,
     usStockEnabled = true,
     binanceEnabled = true,
     alphaEnabled = true,
     specificGroupName,
+    skipFund = false,
     skipAShare = false,
     skipHKStock = false,
     skipUSStock = false,
@@ -389,6 +395,8 @@ export function extractTargetsFromWatchlist(
     if (specificGroupName && groupName !== specificGroupName) {
       continue;
     }
+
+    const isFundGroup = groupName.includes("基金") || /\betf\b/i.test(groupName);
 
     for (const item of items ?? []) {
       const sym = item?.symbol;
@@ -415,8 +423,14 @@ export function extractTargetsFromWatchlist(
           usStocks.push(sym);
         }
       } else if (resolvedType === "A_SHARE") {
-        if (aShareEnabled && !skipAShare) {
-          aShares.push(sym);
+        if (isFundGroup) {
+          if (fundEnabled && !skipFund) {
+            aShares.push(sym);
+          }
+        } else {
+          if (aShareEnabled && !skipAShare) {
+            aShares.push(sym);
+          }
         }
       }
     }
@@ -433,6 +447,7 @@ export function extractTargetsFromWatchlist(
 
 export interface StatusBarQuotesOptions {
   statusBarEnabled?: boolean;
+  fund?: { enabled?: boolean; statusBar?: boolean };
   aShare?: { enabled?: boolean; statusBar?: boolean };
   hkStock?: { enabled?: boolean; statusBar?: boolean };
   usStock?: { enabled?: boolean; statusBar?: boolean };
@@ -500,6 +515,7 @@ export function extractStatusBarQuotes<
 ): T[] {
   const {
     statusBarEnabled = true,
+    fund = { enabled: true, statusBar: true },
     aShare = { enabled: true, statusBar: true },
     hkStock = { enabled: true, statusBar: true },
     usStock = { enabled: true, statusBar: true },
@@ -533,13 +549,19 @@ export function extractStatusBarQuotes<
   const seenSymbols = new Set<string>();
 
   for (const [groupName, items] of Object.entries(watchlist || {})) {
+    const isFundGroup = groupName.includes("基金") || /\betf\b/i.test(groupName);
+
     for (const item of items || []) {
       if (!item?.symbol) continue;
       const symKey = item.symbol.toLowerCase().trim();
       if (seenSymbols.has(symKey)) continue;
 
       const assetType = resolveItemAssetType(item, groupName);
-      if (!isSectionActive(assetType)) {
+      if (isFundGroup) {
+        if (fund.enabled === false || fund.statusBar === false) {
+          continue;
+        }
+      } else if (!isSectionActive(assetType)) {
         continue;
       }
 

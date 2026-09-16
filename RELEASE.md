@@ -29,7 +29,7 @@ npm run package
 
 ### 方式二：指定输出版本文件名
 ```powershell
-npx @vscode/vsce package -o marketlens-1.1.5.vsix --allow-missing-repository --no-dependencies
+npx @vscode/vsce package -o marketlens-1.1.6.vsix --allow-missing-repository --no-dependencies
 ```
 
 > **参数解析**：
@@ -44,7 +44,7 @@ npx @vscode/vsce package -o marketlens-1.1.5.vsix --allow-missing-repository --n
 
 ### 终端一键强制安装
 ```powershell
-code --install-extension marketlens-1.1.5.vsix --force
+code --install-extension marketlens-1.1.6.vsix --force
 ```
 
 ### VS Code 图形界面安装
@@ -71,13 +71,13 @@ code --install-extension marketlens-1.1.5.vsix --force
   npx ovsx publish -p <YOUR_OVSX_PAT> --no-dependencies
   ```
 
-> 💡 **GitHub Actions 自动化**：推送版本 tag（如 `git tag v1.1.5 && git push origin v1.1.5`）后，`.github/workflows/release.yml` 将自动并发打包并同时发布到双平台。
+> 💡 **GitHub Actions 自动化**：推送版本 tag（如 `git tag v1.1.6 && git push origin v1.1.6`）后，`.github/workflows/release.yml` 将自动并发打包并同时发布到双平台。
 
 ---
 
 ## 🏷️ 5. 版本号管理与规范
 
-- 发布新版本前，请确保在 `package.json` 中递增 `version`（遵循 [SemVer 语义化版本](https://semver.org/lang/zh-CN/)，如 `1.1.4` -> `1.1.5`）；
+- 发布新版本前，请确保在 `package.json` 中递增 `version`（遵循 [SemVer 语义化版本](https://semver.org/lang/zh-CN/)，如 `1.1.5` -> `1.1.6`）；
 - 同步在 `CHANGELOG.md` 中记录新版本的更新项；
 - MarketLens 设置中心的【关于与帮助】面板会自动读取运行时的最新版本号展示给用户。
 

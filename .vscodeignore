@@ -16,6 +16,7 @@ node_modules/**
 RELEASE.md
 docs/**
 AGENTS.md
+scripts/**
 *.log
 *.txt
 _verify_*

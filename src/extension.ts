@@ -57,6 +57,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     rebuildTree: (customWatchlist) => scheduler.rebuildTree(customWatchlist),
   });
 
+  // 恢复持久化的各分组排序模式并监听变更
+  const savedSortModes = context.globalState.get<Record<string, import("./types").GroupSortMode>>(
+    "marketlens.groupSortModes",
+    {}
+  );
+  treeProvider.setAllGroupSortModes(savedSortModes);
+  treeProvider.onGroupSortModeChangeCallback = async () => {
+    await context.globalState.update(
+      "marketlens.groupSortModes",
+      treeProvider.getAllGroupSortModes()
+    );
+  };
+
   // 绑定拖拽排序回调（支持多选原子批量重排与单项兼容）
   treeProvider.onBatchReorderCallback = (items, targetGroup, targetSymbol) =>
     watchlistOps.handleBatchReorder(items, targetGroup, targetSymbol);
@@ -118,6 +131,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       config.alerts = {};
       scheduler.alertManager.resetCooldown();
       treeProvider.setAlerts({});
+      treeProvider.setAllGroupSortModes({});
+      void context.globalState.update("marketlens.groupSortModes", {});
       scheduler.updateStatusBar(config);
       scheduler.rebuildTree(undefined, config);
       SettingsWebviewPanel.syncSettings();

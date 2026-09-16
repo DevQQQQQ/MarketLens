@@ -2,6 +2,21 @@
 
 All notable changes to the "MarketLens" extension will be documented in this file.  
 本项目的所有重要版本更新与改动记录均将在此文档中呈现。
+## [1.1.6] - 2026-09-16
+
+### 🚀 新增特性与核心优化 (New Features & Improvements)
+
+- **📈 基金板块独立配置中心与全链路管理**：
+    - 配置中心（Settings Webview）新增独立的「📈 基金板块」导航与配置面板；
+    - 支持基金板块独立开关（`marketlens.fund.enabled`）、底部状态栏轮播（`marketlens.fund.statusBar`）、休市暂停轮询（`marketlens.fund.stopOnMarketClosed`）及直连/代理网络设置；
+    - 状态栏轮播与标的分桶抓取全面支持基金与 A 股独立启闭，彻底解耦。
+- **📊 分组独立排序与手动重排自洽协同**：
+    - 完善各资产分组（基金、A股、港股、美股、Binance、Alpha）的独立排序记忆机制；
+    - 修复动态排序模式下执行手动拖拽重排时无缝切回默认顺序的交互逻辑。
+- **🛡️ 标的代码解析与 ETF 交易所前缀推断加固**：
+    - 增强 A 股与场内 ETF 代码前缀推断算法，彻底杜绝特定 ETF / 债券代码被误判为北交所的前缀偏差。
+
+---
 
 ## [1.1.5] - 2026-09-12
 

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig } from "../types";
+import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig, GroupSortMode } from "../types";
 import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme } from "../utils/symbolHelper";
 import { isDisplayMasked } from "../utils/maskState";
 
@@ -54,17 +54,32 @@ function formatLargeNumber(num: number | undefined, isVolume: boolean, currency:
   }
 }
 
-/** 分组节点（A股 / Binance / Alpha） */
+/** 分组节点（A股 / 港股 / 美股 / Binance / Alpha） */
 export class GroupItem extends vscode.TreeItem {
   constructor(
     public readonly groupName: string,
-    public readonly children: StockItem[]
+    public readonly children: StockItem[],
+    public sortMode: GroupSortMode = "default"
   ) {
     super(groupName, vscode.TreeItemCollapsibleState.Expanded);
     this.id = `group_${groupName}`;
     this.contextValue = "groupItem";
     this.iconPath = new vscode.ThemeIcon("folder");
-    this.description = `(${children.length})`;
+    this.updateDescription();
+  }
+
+  public updateDescription(): void {
+    const sortSuffix =
+      this.sortMode === "changeDesc"
+        ? " · 涨幅"
+        : this.sortMode === "changeAsc"
+        ? " · 跌幅"
+        : this.sortMode === "nameAsc"
+        ? " · 名称"
+        : this.sortMode === "priceDesc"
+        ? " · 现价"
+        : "";
+    this.description = `(${this.children.length}${sortSuffix})`;
   }
 }
 
@@ -277,12 +292,110 @@ export class WatchlistProvider
   private groups: GroupItem[] = [];
   private stockMap = new Map<string, StockItem[]>();
   private alertsConfig: AlertsConfig = {};
+  private groupSortModes = new Map<string, GroupSortMode>();
+
+  public onGroupSortModeChangeCallback?: (
+    groupName: string,
+    mode: GroupSortMode
+  ) => void | Promise<void>;
 
   constructor(
     private maskMode: boolean,
     private colorNeutral: boolean = false,
     private colorScheme: ColorScheme = "greenUpRedDown"
   ) {}
+
+  public getGroups(): GroupItem[] {
+    return this.groups;
+  }
+
+  public getGroup(groupName: string): GroupItem | undefined {
+    return this.groups.find((g) => g.groupName === groupName);
+  }
+
+  public getGroupSortMode(groupName: string): GroupSortMode {
+    return this.groupSortModes.get(groupName) || "default";
+  }
+
+  public setGroupSortMode(groupName: string, mode: GroupSortMode): void {
+    this.groupSortModes.set(groupName, mode);
+    const group = this.getGroup(groupName);
+    if (group) {
+      group.sortMode = mode;
+      const sorted = this.sortStockItems(group.children, mode);
+      group.children.length = 0;
+      group.children.push(...sorted);
+      group.updateDescription();
+    }
+    this._onDidChangeTreeData.fire();
+    if (this.onGroupSortModeChangeCallback) {
+      void this.onGroupSortModeChangeCallback(groupName, mode);
+    }
+  }
+
+  public setAllGroupSortModes(modes?: Record<string, GroupSortMode>): void {
+    this.groupSortModes.clear();
+    if (modes) {
+      for (const [k, v] of Object.entries(modes)) {
+        if (v) {
+          this.groupSortModes.set(k, v);
+        }
+      }
+    }
+  }
+
+  public getAllGroupSortModes(): Record<string, GroupSortMode> {
+    const res: Record<string, GroupSortMode> = {};
+    for (const [k, v] of this.groupSortModes.entries()) {
+      res[k] = v;
+    }
+    return res;
+  }
+
+  public sortStockItems(items: StockItem[], mode: GroupSortMode): StockItem[] {
+    if (mode === "default" || items.length <= 1) {
+      return items;
+    }
+    const copy = [...items];
+    switch (mode) {
+      case "changeDesc":
+        // 涨跌幅从高到低（涨幅优先）
+        return copy.sort((a, b) => {
+          const diff = (b.item.changePercent ?? 0) - (a.item.changePercent ?? 0);
+          if (diff !== 0) return diff;
+          const nameA = a.confName || a.item.name || a.confSymbol;
+          const nameB = b.confName || b.item.name || b.confSymbol;
+          return nameA.localeCompare(nameB, "zh-Hans-CN", { numeric: true });
+        });
+      case "changeAsc":
+        // 涨跌幅从低到高（跌幅优先）
+        return copy.sort((a, b) => {
+          const diff = (a.item.changePercent ?? 0) - (b.item.changePercent ?? 0);
+          if (diff !== 0) return diff;
+          const nameA = a.confName || a.item.name || a.confSymbol;
+          const nameB = b.confName || b.item.name || b.confSymbol;
+          return nameA.localeCompare(nameB, "zh-Hans-CN", { numeric: true });
+        });
+      case "nameAsc":
+        // 按股票名称拼音排序
+        return copy.sort((a, b) => {
+          const nameA = a.confName || a.item.name || a.confSymbol;
+          const nameB = b.confName || b.item.name || b.confSymbol;
+          return nameA.localeCompare(nameB, "zh-Hans-CN", { numeric: true });
+        });
+      case "priceDesc":
+        // 按当前价格从高到低
+        return copy.sort((a, b) => {
+          const diff = (b.item.price ?? 0) - (a.item.price ?? 0);
+          if (diff !== 0) return diff;
+          const nameA = a.confName || a.item.name || a.confSymbol;
+          const nameB = b.confName || b.item.name || b.confSymbol;
+          return nameA.localeCompare(nameB, "zh-Hans-CN", { numeric: true });
+        });
+      default:
+        return copy;
+    }
+  }
 
   public setColorScheme(colorScheme: ColorScheme): void {
     this.colorScheme = colorScheme || "greenUpRedDown";
@@ -420,6 +533,19 @@ export class WatchlistProvider
       return;
     }
 
+    // 若当前分组之前处于非默认排序（如涨幅/跌幅），拖拽意味着用户正在进行手动排列，自动重置为默认顺序
+    if (this.getGroupSortMode(targetGroup) !== "default") {
+      this.groupSortModes.set(targetGroup, "default");
+      const group = this.getGroup(targetGroup);
+      if (group) {
+        group.sortMode = "default";
+        group.updateDescription();
+      }
+      if (this.onGroupSortModeChangeCallback) {
+        void this.onGroupSortModeChangeCallback(targetGroup, "default");
+      }
+    }
+
     // 使用原子化批量重排（单次落盘与重绘）
     if (this.onBatchReorderCallback) {
       await this.onBatchReorderCallback(itemsToMove, targetGroup, targetSymbol);
@@ -449,7 +575,8 @@ export class WatchlistProvider
   buildTree(
     config: WatchlistConfig,
     quoteMap: Map<string, MarketItem>,
-    enabledSections: { aShare: boolean; hkStock?: boolean; usStock?: boolean; binance: boolean; alpha: boolean } = {
+    enabledSections: { fund?: boolean; aShare: boolean; hkStock?: boolean; usStock?: boolean; binance: boolean; alpha: boolean } = {
+      fund: true,
       aShare: true,
       hkStock: true,
       usStock: true,
@@ -479,6 +606,9 @@ export class WatchlistProvider
     };
 
     const isGroupEnabled = (groupName: string, items?: WatchConfigItem[]): boolean => {
+      if (groupName.includes("基金") || /\betf\b/i.test(groupName)) {
+        return enabledSections.fund !== false;
+      }
       if (items && items.length > 0) {
         // 先看组内 item 的真实 type：只要组内至少存在一个处于启用板块的标的，该组即保持展示
         return items.some((item) => isSectionEnabled(resolveItemAssetType(item, groupName)));
@@ -493,6 +623,10 @@ export class WatchlistProvider
     });
 
     const getGroupWeight = (name: string, items?: WatchConfigItem[]): number => {
+      // 组名显式包含“基金”或“ETF”时，置于最顶层（排在 A 股上方，权重为 0）
+      if (name.includes("基金") || /\betf\b/i.test(name)) {
+        return 0;
+      }
       // 组权重优先看组内标的主流类型，空组或无标的时按组名关键词兜底
       let dominantType: string | undefined;
       if (items && items.length > 0) {
@@ -554,7 +688,9 @@ export class WatchlistProvider
         }
         return node;
       });
-      return new GroupItem(groupName, children);
+      const sortMode = this.getGroupSortMode(groupName);
+      const sortedChildren = this.sortStockItems(children, sortMode);
+      return new GroupItem(groupName, sortedChildren, sortMode);
     });
 
     this._onDidChangeTreeData.fire();
@@ -580,6 +716,15 @@ export class WatchlistProvider
           }
           break;
         }
+      }
+    }
+    // 针对处于非 default 排序模式（如涨幅、跌幅、现价）的分组，根据最新行情重新排序
+    for (const group of this.groups) {
+      if (group.sortMode && group.sortMode !== "default" && group.children.length > 1) {
+        const sorted = this.sortStockItems(group.children, group.sortMode);
+        group.children.length = 0;
+        group.children.push(...sorted);
+        group.updateDescription();
       }
     }
     // 性能优化：循环内不逐个触发 49 次 IPC 重绘，统一在批量刷新完成后原子性触发 1 次刷新
