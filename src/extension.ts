@@ -5,16 +5,24 @@ import { WatchlistProvider } from "./ui/watchlistProvider";
 import { StatusBar } from "./ui/statusBar";
 import { logger } from "./utils/logger";
 import { resetProxyCache } from "./services/network";
-import { readConfig, getWatchlistFingerprint } from "./utils/config";
+import {
+  readConfig,
+  getWatchlistFingerprint,
+  applyProxyToAllSections,
+  applyStatusBarToAllSections,
+  recomputeStatusBarEnabled,
+  affectsNetworkConfig,
+  MARKET_SECTIONS,
+} from "./utils/config";
 import { RefreshScheduler } from "./scheduler";
 import { WatchlistOps } from "./watchlistOps";
 import { registerCommands } from "./commands";
 import { SettingsWebviewPanel } from "./ui/settingsWebview";
-import { MarketLensConfig } from "./types";
 
 // ── 模块级句柄：让 deactivate() 可以显式清理，防止热重载内存泄漏 ──
 let _scheduler: RefreshScheduler | undefined;
 let _statusBar: StatusBar | undefined;
+let _configDebounceTimer: NodeJS.Timeout | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   logger.init(context);
@@ -70,11 +78,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   };
 
-  // 绑定拖拽排序回调（支持多选原子批量重排与单项兼容）
+  // 绑定拖拽排序回调（支持多选原子批量重排）
   treeProvider.onBatchReorderCallback = (items, targetGroup, targetSymbol) =>
     watchlistOps.handleBatchReorder(items, targetGroup, targetSymbol);
-  treeProvider.onReorderCallback = (sourceGroup, sourceSymbol, targetGroup, targetSymbol) =>
-    watchlistOps.handleReorder(sourceGroup, sourceSymbol, targetGroup, targetSymbol);
 
   // 立即构建初版树骨架（展示配置中的所有分组和标的，无需等待首次网络请求返回）
   scheduler.rebuildTree();
@@ -95,34 +101,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     statusBar,
     treeProvider,
   });
-
-  function applyStatusBarToAllSections(cfg: MarketLensConfig, enabled: boolean): void {
-    cfg.statusBar.enabled = enabled;
-    cfg.aShare.statusBar = enabled;
-    cfg.hkStock.statusBar = enabled;
-    cfg.usStock.statusBar = enabled;
-    cfg.binance.statusBar = enabled;
-    cfg.alpha.statusBar = enabled;
-  }
-
-  function applyProxyToAllSections(cfg: MarketLensConfig, proxyUrl: string, port?: number): void {
-    if (port !== undefined) {
-      cfg.proxyPort = port;
-    } else {
-      try {
-        const u = new URL(proxyUrl);
-        if (u.port) {
-          cfg.proxyPort = parseInt(u.port, 10);
-        }
-      } catch (_) {}
-    }
-    cfg.proxyUrl = proxyUrl;
-    cfg.aShare.proxyUrl = proxyUrl;
-    cfg.hkStock.proxyUrl = proxyUrl;
-    cfg.usStock.proxyUrl = proxyUrl;
-    cfg.binance.proxyUrl = proxyUrl;
-    cfg.alpha.proxyUrl = proxyUrl;
-  }
 
   // 监听 Webview 设置面板即时操作（0延迟同步更新内存，无需等待异步磁盘 I/O）
   SettingsWebviewPanel.onDidUpdateSetting = (key: string, value: any) => {
@@ -194,18 +172,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const dotIndex = key.indexOf(".");
     if (dotIndex > 0) {
-      const section = key.slice(0, dotIndex) as "aShare" | "hkStock" | "usStock" | "binance" | "alpha";
-      const field = key.slice(dotIndex + 1);
-      if (config[section] && field in config[section]) {
-        (config[section] as any)[field] = value;
-        if (field === "statusBar") {
-          const anyActive =
-            config.aShare.statusBar !== false ||
-            config.hkStock.statusBar !== false ||
-            config.usStock.statusBar !== false ||
-            config.binance.statusBar !== false ||
-            config.alpha.statusBar !== false;
-          config.statusBar.enabled = anyActive;
+      const section = key.slice(0, dotIndex);
+      if ((MARKET_SECTIONS as readonly string[]).includes(section)) {
+        const targetSection = config[section as "fund" | "aShare" | "hkStock" | "usStock" | "binance" | "alpha"];
+        const field = key.slice(dotIndex + 1);
+        if (targetSection && typeof targetSection === "object" && field in targetSection) {
+          (targetSection as Record<string, unknown>)[field] = value;
+          if (field === "statusBar") {
+            recomputeStatusBarEnabled(config);
+          }
         }
       }
     }
@@ -214,68 +189,79 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     scheduler.rebuildTree(undefined, config);
   };
 
-  // 配置变更监听
+  // 配置变更监听（50ms 去抖动与状态聚合，杜绝连续修改多项配置时的重复重排与时序抖动）
+  let pendingAffectsNetwork = false;
+  let pendingAffectsColorScheme = false;
+  let pendingAffectsColorNeutral = false;
+  let baselineFingerprint: string | undefined;
+
+  const flushConfigChange = () => {
+    _configDebounceTimer = undefined;
+    const oldFingerprint = baselineFingerprint ?? getWatchlistFingerprint(config.watchlist);
+    baselineFingerprint = undefined;
+
+    const hadNetworkChange = pendingAffectsNetwork;
+    const hadColorSchemeChange = pendingAffectsColorScheme;
+    const hadColorNeutralChange = pendingAffectsColorNeutral;
+    pendingAffectsNetwork = false;
+    pendingAffectsColorScheme = false;
+    pendingAffectsColorNeutral = false;
+
+    config = readConfig();
+
+    if (hadColorSchemeChange && !hadColorNeutralChange) {
+      const cfg = vscode.workspace.getConfiguration("marketlens");
+      if (cfg.get<boolean>("colorNeutral")) {
+        void cfg.update("colorNeutral", false, vscode.ConfigurationTarget.Global);
+        config.colorNeutral = false;
+      }
+    }
+
+    const isBossActive = statusBar.isBossKeyActive();
+    treeProvider.setBossKey(isBossActive);
+    treeProvider.setMaskMode(config.maskMode);
+    treeProvider.setColorNeutral(config.colorNeutral);
+    treeProvider.setColorScheme(config.colorScheme);
+    treeProvider.setAlerts(config.alerts || {});
+    statusBar.setMaskMode(config.maskMode);
+    statusBar.setColorNeutral(config.colorNeutral);
+    statusBar.setColorScheme(config.colorScheme);
+
+    scheduler.updateStatusBar(config);
+    scheduler.rebuildTree(undefined, config);
+    SettingsWebviewPanel.syncSettings();
+
+    // 仅在网络/轮询周期/板块开关变动，或自选列表发生实际标的增删时才重启定时器并触发网络拉取
+    // 纯 UI 配置（如 maskMode, colorNeutral, statusBar）或同组拖拽、跨组移动完全不重复打全量网络（标的报价已在内存缓存中）
+    const watchlistContentChanged = oldFingerprint !== getWatchlistFingerprint(config.watchlist);
+
+    if (hadNetworkChange || watchlistContentChanged) {
+      resetProxyCache();
+      marketManager.clearInvalidCache();
+      scheduler.start();
+    }
+  };
+
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("marketlens")) {
-        const prevFingerprint = getWatchlistFingerprint(config.watchlist);
-        config = readConfig();
-
-        if (e.affectsConfiguration("marketlens.colorScheme") && !e.affectsConfiguration("marketlens.colorNeutral")) {
-          const cfg = vscode.workspace.getConfiguration("marketlens");
-          if (cfg.get<boolean>("colorNeutral")) {
-            void cfg.update("colorNeutral", false, vscode.ConfigurationTarget.Global);
-            config.colorNeutral = false;
-          }
+        if (baselineFingerprint === undefined) {
+          baselineFingerprint = getWatchlistFingerprint(config.watchlist);
+        }
+        if (affectsNetworkConfig(e)) {
+          pendingAffectsNetwork = true;
+        }
+        if (e.affectsConfiguration("marketlens.colorScheme")) {
+          pendingAffectsColorScheme = true;
+        }
+        if (e.affectsConfiguration("marketlens.colorNeutral")) {
+          pendingAffectsColorNeutral = true;
         }
 
-        const isBossActive = statusBar.isBossKeyActive();
-        treeProvider.setBossKey(isBossActive);
-        treeProvider.setMaskMode(config.maskMode);
-        treeProvider.setColorNeutral(config.colorNeutral);
-        treeProvider.setColorScheme(config.colorScheme);
-        treeProvider.setAlerts(config.alerts || {});
-        statusBar.setMaskMode(config.maskMode);
-        statusBar.setColorNeutral(config.colorNeutral);
-        statusBar.setColorScheme(config.colorScheme);
-
-        scheduler.updateStatusBar(config);
-        scheduler.rebuildTree();
-        SettingsWebviewPanel.syncSettings();
-
-        // 仅在网络/轮询周期/板块开关变动，或自选列表发生实际标的增删时才重启定时器并触发网络拉取
-        // 纯 UI 配置（如 maskMode, colorNeutral, statusBar）或同组拖拽、跨组移动完全不重复打全量网络（标的报价已在内存缓存中）
-        const affectsNetwork =
-          e.affectsConfiguration("marketlens.proxyPort") ||
-          e.affectsConfiguration("marketlens.proxyUrl") ||
-          e.affectsConfiguration("marketlens.autoRefresh") ||
-          e.affectsConfiguration("marketlens.refreshInterval") ||
-          e.affectsConfiguration("marketlens.aShare.enabled") ||
-          e.affectsConfiguration("marketlens.aShare.networkMode") ||
-          e.affectsConfiguration("marketlens.aShare.proxyUrl") ||
-          e.affectsConfiguration("marketlens.aShare.stopOnMarketClosed") ||
-          e.affectsConfiguration("marketlens.hkStock.enabled") ||
-          e.affectsConfiguration("marketlens.hkStock.networkMode") ||
-          e.affectsConfiguration("marketlens.hkStock.proxyUrl") ||
-          e.affectsConfiguration("marketlens.hkStock.stopOnMarketClosed") ||
-          e.affectsConfiguration("marketlens.usStock.enabled") ||
-          e.affectsConfiguration("marketlens.usStock.networkMode") ||
-          e.affectsConfiguration("marketlens.usStock.proxyUrl") ||
-          e.affectsConfiguration("marketlens.usStock.stopOnMarketClosed") ||
-          e.affectsConfiguration("marketlens.binance.enabled") ||
-          e.affectsConfiguration("marketlens.binance.networkMode") ||
-          e.affectsConfiguration("marketlens.binance.proxyUrl") ||
-          e.affectsConfiguration("marketlens.alpha.enabled") ||
-          e.affectsConfiguration("marketlens.alpha.networkMode") ||
-          e.affectsConfiguration("marketlens.alpha.proxyUrl");
-
-        const watchlistContentChanged = prevFingerprint !== getWatchlistFingerprint(config.watchlist);
-
-        if (affectsNetwork || watchlistContentChanged) {
-          resetProxyCache();
-          marketManager.clearInvalidCache();
-          scheduler.start();
+        if (_configDebounceTimer) {
+          clearTimeout(_configDebounceTimer);
         }
+        _configDebounceTimer = setTimeout(flushConfigChange, 50);
       }
     })
   );
@@ -288,6 +274,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function deactivate(): void {
+  if (_configDebounceTimer) {
+    clearTimeout(_configDebounceTimer);
+    _configDebounceTimer = undefined;
+  }
+
   SettingsWebviewPanel.onDidUpdateSetting = undefined;
   SettingsWebviewPanel.getQuoteCache = undefined;
 

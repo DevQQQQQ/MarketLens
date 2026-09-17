@@ -210,17 +210,15 @@ export class RefreshScheduler implements vscode.Disposable {
         { mode: config.hkStock.networkMode, proxyUrl: config.hkStock.proxyUrl },
         { mode: config.usStock.networkMode, proxyUrl: config.usStock.proxyUrl },
         { mode: config.binance.networkMode, proxyUrl: config.binance.proxyUrl },
-        { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl }
+        { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl },
+        { mode: config.fund?.networkMode ?? "direct", proxyUrl: config.fund?.proxyUrl }
       );
 
-      const totalTargetsCount =
-        targets.aShares.length +
-        targets.hkStocks.length +
-        targets.usStocks.length +
-        targets.cryptos.length +
-        targets.bscTokens.length;
+      const isWatchlistCompletelyEmpty =
+        !config.watchlist ||
+        Object.values(config.watchlist).every((list) => !Array.isArray(list) || list.length === 0);
 
-      if (totalTargetsCount === 0) {
+      if (isWatchlistCompletelyEmpty) {
         this.quoteCache.clear();
       }
 
@@ -249,6 +247,7 @@ export class RefreshScheduler implements vscode.Disposable {
         (config.alpha.enabled && targets.bscTokens.length > 0);
 
       const throttleResult = evaluateAdaptiveThrottle({
+        fundEnabled: config.fund?.enabled ?? true,
         aShareEnabled: config.aShare.enabled,
         hkStockEnabled: config.hkStock.enabled,
         usStockEnabled: config.usStock.enabled,
@@ -302,7 +301,8 @@ export class RefreshScheduler implements vscode.Disposable {
         { mode: config.hkStock.networkMode, proxyUrl: config.hkStock.proxyUrl },
         { mode: config.usStock.networkMode, proxyUrl: config.usStock.proxyUrl },
         { mode: config.binance.networkMode, proxyUrl: config.binance.proxyUrl },
-        { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl }
+        { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl },
+        { mode: config.fund?.networkMode ?? "direct", proxyUrl: config.fund?.proxyUrl }
       );
 
       for (const q of quotes) {

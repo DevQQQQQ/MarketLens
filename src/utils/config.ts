@@ -1,11 +1,27 @@
 // src/utils/config.ts
-import * as vscode from "vscode";
-import { MarketLensConfig } from "../types";
-import { computeStatusBarEnabled } from "./symbolHelper";
-import { getSystemProxyUrl } from "../services/network";
+import type * as vscodeTypes from "vscode";
+import type { MarketLensConfig } from "../types/index.ts";
+import { computeStatusBarEnabled } from "./symbolHelper.ts";
+import { getSystemProxyUrl } from "../services/network.ts";
+
+let vscodeModule: typeof vscodeTypes | undefined;
+try {
+  vscodeModule = require("vscode");
+} catch (_) {}
+
+function getConfiguration(section?: string): vscodeTypes.WorkspaceConfiguration {
+  if (vscodeModule?.workspace?.getConfiguration) {
+    return vscodeModule.workspace.getConfiguration(section);
+  }
+  throw new Error("vscode.workspace is not available outside the VS Code extension host");
+}
+
+function getGlobalTarget(): vscodeTypes.ConfigurationTarget {
+  return vscodeModule?.ConfigurationTarget?.Global ?? (1 as vscodeTypes.ConfigurationTarget);
+}
 
 function getSectionConfig(
-  cfg: vscode.WorkspaceConfiguration,
+  cfg: vscodeTypes.WorkspaceConfiguration,
   section: string,
   defaults: { networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed?: boolean }
 ) {
@@ -23,7 +39,7 @@ function getSectionConfig(
  * 读取 MarketLens 全局与用户配置
  */
 export function readConfig(): MarketLensConfig {
-  const cfg = vscode.workspace.getConfiguration("marketlens");
+  const cfg = getConfiguration("marketlens");
   const portInspect = cfg.inspect<number>("proxyPort");
   const urlInspect = cfg.inspect<string>("proxyUrl");
   const isCustomPort = portInspect?.globalValue !== undefined || portInspect?.workspaceValue !== undefined;
@@ -85,4 +101,126 @@ export function readConfig(): MarketLensConfig {
   };
 }
 
-export { getWatchlistFingerprint, computeStatusBarEnabled } from "./symbolHelper";
+export { getWatchlistFingerprint, computeStatusBarEnabled } from "./symbolHelper.ts";
+
+export const MARKET_SECTIONS = ["fund", "aShare", "hkStock", "usStock", "binance", "alpha"] as const;
+export type MarketSection = typeof MARKET_SECTIONS[number];
+
+/**
+ * 内存配置同步：将状态栏开关同步到所有板块
+ */
+export function applyStatusBarToAllSections(cfg: MarketLensConfig, enabled: boolean): void {
+  cfg.statusBar.enabled = enabled;
+  for (const section of MARKET_SECTIONS) {
+    if (cfg[section]) {
+      cfg[section].statusBar = enabled;
+    }
+  }
+}
+
+/**
+ * 内存配置同步：将代理地址与端口同步到所有板块
+ */
+export function applyProxyToAllSections(cfg: MarketLensConfig, proxyUrl: string, port?: number): void {
+  if (port !== undefined) {
+    cfg.proxyPort = port;
+  }
+  cfg.proxyUrl = proxyUrl;
+  for (const section of MARKET_SECTIONS) {
+    if (cfg[section]) {
+      cfg[section].proxyUrl = proxyUrl;
+    }
+  }
+}
+
+/**
+ * 内存配置同步：重新计算状态栏聚合总控开关
+ */
+export function recomputeStatusBarEnabled(cfg: MarketLensConfig): boolean {
+  const anyActive = MARKET_SECTIONS.some((sec) => cfg[sec]?.statusBar !== false);
+  cfg.statusBar.enabled = anyActive;
+  return anyActive;
+}
+
+/**
+ * 磁盘持久化：将代理端口与地址全量扇出写入 VS Code 全局配置（包括所有板块，彻底杜绝遗漏）
+ */
+export async function persistProxyToAllSections(
+  cfg: vscodeTypes.WorkspaceConfiguration,
+  proxyUrl: string,
+  port?: number
+): Promise<void> {
+  const target = getGlobalTarget();
+  const updates: Thenable<void>[] = [
+    cfg.update("proxyUrl", proxyUrl, target),
+  ];
+  if (port !== undefined && port >= 1 && port <= 65535) {
+    updates.push(cfg.update("proxyPort", port, target));
+  }
+  for (const section of MARKET_SECTIONS) {
+    updates.push(cfg.update(`${section}.proxyUrl`, proxyUrl, target));
+  }
+  await Promise.all(updates);
+}
+
+/**
+ * 磁盘持久化：将状态栏总控与各板块状态栏全量扇出写入 VS Code 全局配置
+ */
+export async function persistStatusBarToAllSections(
+  cfg: vscodeTypes.WorkspaceConfiguration,
+  enabled: boolean
+): Promise<void> {
+  const target = getGlobalTarget();
+  const updates: Thenable<void>[] = [
+    cfg.update("statusBar.enabled", enabled, target),
+  ];
+  for (const section of MARKET_SECTIONS) {
+    updates.push(cfg.update(`${section}.statusBar`, enabled, target));
+  }
+  await Promise.all(updates);
+}
+
+/**
+ * 磁盘持久化：写入单个板块状态栏开关并联动聚合计算 statusBar.enabled
+ */
+export async function persistSectionStatusBarAndRecompute(
+  cfg: vscodeTypes.WorkspaceConfiguration,
+  sectionKey: string,
+  value: boolean
+): Promise<boolean> {
+  const target = getGlobalTarget();
+  await cfg.update(sectionKey, value, target);
+  const anyActive = MARKET_SECTIONS.some((sec) => {
+    return `${sec}.statusBar` === sectionKey
+      ? value
+      : (cfg.get<boolean>(`${sec}.statusBar`) ?? true);
+  });
+  await cfg.update("statusBar.enabled", anyActive, target);
+  return anyActive;
+}
+
+/**
+ * 判定配置变更事件是否影响后台网络轮询
+ * 集中由 MARKET_SECTIONS 派生，自动覆盖全局网络键与全部板块的 enabled / networkMode / proxyUrl / stopOnMarketClosed，杜绝漏项
+ */
+export function affectsNetworkConfig(e: { affectsConfiguration(section: string): boolean }): boolean {
+  if (
+    e.affectsConfiguration("marketlens.proxyPort") ||
+    e.affectsConfiguration("marketlens.proxyUrl") ||
+    e.affectsConfiguration("marketlens.autoRefresh") ||
+    e.affectsConfiguration("marketlens.refreshInterval")
+  ) {
+    return true;
+  }
+  for (const section of MARKET_SECTIONS) {
+    if (
+      e.affectsConfiguration(`marketlens.${section}.enabled`) ||
+      e.affectsConfiguration(`marketlens.${section}.networkMode`) ||
+      e.affectsConfiguration(`marketlens.${section}.proxyUrl`) ||
+      e.affectsConfiguration(`marketlens.${section}.stopOnMarketClosed`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}

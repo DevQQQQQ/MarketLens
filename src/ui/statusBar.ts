@@ -3,6 +3,7 @@
 
 import * as vscode from "vscode";
 import { MarketItem } from "../types";
+import { getProxyStatus } from "../services/network";
 
 // ────────────────────────────────────────────────────────────────
 //  常量与工具函数
@@ -160,6 +161,7 @@ export class StatusBar implements vscode.Disposable {
     if (this.bossKeyActive) {
       this.stopCarousel();
       this.barItem.text = "";
+      this.barItem.tooltip = "";
       this.barItem.hide();
     } else {
       this.barItem.show();
@@ -244,8 +246,16 @@ export class StatusBar implements vscode.Disposable {
       ? ` (${this.carouselIndex + 1}/${this.quotes.length})`
       : "";
 
-    this.barItem.text    = `$(graph-line) ${parts.join("  |  ")}${suffix}`;
-    this.barItem.tooltip = "MarketLens — 点击立即刷新";
+    this.barItem.text = `$(graph-line) ${parts.join("  |  ")}${suffix}`;
+
+    let tip = "MarketLens — 点击立即刷新";
+    const proxyStatus = getProxyStatus();
+    if (proxyStatus.inCooldown) {
+      tip += `\n⚠️ 代理不可达 (冷却中 ${proxyStatus.cooldownRemainingSeconds}s)`;
+    } else if (proxyStatus.activePort) {
+      tip += `\n🌐 本地代理: 127.0.0.1:${proxyStatus.activePort}`;
+    }
+    this.barItem.tooltip = tip;
     this.applyColor(visible[0]);
   }
 

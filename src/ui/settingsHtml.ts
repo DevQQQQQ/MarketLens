@@ -1,4 +1,6 @@
 // src/ui/settingsHtml.ts
+import { MARKET_SECTIONS } from "../utils/config";
+import { NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT } from "../utils/symbolHelper";
 
 export interface SettingsFormData {
 	autoRefresh?: boolean;
@@ -13,30 +15,24 @@ export interface SettingsFormData {
 	fundStatusBar?: boolean;
 	fundStopOnMarketClosed?: boolean;
 	fundNetworkMode?: string;
-	fundProxyUrl?: string;
 	aShareEnabled?: boolean;
 	aShareStatusBar?: boolean;
 	aShareStopOnMarketClosed?: boolean;
 	aShareNetworkMode?: string;
-	aShareProxyUrl?: string;
 	hkStockEnabled?: boolean;
 	hkStockStatusBar?: boolean;
 	hkStockStopOnMarketClosed?: boolean;
 	hkStockNetworkMode?: string;
-	hkStockProxyUrl?: string;
 	usStockEnabled?: boolean;
 	usStockStatusBar?: boolean;
 	usStockStopOnMarketClosed?: boolean;
 	usStockNetworkMode?: string;
-	usStockProxyUrl?: string;
 	binanceEnabled?: boolean;
 	binanceStatusBar?: boolean;
 	binanceNetworkMode?: string;
-	binanceProxyUrl?: string;
 	alphaEnabled?: boolean;
 	alphaStatusBar?: boolean;
 	alphaNetworkMode?: string;
-	alphaProxyUrl?: string;
 	alerts?: Record<string, any>;
 	alertNotificationMode?: string;
 	alertCooldownMinutes?: number;
@@ -69,7 +65,6 @@ export function getSettingsWebviewHtml(
 				? initialData.fundStopOnMarketClosed
 				: true,
 		fundNetworkMode: initialData.fundNetworkMode || 'direct',
-		fundProxyUrl: initialData.fundProxyUrl || defaultProxyUrl,
 		aShareEnabled: initialData.aShareEnabled !== undefined ? initialData.aShareEnabled : true,
 		aShareStatusBar:
 			initialData.aShareStatusBar !== undefined ? initialData.aShareStatusBar : true,
@@ -78,7 +73,6 @@ export function getSettingsWebviewHtml(
 				? initialData.aShareStopOnMarketClosed
 				: true,
 		aShareNetworkMode: initialData.aShareNetworkMode || 'direct',
-		aShareProxyUrl: initialData.aShareProxyUrl || defaultProxyUrl,
 		hkStockEnabled:
 			initialData.hkStockEnabled !== undefined ? initialData.hkStockEnabled : true,
 		hkStockStatusBar:
@@ -88,7 +82,6 @@ export function getSettingsWebviewHtml(
 				? initialData.hkStockStopOnMarketClosed
 				: true,
 		hkStockNetworkMode: initialData.hkStockNetworkMode || 'direct',
-		hkStockProxyUrl: initialData.hkStockProxyUrl || defaultProxyUrl,
 		usStockEnabled:
 			initialData.usStockEnabled !== undefined ? initialData.usStockEnabled : true,
 		usStockStatusBar:
@@ -98,18 +91,15 @@ export function getSettingsWebviewHtml(
 				? initialData.usStockStopOnMarketClosed
 				: true,
 		usStockNetworkMode: initialData.usStockNetworkMode || 'direct',
-		usStockProxyUrl: initialData.usStockProxyUrl || defaultProxyUrl,
 		binanceEnabled:
 			initialData.binanceEnabled !== undefined ? initialData.binanceEnabled : true,
 		binanceStatusBar:
 			initialData.binanceStatusBar !== undefined ? initialData.binanceStatusBar : true,
 		binanceNetworkMode: initialData.binanceNetworkMode || 'proxy',
-		binanceProxyUrl: initialData.binanceProxyUrl || defaultProxyUrl,
 		alphaEnabled: initialData.alphaEnabled !== undefined ? initialData.alphaEnabled : true,
 		alphaStatusBar:
 			initialData.alphaStatusBar !== undefined ? initialData.alphaStatusBar : true,
 		alphaNetworkMode: initialData.alphaNetworkMode || 'proxy',
-		alphaProxyUrl: initialData.alphaProxyUrl || defaultProxyUrl,
 		alerts: initialData.alerts || {},
 		alertNotificationMode: initialData.alertNotificationMode || 'notification',
 		alertCooldownMinutes: initialData.alertCooldownMinutes || 15,
@@ -1029,16 +1019,7 @@ export function getSettingsWebviewHtml(
           .replace(/'/g, '&#39;');
       }
 
-      function getSymbolKey(sym) {
-        if (!sym) return '';
-        var s = sym.trim();
-        var clean = s.toLowerCase().replace(/[\\._\\-\\/]/g, '');
-        if (/^hk\\d+$/.test(clean)) return 'hk' + clean.slice(2).replace(/^0+/, '');
-        if (/^\\d{5}$/.test(clean)) return 'hk' + clean.replace(/^0+/, '');
-        if (/^us[\\._\\-]/i.test(s)) return s.replace(/^us[\\._\\-]/i, '').toLowerCase().replace(/[\\._\\-\\/]/g, '');
-        if (/^us[A-Z]/.test(s)) return s.slice(2).toLowerCase().replace(/[\\._\\-\\/]/g, '');
-        return clean;
-      }
+      ${NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT}
 
       function renderAlertTable(watchlist, alerts) {
         var tbody = document.getElementById('alertTableBody');
@@ -1242,9 +1223,9 @@ export function getSettingsWebviewHtml(
         postCmd('clearWatchlist');
         showToast('🗑️ 正在请求清空自选标的...');
       });
+      var subIds = ${JSON.stringify(MARKET_SECTIONS.map((s) => `${s}StatusBar`))};
       on('statusBarEnabled', 'change', function() {
         var checked = this.checked;
-        var subIds = ['fundStatusBar', 'aShareStatusBar', 'hkStockStatusBar', 'usStockStatusBar', 'binanceStatusBar', 'alphaStatusBar'];
         for (var i = 0; i < subIds.length; i++) {
           var el = document.getElementById(subIds[i]);
           if (el) el.checked = checked;
@@ -1254,16 +1235,13 @@ export function getSettingsWebviewHtml(
       });
 
       function syncMasterSwitch() {
-        var f = document.getElementById('fundStatusBar');
-        var a = document.getElementById('aShareStatusBar');
-        var h = document.getElementById('hkStockStatusBar');
-        var u = document.getElementById('usStockStatusBar');
-        var b = document.getElementById('binanceStatusBar');
-        var al = document.getElementById('alphaStatusBar');
-        var allChecked = (!f || f.checked) && (!a || a.checked) && (!h || h.checked) && (!u || u.checked) && (!b || b.checked) && (!al || al.checked);
+        var anyChecked = subIds.some(function(id) {
+          var el = document.getElementById(id);
+          return el && el.checked;
+        });
         var master = document.getElementById('statusBarEnabled');
         if (master) {
-          master.checked = allChecked;
+          master.checked = !!anyChecked;
         }
       }
       on('autoRefresh', 'change', function() {

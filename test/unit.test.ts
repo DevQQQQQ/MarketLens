@@ -6,9 +6,9 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 
-import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml } from "../src/utils/symbolHelper.ts";
+import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT } from "../src/utils/symbolHelper.ts";
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
-import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling } from "../src/utils/marketHours.ts";
+import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling, MAX_COVERED_HOLIDAY_YEAR, checkHolidayCoverage, US_HOLIDAYS } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache, getSystemProxyUrl } from "../src/services/network.ts";
 import { isDisplayMasked } from "../src/utils/maskState.ts";
 import { AlertManager } from "../src/services/alertManager.ts";
@@ -17,6 +17,7 @@ import { BinanceService } from "../src/services/binanceService.ts";
 import { AShareService } from "../src/services/aShareService.ts";
 import { HKStockService } from "../src/services/hkStockService.ts";
 import { USStockService } from "../src/services/usStockService.ts";
+import "./config.test.ts";
 
 test("symbolHelper - 真实源码逻辑校验", () => {
   // A股
@@ -170,7 +171,7 @@ test("marketHours - 真实源码时区与交易时段计算", () => {
   assert.strictEqual(isUSMarketOpen(sundayUtc), false);
 
   // 3. 测试美股交易时段（美东时间周一 10:30，UTC 14:30 处于夏令时常规时段）
-  const usTradingUtc = new Date("2026-09-07T14:30:00Z");
+  const usTradingUtc = new Date("2026-09-14T14:30:00Z");
   const nyParts = getZonedTimeParts(newYorkFormatter, usTradingUtc);
   assert.strictEqual(nyParts.day, 1); // Mon
   assert.strictEqual(nyParts.totalMinutes, 10 * 60 + 30);
@@ -730,6 +731,7 @@ test("extractTargetsFromWatchlist - 标的分桶过滤与闭市跳过测试", ()
 
   // 1. 全开状态分桶提取
   const allTargets = extractTargetsFromWatchlist(mockWatchlist);
+  assert.deepStrictEqual(allTargets.funds, []);
   assert.deepStrictEqual(allTargets.aShares, ["sh600519"]);
   assert.deepStrictEqual(allTargets.hkStocks, ["00700"]);
   assert.deepStrictEqual(allTargets.usStocks, ["AAPL", "TSLA", "NVDA"]);
@@ -741,6 +743,7 @@ test("extractTargetsFromWatchlist - 标的分桶过滤与闭市跳过测试", ()
     aShareEnabled: false,
     binanceEnabled: false,
   });
+  assert.deepStrictEqual(disabledTargets.funds, []);
   assert.deepStrictEqual(disabledTargets.aShares, []);
   assert.deepStrictEqual(disabledTargets.cryptos, []);
   assert.strictEqual(disabledTargets.usStocks.length, 3);
@@ -1251,7 +1254,7 @@ test("AlertManager - 状态栏与通知通道联动分发", () => {
     alertNotificationMode: "notification",
     alertCooldownMinutes: 15,
   };
-  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1850, changePercent: 1.0 }], configNotification);
+  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", type: "A_SHARE", price: 1850, changePercent: 1.0 }], configNotification);
   assert.strictEqual(flashedText, "", "notification 模式下不应触发状态栏闪烁");
 
   // 2. 状态栏通道 (statusBarOnly)：触发状态栏闪烁
@@ -1260,7 +1263,7 @@ test("AlertManager - 状态栏与通知通道联动分发", () => {
     ...configNotification,
     alertNotificationMode: "statusBarOnly",
   };
-  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1850, changePercent: 1.0 }], configStatusBarOnly);
+  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", type: "A_SHARE", price: 1850, changePercent: 1.0 }], configStatusBarOnly);
   assert.ok(flashedText.includes("突破预警") && flashedText.includes("贵州茅台"), "statusBarOnly 模式下必须调用 flashAlert");
 
   // 3. 模态脱敏模式 (maskMode)
@@ -1271,7 +1274,7 @@ test("AlertManager - 状态栏与通知通道联动分发", () => {
     alertNotificationMode: "statusBarOnly",
     maskMode: true,
   };
-  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1850, changePercent: 1.0 }], configMasked);
+  manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", type: "A_SHARE", price: 1850, changePercent: 1.0 }], configMasked);
   assert.ok(flashedText.includes("****"), "maskMode 开启时标的名称必须脱敏");
 });
 
@@ -1286,7 +1289,7 @@ test("AlertManager - 禁用开关与空配置容错保护", () => {
     alertNotificationMode: "notification",
     alertCooldownMinutes: 15,
   };
-  const disabledEvents = manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", price: 1900, changePercent: 2.0 }], configDisabled);
+  const disabledEvents = manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", type: "A_SHARE", price: 1900, changePercent: 2.0 }], configDisabled);
   assert.strictEqual(disabledEvents.length, 0, "enabled: false 规则不应被触发");
 
   // 空预警字典或空行情
@@ -1411,6 +1414,22 @@ test("marketHours - 节假日离线日历与休市精准判定", () => {
   const usMlkUtc = new Date("2026-01-19T15:30:00Z");
   assert.strictEqual(isUSHoliday(usMlkUtc), true, "2026-01-19 应为美股马丁路德金日");
   assert.strictEqual(isUSMarketOpen(usMlkUtc), false);
+
+  // 美股劳动节（2026-09-07 周一美东 10:30，夏令时 UTC 14:30 -> NY 10:30）
+  const usLaborDayUtc = new Date("2026-09-07T14:30:00Z");
+  assert.strictEqual(isUSHoliday(usLaborDayUtc), true, "2026-09-07 应为美股劳动节休市日");
+  assert.strictEqual(isUSMarketOpen(usLaborDayUtc), false, "美股劳动节应一票否决判定为闭市");
+
+  // 4. 美股 2024~2027 每年法定休市日总数必须严格等于 10 天（杜绝漏提劳动节等惨剧重演）
+  for (let year = 2024; year <= MAX_COVERED_HOLIDAY_YEAR; year++) {
+    const holidaysInYear = Array.from(US_HOLIDAYS).filter((d) => d.startsWith(`${year}-`));
+    assert.strictEqual(holidaysInYear.length, 10, `${year} 年 NYSE/NASDAQ 法定休市日数量应严格为 10 天`);
+  }
+
+  // 5. 节假日日历覆盖有效性护栏（防止 2028+ 静默失效）
+  assert.strictEqual(MAX_COVERED_HOLIDAY_YEAR >= 2027, true, "节假日日历至少需覆盖至 2027 年");
+  assert.strictEqual(checkHolidayCoverage(new Date("2026-06-01")), true, "覆盖年限内应返回 true");
+  assert.strictEqual(checkHolidayCoverage(new Date("2028-01-01")), false, "超出覆盖年限应触发护栏拦截并返回 false");
 });
 
 test("evaluateAdaptiveThrottle - 休市与无行情变动自适应降频评估", () => {
@@ -1480,6 +1499,20 @@ test("evaluateAdaptiveThrottle - 休市与无行情变动自适应降频评估",
   });
   assert.strictEqual(rPriceChange.isThrottled, false, "价格波动应立即解除降频");
   assert.strictEqual(rPriceChange.consecutiveUnchangedCount, 0, "计数器归零");
+
+  // 5. 基金支持：用户关闭 A 股、仅保留基金，A 股开市期间仍应维持高频，不发生错误降频
+  const rFundOnly = evaluateAdaptiveThrottle({
+    fundEnabled: true,
+    aShareEnabled: false,
+    hkStockEnabled: false,
+    usStockEnabled: false,
+    has24HourCrypto: false,
+    hasPriceChanged: false,
+    consecutiveUnchangedCount: 1,
+    now: normalTradingUtc,
+  });
+  assert.strictEqual(rFundOnly.isThrottled, false, "仅开基金且在交易时段应维持高频");
+  assert.strictEqual(rFundOnly.consecutiveUnchangedCount, 2);
 });
 
 test("chunkArray - 大批量标的切片保护与边界分块校验", () => {
@@ -2054,18 +2087,76 @@ test("基金板块设置与状态栏轮播/分桶抓取联动", () => {
     fundEnabled: false,
     aShareEnabled: true,
   });
+  assert.deepStrictEqual(targets.funds, []);
   assert.deepStrictEqual(targets.aShares, ["sh600036"]);
+
+  // 4. 基金板块启用，应独立进入 funds 桶，而非混入 aShares
+  const targetsWithFund = extractTargetsFromWatchlist(mockWatchlist, {
+    fundEnabled: true,
+    aShareEnabled: true,
+  });
+  assert.deepStrictEqual(targetsWithFund.funds, ["sh510050", "sz159915"]);
+  assert.deepStrictEqual(targetsWithFund.aShares, ["sh600036"]);
+});
+
+test("scheduler - 闭市全板块跳过轮询时不应清空已缓存收盘行情（防止状态栏全部归零）", () => {
+  const mockWatchlist = {
+    "A股": [{ symbol: "sh600519", name: "贵州茅台", type: "A_SHARE" }],
+    "美股": [{ symbol: "AAPL", name: "Apple", type: "US_STOCK" }],
+  };
+
+  // 1. 全板块休市/跳过抓取：targets 全部为空
+  const targets = extractTargetsFromWatchlist(mockWatchlist, {
+    fundEnabled: true,
+    aShareEnabled: true,
+    hkStockEnabled: true,
+    usStockEnabled: true,
+    binanceEnabled: false,
+    alphaEnabled: false,
+    skipFund: true,
+    skipAShare: true,
+    skipHKStock: true,
+    skipUSStock: true,
+  });
+  assert.strictEqual(targets.aShares.length, 0);
+  assert.strictEqual(targets.usStocks.length, 0);
+
+  // 2. 内存已有的收盘行情缓存
+  const quoteCache = new Map<string, any>();
+  quoteCache.set("sh600519", { symbol: "sh600519", name: "贵州茅台", price: 1800, changePercent: 1.5 });
+  quoteCache.set("aapl", { symbol: "AAPL", name: "Apple", price: 230, changePercent: 0.8 });
+
+  // 3. 验证此时判断自选是否为空：不应为空
+  const isWatchlistCompletelyEmpty =
+    !mockWatchlist ||
+    Object.values(mockWatchlist).every((list) => !Array.isArray(list) || list.length === 0);
+  assert.strictEqual(isWatchlistCompletelyEmpty, false, "用户配置了标的，不应判定为完全空自选");
+
+  // 4. pruneQuoteCache 不会误删闭市标的
+  pruneQuoteCache(mockWatchlist, quoteCache);
+  assert.strictEqual(quoteCache.size, 2, "闭市标的收盘行情应完好保留在缓存中");
+
+  // 5. 状态栏提取依然能获取到有效报价，杜绝归零
+  const statusBarQuotes = extractStatusBarQuotes(mockWatchlist, quoteCache, {
+    statusBarEnabled: true,
+    aShare: { statusBar: true },
+    usStock: { statusBar: true },
+  });
+  assert.strictEqual(statusBarQuotes.length, 2);
+  assert.strictEqual(statusBarQuotes[0].price, 1800);
+  assert.strictEqual(statusBarQuotes[1].price, 230);
 });
 
 test("scripts/sync-version - package.json 版本变更全自动同步测试", () => {
   const req = createRequire(import.meta.url);
   const { syncVersion } = req("../scripts/sync-version.js");
 
-  // 1. 测试当前仓库版本同步（已对齐状态）
-  const resCurrent = syncVersion();
+  // 1. 测试当前仓库版本读取（使用 dryRun: true 确保绝对不写盘、不删除本地已有 vsix 包）
+  const resCurrent = syncVersion(undefined, false, true);
   assert.strictEqual(typeof resCurrent.version, "string");
   assert.strictEqual(resCurrent.version.length > 0, true);
   assert.strictEqual(Array.isArray(resCurrent.modifiedFiles), true);
+  assert.strictEqual(Array.isArray(resCurrent.deletedVsix), true);
 
   // 2. 隔离环境：测试 package.json 版本变动时，自动更新 README.md 与 RELEASE.md
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "marketlens-sync-test-"));
@@ -2090,17 +2181,36 @@ test("scripts/sync-version - package.json 版本变更全自动同步测试", ()
       "npx @vscode/vsce package -o marketlens-1.1.5.vsix\ngit tag v1.1.5 && git push origin v1.1.5",
       "utf8"
     );
+    fs.writeFileSync(
+      path.join(tempDir, "CHANGELOG.md"),
+      "# Changelog\n\n## [Unreleased]\n\n### 🚀 新特性\n- 示例改动\n",
+      "utf8"
+    );
     // 创建历史版本与当前版本的 vsix 测试文件
     fs.writeFileSync(path.join(tempDir, "marketlens-1.0.0.vsix"), "old-pkg-1", "utf8");
     fs.writeFileSync(path.join(tempDir, "marketlens-2.4.0.vsix"), "old-pkg-2", "utf8");
     fs.writeFileSync(path.join(tempDir, "marketlens-2.5.0.vsix"), "current-pkg", "utf8");
 
+    // 2.1 先测试 dryRun = true 模式下的无损预检行为（零磁盘写入与删除）
+    const dryRunRes = syncVersion(tempDir, false, true);
+    assert.strictEqual(dryRunRes.version, "2.5.0");
+    assert.strictEqual(dryRunRes.modifiedFiles.length, 4);
+    assert.strictEqual(dryRunRes.deletedVsix.length, 2);
+    const unmodReadme = fs.readFileSync(path.join(tempDir, "README.md"), "utf8");
+    assert.strictEqual(unmodReadme.includes("Release-v1.1.5-blue.svg"), true, "dryRun 模式下不得写盘");
+    const unmodChangelog = fs.readFileSync(path.join(tempDir, "CHANGELOG.md"), "utf8");
+    assert.strictEqual(unmodChangelog.includes("## [Unreleased]"), true);
+    assert.strictEqual(unmodChangelog.includes("## [2.5.0]"), false, "dryRun 模式下不得写盘");
+    assert.strictEqual(fs.existsSync(path.join(tempDir, "marketlens-1.0.0.vsix")), true, "dryRun 模式下不得删除文件");
+
+    // 2.2 正式落盘执行同步
     const syncRes = syncVersion(tempDir);
     assert.strictEqual(syncRes.version, "2.5.0");
-    assert.strictEqual(syncRes.modifiedFiles.length, 3);
+    assert.strictEqual(syncRes.modifiedFiles.length, 4);
     assert.strictEqual(syncRes.modifiedFiles.includes("README.md"), true);
     assert.strictEqual(syncRes.modifiedFiles.includes("README.en.md"), true);
     assert.strictEqual(syncRes.modifiedFiles.includes("RELEASE.md"), true);
+    assert.strictEqual(syncRes.modifiedFiles.includes("CHANGELOG.md"), true);
 
     // 验证旧版本 vsix 自动清理，当前版本安全保留
     assert.strictEqual(Array.isArray(syncRes.deletedVsix), true);
@@ -2129,8 +2239,79 @@ test("scripts/sync-version - package.json 版本变更全自动同步测试", ()
       true,
       "RELEASE git tag 应被自动同步为新版本号"
     );
+
+    const updatedChangelog = fs.readFileSync(path.join(tempDir, "CHANGELOG.md"), "utf8");
+    assert.strictEqual(
+      updatedChangelog.includes("## [2.5.0]"),
+      true,
+      "CHANGELOG 应被自动同步为新版本号"
+    );
+    assert.strictEqual(
+      updatedChangelog.includes("## [Unreleased]"),
+      true,
+      "CHANGELOG 顶部应保留空的 Unreleased 模板"
+    );
+
+    // 3. 测试 cleanAll = true 时，打包前彻底清理所有版本 vsix（含当前版本同名残留包）
+    fs.writeFileSync(path.join(tempDir, "marketlens-2.5.0.vsix"), "current-stale-pkg", "utf8");
+    const cleanAllRes = syncVersion(tempDir, true);
+    assert.strictEqual(cleanAllRes.deletedVsix.includes("marketlens-2.5.0.vsix"), true);
+    assert.strictEqual(fs.existsSync(path.join(tempDir, "marketlens-2.5.0.vsix")), false, "cleanAll 时当前版本 vsix 也应被彻底删除");
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ASSET_TYPE_TO_SECTION_MAP - 资产底层类型与市场板块映射覆盖性校验", () => {
+  assert.strictEqual(ASSET_TYPE_TO_SECTION_MAP["A_SHARE"], "aShare");
+  assert.strictEqual(ASSET_TYPE_TO_SECTION_MAP["HK_STOCK"], "hkStock");
+  assert.strictEqual(ASSET_TYPE_TO_SECTION_MAP["US_STOCK"], "usStock");
+  assert.strictEqual(ASSET_TYPE_TO_SECTION_MAP["CRYPTO"], "binance");
+  assert.strictEqual(ASSET_TYPE_TO_SECTION_MAP["BSC_TOKEN"], "alpha");
+  assert.strictEqual(ASSET_TYPE_TO_SECTION_MAP["ALPHA_TOKEN"], "alpha");
+});
+
+test("NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT - 前端 Webview 注入脚本与后端 TS 实现 100% 同源无漂移校验", () => {
+  // 使用 Function 动态评估客户端脚本提取出的 getSymbolKey
+  const clientEvalFn = new Function(`${NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT}; return getSymbolKey;`)() as (sym: string) => string;
+
+  const testCases = [
+    "00700",
+    "hk00700",
+    "hk700",
+    "06030",
+    "hk06030",
+    "AAPL",
+    "usAAPL",
+    "us.AAPL",
+    "us_AAPL",
+    "us-AAPL",
+    "usAMD",
+    "AMD",
+    "USB",
+    "usUSB",
+    "us.USB",
+    "sh600519",
+    "600519",
+    "sz000001",
+    "bj920002",
+    "BTCUSDT",
+    "btcusdt",
+    "SOL/USDT",
+    "0x2170ed0880ac9a755fd29b2688956bd959f933f8",
+    "usBRK.B",
+    "us.BRK.B",
+    "",
+  ];
+
+  for (const sym of testCases) {
+    const backendResult = normalizeSymbolKey(sym);
+    const clientResult = clientEvalFn(sym);
+    assert.strictEqual(
+      clientResult,
+      backendResult,
+      `标的 "${sym}" 在前端脚本中的归一化结果 "${clientResult}" 与后端 TS 结果 "${backendResult}" 不一致！`
+    );
   }
 });
 

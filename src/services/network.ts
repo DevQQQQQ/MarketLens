@@ -1,10 +1,17 @@
 // src/services/network.ts
 import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios";
 import * as http from "http";
+import { logger } from "../utils/logger.ts";
 
 export interface CryptoNetworkOptions {
   mode: "proxy" | "direct";
   proxyUrl?: string;
+}
+
+export interface ProxyStatus {
+  activePort?: number;
+  inCooldown: boolean;
+  cooldownRemainingSeconds: number;
 }
 
 /**
@@ -46,6 +53,19 @@ export function getCachedWorkingPort(): number | undefined {
 export function resetProxyCache(): void {
   cachedWorkingPort = undefined;
   lastFallbackFailedTime = 0;
+}
+
+/** 获取当前代理连接健康度与熔断状态 */
+export function getProxyStatus(): ProxyStatus {
+  const now = Date.now();
+  const elapsed = now - lastFallbackFailedTime;
+  const inCooldown = lastFallbackFailedTime > 0 && elapsed < FALLBACK_COOLDOWN_MS;
+  const cooldownRemainingSeconds = inCooldown ? Math.ceil((FALLBACK_COOLDOWN_MS - elapsed) / 1000) : 0;
+  return {
+    activePort: cachedWorkingPort,
+    inCooldown,
+    cooldownRemainingSeconds,
+  };
 }
 
 /**
@@ -167,7 +187,7 @@ export function parseProxy(proxyUrlStr: string) {
 }
 
 /**
- * 快速检测某个本地端口是否开启了 HTTP 代理监听（超时 400ms）
+ * 快速检测某个本地端口是否开启了 HTTP 代理监听（超时 600ms）
  */
 function testLocalPort(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -247,7 +267,11 @@ export async function smartNetworkGet<T = any>(
 
   // 2. 强制代理模式（绝不直连）
   // 优先使用用户输入的代理或缺省/缓存代理（若 proxyUrl 为空，validateAndNormalizeProxyUrl 已自适应返回 cachedWorkingPort/系统代理/10808）
-  const targetProxy = parseProxy(proxyUrl || "");
+  const rawProxy = parseProxy(proxyUrl || "");
+  const targetProxy =
+    cachedWorkingPort && (rawProxy.host === "127.0.0.1" || rawProxy.host === "localhost") && rawProxy.port === 10808
+      ? { ...rawProxy, port: cachedWorkingPort }
+      : rawProxy;
 
   // 第一优先级：尝试目标代理端口
   try {
@@ -282,6 +306,9 @@ export async function smartNetworkGet<T = any>(
             timeout: 2500,
             proxy: sysProxy,
           });
+          if (cachedWorkingPort !== sysProxy.port) {
+            logger.info(`[smartNetworkGet] 目标代理端口不可达，已自动切换至系统环境变量代理端口: ${sysProxy.port}`);
+          }
           cachedWorkingPort = sysProxy.port;
           return res;
         } catch {
@@ -300,6 +327,9 @@ export async function smartNetworkGet<T = any>(
           proxy: { host: "127.0.0.1", port, protocol: "http" },
         });
         // 成功！记录并缓存此端口，后续无需重试
+        if (cachedWorkingPort !== port) {
+          logger.info(`[smartNetworkGet] 目标代理端口不可达，已自动降级回退至本地可用端口: ${port}`);
+        }
         cachedWorkingPort = port;
         return res;
       } catch {
@@ -309,6 +339,7 @@ export async function smartNetworkGet<T = any>(
 
     // 所有代理端口均不可达，记录失败时间以开启冷却熔断
     lastFallbackFailedTime = Date.now();
+    logger.warn(`[smartNetworkGet] 所有本地代理端口与系统代理均不可达，已进入 ${Math.round(FALLBACK_COOLDOWN_MS / 1000)}s 熔断冷却。`);
 
     // 所有代理端口不可达，阻止直连，保护隐私
     throw new Error(

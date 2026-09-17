@@ -9,13 +9,17 @@ try {
   vscodeModule = require("vscode");
 } catch (_) {}
 
-function readConfigFallback(): MarketLensConfig {
+function readConfigFallback(): Partial<MarketLensConfig> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { readConfig } = require("../utils/config");
     return readConfig();
   } catch (_) {
-    return {} as any;
+    return {
+      alerts: {},
+      alertNotificationMode: "both",
+      alertCooldownMinutes: 15,
+    };
   }
 }
 
@@ -57,7 +61,7 @@ export class AlertManager {
   /**
    * 在行情拉取完成后，由调度器调用进行纯内存预警评估
    */
-  public checkQuotes(quotes: MarketItem[], customConfig?: MarketLensConfig): AlertTriggerEvent[] {
+  public checkQuotes(quotes: MarketItem[], customConfig?: Partial<MarketLensConfig>): AlertTriggerEvent[] {
     if (!quotes || quotes.length === 0) {
       return [];
     }
@@ -161,7 +165,7 @@ export class AlertManager {
     return triggeredEvents;
   }
 
-  private dispatchAlert(evt: AlertTriggerEvent, config: MarketLensConfig): void {
+  private dispatchAlert(evt: AlertTriggerEvent, config: Partial<MarketLensConfig>): void {
     const isMasked = config.maskMode;
     const displayName = isMasked ? "****" : (evt.item.name || evt.item.symbol);
     const displaySymbol = isMasked ? "**" : evt.item.symbol;
@@ -198,7 +202,7 @@ export class AlertManager {
         : vscodeModule?.window?.showInformationMessage;
 
       if (typeof notifyFn === "function") {
-        void notifyFn(alertMessage, muteAction, settingsAction).then((action: any) => {
+        void notifyFn(alertMessage, muteAction, settingsAction).then((action?: string) => {
           if (action === muteAction) {
             this.mute(evt.symbolKey, config.alertCooldownMinutes || 15);
             vscodeModule?.window?.setStatusBarMessage(`$(bell-slash) 已静音 ${displayName} 预警 ${config.alertCooldownMinutes || 15} 分钟`, 3000);

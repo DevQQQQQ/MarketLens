@@ -1,6 +1,19 @@
 // src/utils/symbolHelper.ts
-import type { AssetType } from "../types";
-export type { AssetType };
+import type { AssetType, MarketSection } from "../types";
+export type { AssetType, MarketSection };
+
+/**
+ * 资产底层类型 (AssetType) 到市场业务板块 (MarketSection) 的全局唯一映射字典
+ * 集中收敛板块判定，杜绝在不同模块平行手写 switch (type) 导致的分支漂移
+ */
+export const ASSET_TYPE_TO_SECTION_MAP: Record<AssetType, MarketSection> = {
+  A_SHARE: "aShare",
+  HK_STOCK: "hkStock",
+  US_STOCK: "usStock",
+  CRYPTO: "binance",
+  BSC_TOKEN: "alpha",
+  ALPHA_TOKEN: "alpha",
+};
 
 export function isContractAddress(str: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(str) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(str);
@@ -112,6 +125,23 @@ export function normalizeSymbolKey(sym?: string): string {
   // A股保留 sh/sz/bj 前缀，其他（包括 USB, B, BTCUSDT, SOL/USDT, 合约地址等）直接返回 clean
   return clean;
 }
+
+/**
+ * 嵌入 Webview 设置面板前端 JS 的标的归一化函数体源码
+ * （单一真相源导出，Webview 沙箱直接注入消费，杜绝前后端正则分支漂移）
+ */
+export const NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT = `
+function getSymbolKey(sym) {
+  if (!sym) return '';
+  var s = sym.trim();
+  var clean = s.toLowerCase().replace(/[\\._\\-\\/]/g, '');
+  if (/^hk\\d+$/.test(clean)) return 'hk' + clean.slice(2).replace(/^0+/, '');
+  if (/^\\d{5}$/.test(clean)) return 'hk' + clean.replace(/^0+/, '');
+  if (/^us[\\._\\-]/i.test(s)) return s.replace(/^us[\\._\\-]/i, '').toLowerCase().replace(/[\\._\\-\\/]/g, '');
+  if (/^us[A-Z]/.test(s)) return s.slice(2).toLowerCase().replace(/[\\._\\-\\/]/g, '');
+  return clean;
+}
+`.trim();
 
 /**
  * 规范化美股抓取代码（Tencent 接口格式，如 "AMD" -> "usAMD", "usAMD" -> "usAMD", "us.IXIC" -> "usIXIC", "BRK.B" -> "usBRK.B"）
@@ -357,6 +387,7 @@ export interface TargetExtractionOptions {
 }
 
 export interface ExtractedTargets {
+  funds: string[];
   aShares: string[];
   hkStocks: string[];
   usStocks: string[];
@@ -385,6 +416,7 @@ export function extractTargetsFromWatchlist(
     skipUSStock = false,
   } = options;
 
+  const funds: string[] = [];
   const aShares: string[] = [];
   const hkStocks: string[] = [];
   const usStocks: string[] = [];
@@ -425,7 +457,7 @@ export function extractTargetsFromWatchlist(
       } else if (resolvedType === "A_SHARE") {
         if (isFundGroup) {
           if (fundEnabled && !skipFund) {
-            aShares.push(sym);
+            funds.push(sym);
           }
         } else {
           if (aShareEnabled && !skipAShare) {
@@ -437,6 +469,7 @@ export function extractTargetsFromWatchlist(
   }
 
   return {
+    funds: [...new Set(funds)],
     aShares: [...new Set(aShares)],
     hkStocks: [...new Set(hkStocks)],
     usStocks: [...new Set(usStocks)],
@@ -527,22 +560,21 @@ export function extractStatusBarQuotes<
     return [];
   }
 
+  const resolvedSections: Record<MarketSection, { enabled?: boolean; statusBar?: boolean }> = {
+    fund,
+    aShare,
+    hkStock,
+    usStock,
+    binance,
+    alpha,
+  };
+
   const isSectionActive = (type?: string): boolean => {
-    switch (type) {
-      case "A_SHARE":
-        return aShare.enabled !== false && aShare.statusBar !== false;
-      case "HK_STOCK":
-        return hkStock.enabled !== false && hkStock.statusBar !== false;
-      case "US_STOCK":
-        return usStock.enabled !== false && usStock.statusBar !== false;
-      case "CRYPTO":
-        return binance.enabled !== false && binance.statusBar !== false;
-      case "ALPHA_TOKEN":
-      case "BSC_TOKEN":
-        return alpha.enabled !== false && alpha.statusBar !== false;
-      default:
-        return true;
-    }
+    if (!type) return true;
+    const sec = ASSET_TYPE_TO_SECTION_MAP[type as AssetType];
+    if (!sec) return true;
+    const conf = resolvedSections[sec];
+    return conf?.enabled !== false && conf?.statusBar !== false;
   };
 
   const result: T[] = [];
@@ -587,7 +619,7 @@ export function extractStatusBarQuotes<
           id: item.symbol,
           name: displayName,
           symbol: item.symbol,
-          type: (assetType || item.type || "A_SHARE") as any,
+          type: (assetType || item.type || "A_SHARE") as AssetType,
           price: 0,
           changePercent: 0,
         } as unknown as T);

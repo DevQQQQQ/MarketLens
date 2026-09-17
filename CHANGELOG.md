@@ -2,6 +2,25 @@
 
 All notable changes to the "MarketLens" extension will be documented in this file.  
 本项目的所有重要版本更新与改动记录均将在此文档中呈现。
+
+## [Unreleased]
+
+## [1.1.7] - 2026-09-17
+
+### 🚀 架构重构与核心优化 (Architecture & Improvements)
+
+- **🏛️ 腾讯行情基类抽象收敛 (`TencentBaseService`)**：
+    - 抽取 A股、港股、美股统一底层行情基类 `TencentBaseService`，消除多市场间大段重复的网络请求、报文切片与异常处理逻辑；
+    - 规范化请求生命周期与错误捕获，提升代码可维护性与扩展性。
+- **⚙️ 全板块配置扇出与状态栏联动加固 (`config.ts`)**：
+    - 引入 `MARKET_SECTIONS` 作为全量子市场唯一事实源，统一代理（`proxyUrl` / `proxyPort`）与状态栏（`statusBar`）的全板块扇出持久化；
+    - 加固 `recomputeStatusBarEnabled` 聚合状态判定与 `affectsNetworkConfig` 敏感配置监听，杜绝子板块漏配导致的配置漂移。
+- **🧪 单元测试体系与 CI 覆盖率全面升级**：
+    - 新增 `test/config.test.ts` 专项测试，全项目核心单测扩充至 **58 例**，全部 100% PASS；
+    - CI 流水线引入 `npm run test:coverage`，核心业务模块测试覆盖率达 **87.57%**。
+
+---
+
 ## [1.1.6] - 2026-09-16
 
 ### 🚀 新增特性与核心优化 (New Features & Improvements)

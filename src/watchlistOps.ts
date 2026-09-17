@@ -57,22 +57,6 @@ export class WatchlistOps {
   }
 
   /**
-   * 处理自选标的拖拽重排（同组与跨组，单项兼容入口）
-   */
-  public async handleReorder(
-    sourceGroup: string,
-    sourceSymbol: string,
-    targetGroup: string,
-    targetSymbol?: string
-  ): Promise<void> {
-    return this.handleBatchReorder(
-      [{ sourceGroup, sourceSymbol }],
-      targetGroup,
-      targetSymbol
-    );
-  }
-
-  /**
    * 添加自选（带实时严格校验）
    */
   public async addItem(): Promise<void> {
@@ -126,7 +110,7 @@ export class WatchlistOps {
     // ── Step 3: 检查是否已存在（去重）───────────────────────────
     const groupItems: any[] = watchlist[targetGroup] ?? [];
     const alreadyExists = groupItems.some(
-      (item) => item.symbol?.toLowerCase() === sym.toLowerCase()
+      (item) => isSameSymbol(item.symbol, sym) || item.symbol?.toLowerCase() === sym.toLowerCase()
     );
     if (alreadyExists) {
       vscode.window.showWarningMessage(

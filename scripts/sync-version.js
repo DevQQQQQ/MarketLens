@@ -8,7 +8,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-function syncVersion(rootDir = path.resolve(__dirname, '..')) {
+function syncVersion(rootDir = path.resolve(__dirname, '..'), cleanAll = false, dryRun = false) {
 	const pkgPath = path.join(rootDir, 'package.json');
 	if (!fs.existsSync(pkgPath)) {
 		throw new Error(`package.json not found at ${pkgPath}`);
@@ -33,7 +33,9 @@ function syncVersion(rootDir = path.resolve(__dirname, '..')) {
 			const original = fs.readFileSync(filePath, 'utf8');
 			const updated = original.replace(badgePattern, targetBadgeUrl);
 			if (updated !== original) {
-				fs.writeFileSync(filePath, updated, 'utf8');
+				if (!dryRun) {
+					fs.writeFileSync(filePath, updated, 'utf8');
+				}
 				modifiedFiles.push(filename);
 			}
 		}
@@ -46,13 +48,42 @@ function syncVersion(rootDir = path.resolve(__dirname, '..')) {
 		let updated = original.replace(/marketlens-[0-9.]+\.vsix/g, `marketlens-${version}.vsix`);
 		updated = updated.replace(/git tag v[0-9.]+ && git push origin v[0-9.]+/g, `git tag v${version} && git push origin v${version}`);
 		if (updated !== original) {
-			fs.writeFileSync(releaseMdPath, updated, 'utf8');
+			if (!dryRun) {
+				fs.writeFileSync(releaseMdPath, updated, 'utf8');
+			}
 			modifiedFiles.push('RELEASE.md');
 		}
 	}
 
-	// 3. 自动扫描并清理旧版本的 .vsix 安装包
-	const deletedVsix = cleanOldVsix(rootDir, version);
+	// 3. 检查并同步 CHANGELOG.md（方式 A：将 [Unreleased] 转化为当前版本并留空新 Unreleased）
+	const changelogPath = path.join(rootDir, 'CHANGELOG.md');
+	if (fs.existsSync(changelogPath)) {
+		const original = fs.readFileSync(changelogPath, 'utf8');
+		const versionHeaderPattern = new RegExp(`^## \\[(?:v)?${version.replace(/\./g, '\\.')}\\]`, 'm');
+		const hasCurrentVersion = versionHeaderPattern.test(original);
+
+		if (!hasCurrentVersion) {
+			const unreleasedPattern = /^## \[(?:Unreleased|unreleased)\]/m;
+			if (unreleasedPattern.test(original)) {
+				const today = new Date().toISOString().slice(0, 10);
+				const replacement = `## [Unreleased]\n\n## [${version}] - ${today}`;
+				const updated = original.replace(unreleasedPattern, replacement);
+				if (updated !== original) {
+					if (!dryRun) {
+						fs.writeFileSync(changelogPath, updated, 'utf8');
+					}
+					modifiedFiles.push('CHANGELOG.md');
+				}
+			} else {
+				if (!dryRun) {
+					console.warn(`[MarketLens] ⚠️ Warning: CHANGELOG.md missing entry for v${version} and no [Unreleased] section found.`);
+				}
+			}
+		}
+	}
+
+	// 4. 自动扫描并清理 .vsix 安装包（cleanAll 为 true 时清空所有，否则只清空旧版本）
+	const deletedVsix = cleanOldVsix(rootDir, version, cleanAll, dryRun);
 
 	return {
 		version,
@@ -62,9 +93,9 @@ function syncVersion(rootDir = path.resolve(__dirname, '..')) {
 }
 
 /**
- * 扫描并自动删除旧版本的 marketlens-*.vsix
+ * 扫描并自动删除旧版本或所有历史 marketlens-*.vsix
  */
-function cleanOldVsix(rootDir = path.resolve(__dirname, '..'), currentVersion) {
+function cleanOldVsix(rootDir = path.resolve(__dirname, '..'), currentVersion, cleanAll = false, dryRun = false) {
 	if (!currentVersion) {
 		const pkgPath = path.join(rootDir, 'package.json');
 		if (fs.existsSync(pkgPath)) {
@@ -82,10 +113,12 @@ function cleanOldVsix(rootDir = path.resolve(__dirname, '..'), currentVersion) {
 		const match = file.match(vsixRegex);
 		if (match) {
 			const fileVer = match[1];
-			if (fileVer !== currentVersion) {
+			if (cleanAll || fileVer !== currentVersion) {
 				const fullPath = path.join(rootDir, file);
 				try {
-					fs.unlinkSync(fullPath);
+					if (!dryRun) {
+						fs.unlinkSync(fullPath);
+					}
 					deletedFiles.push(file);
 				} catch (err) {
 					console.warn(`[MarketLens] ⚠️ Could not remove ${file}:`, err);
@@ -98,14 +131,16 @@ function cleanOldVsix(rootDir = path.resolve(__dirname, '..'), currentVersion) {
 
 if (require.main === module) {
 	try {
-		const result = syncVersion();
+		const cleanAll = process.argv.includes('--clean-all');
+		const dryRun = process.argv.includes('--dry-run');
+		const result = syncVersion(undefined, cleanAll, dryRun);
 		if (result.modifiedFiles.length > 0) {
 			console.log(`[MarketLens] 🔄 Version synchronized to v${result.version} in: ${result.modifiedFiles.join(', ')}`);
 		} else {
 			console.log(`[MarketLens] ✅ All documentation and assets already in sync with v${result.version}`);
 		}
 		if (result.deletedVsix && result.deletedVsix.length > 0) {
-			console.log(`[MarketLens] 🗑️ Cleaned up outdated VSIX package(s): ${result.deletedVsix.join(', ')}`);
+			console.log(`[MarketLens] 🗑️ Cleaned up VSIX package(s): ${result.deletedVsix.join(', ')}`);
 		}
 	} catch (err) {
 		console.error('[MarketLens] ❌ Failed to sync version:', err);

@@ -1,8 +1,7 @@
 // src/services/hkStockService.ts
 import type { MarketItem } from "../types";
-import { smartNetworkGet } from "./network.ts";
 import { logger } from "../utils/logger.ts";
-import { chunkArray, decodeGbk } from "../utils/symbolHelper.ts";
+import { TencentBaseService } from "./tencentBaseService.ts";
 
 /**
  * 腾讯港股行情 API 字段索引
@@ -22,8 +21,10 @@ const F = {
   TURNOVER:    37, // 成交额 (元/港币)
 } as const;
 
-export class HKStockService {
-  private readonly CHUNK_SIZE = 40;
+export class HKStockService extends TencentBaseService {
+  public readonly serviceName = "HKStockService";
+  public readonly currency = "HKD" as const;
+  public readonly assetType = "HK_STOCK" as const;
 
   /**
    * 规范化港股代码，例如 "00700" -> "hk00700", "700" -> "hk00700", "hk00700" -> "hk00700"
@@ -41,20 +42,6 @@ export class HKStockService {
       return `hk${clean.padStart(5, "0")}`;
     }
     return `hk${clean}`;
-  }
-
-  async fetchQuotes(
-    codes: string[],
-    options: { mode: "proxy" | "direct"; proxyUrl?: string } = { mode: "direct" }
-  ): Promise<MarketItem[]> {
-    if (!codes.length) { return []; }
-
-    const normalizedCodes = codes.map((c) => this.normalizeCode(c));
-    const chunks = chunkArray(normalizedCodes, this.CHUNK_SIZE);
-
-    const chunkPromises = chunks.map((batch) => this.fetchBatch(batch, options));
-    const results = await Promise.all(chunkPromises);
-    return results.flat();
   }
 
   public parseResponse(text: string): MarketItem[] {
@@ -78,29 +65,10 @@ export class HKStockService {
       const open      = parseFloat(f[F.OPEN])       || 0;
       const high      = parseFloat(f[F.HIGH])       || 0;
       const low       = parseFloat(f[F.LOW])        || 0;
-      let changeAmt   = parseFloat(f[F.CHANGE_AMT]) || 0;
-      let changePct   = parseFloat(f[F.CHANGE_PCT]) || 0;
+      const rawChangeAmt = parseFloat(f[F.CHANGE_AMT]) || 0;
+      const rawChangePct = parseFloat(f[F.CHANGE_PCT]) || 0;
 
-      // 三角数学自洽校验与容错自愈
-      if (price > 0 && prevClose > 0) {
-        const expectedAmt = price - prevClose;
-        const expectedPct = (expectedAmt / prevClose) * 100;
-        const amtDiff = Math.abs(changeAmt - expectedAmt);
-        const pctDiff = Math.abs(changePct - expectedPct);
-
-        const isAmtBroken = !changeAmt || (amtDiff > 0.08 && (Math.abs(expectedAmt) > 0 ? amtDiff / Math.abs(expectedAmt) > 0.15 : true));
-        const isPctBroken = !changePct || (pctDiff > 1.5);
-
-        if (isAmtBroken || isPctBroken) {
-          if (changeAmt !== 0 || changePct !== 0) {
-            logger.warn(
-              `[HKStockService] 标的 ${fullCode} 字段疑似位移或数据不自洽 (现价:${price}, 昨收:${prevClose}, 报文涨跌额:${changeAmt}), 已自动使用价格自愈`
-            );
-          }
-          changeAmt = Number(expectedAmt.toFixed(price < 1 ? 4 : 2));
-          changePct = Number(expectedPct.toFixed(2));
-        }
-      }
+      const { changeAmt, changePct } = this.selfHealChange(price, prevClose, rawChangeAmt, rawChangePct, fullCode);
 
       const volume    = parseFloat(f[F.VOLUME_SHARES]) || 0;
       const turnover  = parseFloat(f[F.TURNOVER])   || 0;
@@ -109,7 +77,7 @@ export class HKStockService {
         id:           fullCode,
         name:         f[F.NAME] || f[F.CODE],
         symbol:       f[F.CODE] || fullCode.replace(/^hk/i, ""),
-        type:         "HK_STOCK",
+        type:         this.assetType,
         price,
         changePercent: changePct,
         open,
@@ -119,31 +87,10 @@ export class HKStockService {
         change:   changeAmt,
         volume,
         turnover,
-        currency: "HKD",
+        currency: this.currency,
       });
     }
 
     return items;
-  }
-
-  private async fetchBatch(
-    batch: string[],
-    options: { mode: "proxy" | "direct"; proxyUrl?: string }
-  ): Promise<MarketItem[]> {
-    if (!batch.length) { return []; }
-    const url = `https://qt.gtimg.cn/q=${batch.join(",")}`;
-
-    try {
-      const response = await smartNetworkGet<ArrayBuffer>(url, options, {
-        responseType: "arraybuffer",
-        timeout: 5000,
-      });
-
-      const text = decodeGbk(response.data);
-      return this.parseResponse(text);
-    } catch (err) {
-      logger.error("[HKStockService] fetchBatch error:", err);
-      return [];
-    }
   }
 }

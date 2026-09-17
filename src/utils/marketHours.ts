@@ -1,4 +1,5 @@
 // src/utils/marketHours.ts
+import { logger } from "./logger.ts";
 
 /**
  * 专为时区安全设计的交易时段检测（完全解耦本地时区/WSL/远程环境）
@@ -150,24 +151,49 @@ export const US_HOLIDAYS = new Set<string>([
 
   // 2026
   "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25", "2026-06-19",
-  "2026-07-03", "2026-11-26", "2026-12-25",
+  "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
 
   // 2027
   "2027-01-01", "2027-01-18", "2027-02-15", "2027-03-26", "2027-05-31", "2027-06-18",
   "2027-07-05", "2027-09-06", "2027-11-25", "2027-12-24",
 ]);
 
+export const MAX_COVERED_HOLIDAY_YEAR = 2027;
+
+let hasWarnedHolidayExpiry = false;
+
+/**
+ * 节假日日历覆盖有效性护栏：
+ * 若当前年份超出已知日历上限（2027），输出告警提示开发者更新休市日历，防止静默失效
+ */
+export function checkHolidayCoverage(date: Date = new Date()): boolean {
+  const year = date.getFullYear();
+  if (year > MAX_COVERED_HOLIDAY_YEAR) {
+    if (!hasWarnedHolidayExpiry) {
+      hasWarnedHolidayExpiry = true;
+      logger.warn(
+        `[marketHours] 当前年份 (${year}) 超出已知节假日日历上限 (${MAX_COVERED_HOLIDAY_YEAR})，法定节假日休市判定可能失真，请及时更新休市日历。`
+      );
+    }
+    return false;
+  }
+  return true;
+}
+
 export function isAShareHoliday(date: Date = new Date()): boolean {
+  checkHolidayCoverage(date);
   const dateStr = getZonedDateString(beijingDateFormatter, date);
   return A_SHARE_HOLIDAYS.has(dateStr);
 }
 
 export function isHKHoliday(date: Date = new Date()): boolean {
+  checkHolidayCoverage(date);
   const dateStr = getZonedDateString(beijingDateFormatter, date);
   return HK_HOLIDAYS.has(dateStr);
 }
 
 export function isUSHoliday(date: Date = new Date()): boolean {
+  checkHolidayCoverage(date);
   const dateStr = getZonedDateString(newYorkDateFormatter, date);
   return US_HOLIDAYS.has(dateStr);
 }
@@ -223,6 +249,7 @@ export function isUSMarketOpen(date?: Date): boolean {
 }
 
 export interface AdaptiveThrottleOptions {
+  fundEnabled?: boolean;
   aShareEnabled: boolean;
   hkStockEnabled: boolean;
   usStockEnabled: boolean;
@@ -249,6 +276,7 @@ export interface AdaptiveThrottleResult {
  */
 export function evaluateAdaptiveThrottle(options: AdaptiveThrottleOptions): AdaptiveThrottleResult {
   const {
+    fundEnabled = true,
     aShareEnabled,
     hkStockEnabled,
     usStockEnabled,
@@ -268,10 +296,11 @@ export function evaluateAdaptiveThrottle(options: AdaptiveThrottleOptions): Adap
 
   const nextCount = options.consecutiveUnchangedCount + 1;
 
+  const fundOpen = fundEnabled && isAShareMarketOpen(now);
   const aOpen = aShareEnabled && isAShareMarketOpen(now);
   const hkOpen = hkStockEnabled && isHKMarketOpen(now);
   const usOpen = usStockEnabled && isUSMarketOpen(now);
-  const anyStockMarketOpen = aOpen || hkOpen || usOpen;
+  const anyStockMarketOpen = fundOpen || aOpen || hkOpen || usOpen;
 
   if (anyStockMarketOpen) {
     if (nextCount >= 20) {

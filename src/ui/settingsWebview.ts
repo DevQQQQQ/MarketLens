@@ -4,9 +4,15 @@ import { getSettingsWebviewHtml } from "./settingsHtml";
 import { logger } from "../utils/logger";
 import { MarketItem } from "../types";
 import { normalizeSymbolKey, resolveItemDisplayName } from "../utils/symbolHelper";
-import { readConfig } from "../utils/config";
+import {
+  readConfig,
+  persistProxyToAllSections,
+  persistStatusBarToAllSections,
+  persistSectionStatusBarAndRecompute,
+  MARKET_SECTIONS,
+} from "../utils/config";
 
-const ALLOWED_CONFIG_KEYS = new Set([
+const GLOBAL_CONFIG_KEYS = [
   "proxyPort",
   "proxyUrl",
   "autoRefresh",
@@ -15,37 +21,27 @@ const ALLOWED_CONFIG_KEYS = new Set([
   "colorNeutral",
   "colorScheme",
   "statusBar.enabled",
-  "fund.enabled",
-  "fund.statusBar",
-  "fund.stopOnMarketClosed",
-  "fund.networkMode",
-  "fund.proxyUrl",
-  "aShare.enabled",
-  "aShare.statusBar",
-  "aShare.stopOnMarketClosed",
-  "aShare.networkMode",
-  "aShare.proxyUrl",
-  "hkStock.enabled",
-  "hkStock.statusBar",
-  "hkStock.stopOnMarketClosed",
-  "hkStock.networkMode",
-  "hkStock.proxyUrl",
-  "usStock.enabled",
-  "usStock.statusBar",
-  "usStock.stopOnMarketClosed",
-  "usStock.networkMode",
-  "usStock.proxyUrl",
-  "binance.enabled",
-  "binance.statusBar",
-  "binance.networkMode",
-  "binance.proxyUrl",
-  "alpha.enabled",
-  "alpha.statusBar",
-  "alpha.networkMode",
-  "alpha.proxyUrl",
   "alerts",
   "alertNotificationMode",
   "alertCooldownMinutes",
+] as const;
+
+const SECTION_PROPERTIES = [
+  "enabled",
+  "statusBar",
+  "networkMode",
+  "proxyUrl",
+  "stopOnMarketClosed",
+] as const;
+
+/**
+ * 允许由 Webview 设置面板前端发起变更的配置项白名单，严格从 MARKET_SECTIONS 唯一真相源派生
+ */
+export const ALLOWED_CONFIG_KEYS = new Set<string>([
+  ...GLOBAL_CONFIG_KEYS,
+  ...MARKET_SECTIONS.flatMap((sec) =>
+    SECTION_PROPERTIES.map((prop) => `${sec}.${prop}`)
+  ),
 ]);
 
 function isAllowedUrl(urlString: string): boolean {
@@ -142,15 +138,7 @@ export class SettingsWebviewPanel {
                   const port = parseInt(message.value, 10);
                   if (port >= 1 && port <= 65535) {
                     const pUrl = `http://127.0.0.1:${port}`;
-                    await Promise.all([
-                      cfg.update("proxyPort", port, vscode.ConfigurationTarget.Global),
-                      cfg.update("proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                      cfg.update("aShare.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                      cfg.update("hkStock.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                      cfg.update("usStock.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                      cfg.update("binance.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                      cfg.update("alpha.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                    ]);
+                    await persistProxyToAllSections(cfg, pUrl, port);
                     this.sendCurrentSettings();
                   }
                 } else if (message.key === "proxyUrl") {
@@ -161,26 +149,11 @@ export class SettingsWebviewPanel {
                     const u = new URL(pUrl);
                     if (u.port) port = parseInt(u.port, 10);
                   } catch (_) {}
-                  await Promise.all([
-                    cfg.update("proxyPort", port, vscode.ConfigurationTarget.Global),
-                    cfg.update("proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                    cfg.update("aShare.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                    cfg.update("hkStock.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                    cfg.update("usStock.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                    cfg.update("binance.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                    cfg.update("alpha.proxyUrl", pUrl, vscode.ConfigurationTarget.Global),
-                  ]);
+                  await persistProxyToAllSections(cfg, pUrl, port);
                   this.sendCurrentSettings();
                 } else if (message.key === "statusBar.enabled") {
                   const enableAll = !!message.value;
-                  await Promise.all([
-                    cfg.update("statusBar.enabled", enableAll, vscode.ConfigurationTarget.Global),
-                    cfg.update("aShare.statusBar", enableAll, vscode.ConfigurationTarget.Global),
-                    cfg.update("hkStock.statusBar", enableAll, vscode.ConfigurationTarget.Global),
-                    cfg.update("usStock.statusBar", enableAll, vscode.ConfigurationTarget.Global),
-                    cfg.update("binance.statusBar", enableAll, vscode.ConfigurationTarget.Global),
-                    cfg.update("alpha.statusBar", enableAll, vscode.ConfigurationTarget.Global),
-                  ]);
+                  await persistStatusBarToAllSections(cfg, enableAll);
                   this.sendCurrentSettings();
                 } else if (
                   message.key === "fund.statusBar" ||
@@ -190,17 +163,7 @@ export class SettingsWebviewPanel {
                   message.key === "binance.statusBar" ||
                   message.key === "alpha.statusBar"
                 ) {
-                  await cfg.update(message.key, message.value, vscode.ConfigurationTarget.Global);
-
-                  const fundSB    = message.key === "fund.statusBar"    ? !!message.value : (cfg.get<boolean>("fund.statusBar") ?? true);
-                  const aShareSB  = message.key === "aShare.statusBar"  ? !!message.value : (cfg.get<boolean>("aShare.statusBar") ?? true);
-                  const hkStockSB = message.key === "hkStock.statusBar" ? !!message.value : (cfg.get<boolean>("hkStock.statusBar") ?? true);
-                  const usStockSB = message.key === "usStock.statusBar" ? !!message.value : (cfg.get<boolean>("usStock.statusBar") ?? true);
-                  const binanceSB = message.key === "binance.statusBar" ? !!message.value : (cfg.get<boolean>("binance.statusBar") ?? true);
-                  const alphaSB   = message.key === "alpha.statusBar"   ? !!message.value : (cfg.get<boolean>("alpha.statusBar") ?? true);
-
-                  const anyActive = fundSB || aShareSB || hkStockSB || usStockSB || binanceSB || alphaSB;
-                  await cfg.update("statusBar.enabled", anyActive, vscode.ConfigurationTarget.Global);
+                  await persistSectionStatusBarAndRecompute(cfg, message.key, !!message.value);
                   this.sendCurrentSettings();
                 } else if (message.key === "colorScheme") {
                   await Promise.all([
@@ -223,16 +186,7 @@ export class SettingsWebviewPanel {
             const url = port ? `http://127.0.0.1:${port}` : null;
             if (port && url) {
               const cfg = vscode.workspace.getConfiguration("marketlens");
-              await Promise.all([
-                cfg.update("proxyPort", port, vscode.ConfigurationTarget.Global),
-                cfg.update("proxyUrl", url, vscode.ConfigurationTarget.Global),
-                cfg.update("fund.proxyUrl", url, vscode.ConfigurationTarget.Global),
-                cfg.update("aShare.proxyUrl", url, vscode.ConfigurationTarget.Global),
-                cfg.update("hkStock.proxyUrl", url, vscode.ConfigurationTarget.Global),
-                cfg.update("usStock.proxyUrl", url, vscode.ConfigurationTarget.Global),
-                cfg.update("binance.proxyUrl", url, vscode.ConfigurationTarget.Global),
-                cfg.update("alpha.proxyUrl", url, vscode.ConfigurationTarget.Global),
-              ]);
+              await persistProxyToAllSections(cfg, url, port);
               try {
                 SettingsWebviewPanel.onDidUpdateSetting?.("proxyPort", port);
                 SettingsWebviewPanel.onDidUpdateSetting?.("proxyUrl", url);
@@ -337,42 +291,7 @@ export class SettingsWebviewPanel {
     await cfg.update("watchlist", undefined, vscode.ConfigurationTarget.Global);
     await cfg.update("alerts", undefined, vscode.ConfigurationTarget.Global);
 
-    const keys = [
-      "alerts",
-      "alertNotificationMode",
-      "alertCooldownMinutes",
-      "proxyPort",
-      "proxyUrl",
-      "autoRefresh",
-      "refreshInterval",
-      "maskMode",
-      "colorNeutral",
-      "colorScheme",
-      "statusBar.enabled",
-      "aShare.enabled",
-      "aShare.statusBar",
-      "aShare.networkMode",
-      "aShare.proxyUrl",
-      "aShare.stopOnMarketClosed",
-      "hkStock.enabled",
-      "hkStock.statusBar",
-      "hkStock.networkMode",
-      "hkStock.proxyUrl",
-      "hkStock.stopOnMarketClosed",
-      "usStock.enabled",
-      "usStock.statusBar",
-      "usStock.networkMode",
-      "usStock.proxyUrl",
-      "usStock.stopOnMarketClosed",
-      "binance.enabled",
-      "binance.statusBar",
-      "binance.networkMode",
-      "binance.proxyUrl",
-      "alpha.enabled",
-      "alpha.statusBar",
-      "alpha.networkMode",
-      "alpha.proxyUrl",
-    ];
+    const keys = Array.from(ALLOWED_CONFIG_KEYS);
 
     for (const k of keys) {
       await cfg.update(k, undefined, vscode.ConfigurationTarget.Global);
@@ -406,6 +325,7 @@ export class SettingsWebviewPanel {
     for (const group of Object.keys(currentWatchlist)) {
       emptyWatchlist[group] = [];
     }
+    if (!emptyWatchlist["基金"]) emptyWatchlist["基金"] = [];
     if (!emptyWatchlist["A股"]) emptyWatchlist["A股"] = [];
     if (!emptyWatchlist["港股"]) emptyWatchlist["港股"] = [];
     if (!emptyWatchlist["美股"]) emptyWatchlist["美股"] = [];
@@ -449,30 +369,24 @@ export class SettingsWebviewPanel {
       fundStatusBar:            config.fund.statusBar,
       fundStopOnMarketClosed:   config.fund.stopOnMarketClosed,
       fundNetworkMode:          config.fund.networkMode,
-      fundProxyUrl:             config.fund.proxyUrl || proxyUrl,
       aShareEnabled:            config.aShare.enabled,
       aShareStatusBar:          config.aShare.statusBar,
       aShareStopOnMarketClosed: config.aShare.stopOnMarketClosed,
       aShareNetworkMode:        config.aShare.networkMode,
-      aShareProxyUrl:           config.aShare.proxyUrl || proxyUrl,
       hkStockEnabled:           config.hkStock.enabled,
       hkStockStatusBar:         config.hkStock.statusBar,
       hkStockStopOnMarketClosed: config.hkStock.stopOnMarketClosed,
       hkStockNetworkMode:       config.hkStock.networkMode,
-      hkStockProxyUrl:          config.hkStock.proxyUrl || proxyUrl,
       usStockEnabled:           config.usStock.enabled,
       usStockStatusBar:         config.usStock.statusBar,
       usStockStopOnMarketClosed: config.usStock.stopOnMarketClosed,
       usStockNetworkMode:       config.usStock.networkMode,
-      usStockProxyUrl:          config.usStock.proxyUrl || proxyUrl,
       binanceEnabled:           config.binance.enabled,
       binanceStatusBar:         config.binance.statusBar,
       binanceNetworkMode:       config.binance.networkMode,
-      binanceProxyUrl:          config.binance.proxyUrl || proxyUrl,
       alphaEnabled:             config.alpha.enabled,
       alphaStatusBar:           config.alpha.statusBar,
       alphaNetworkMode:         config.alpha.networkMode,
-      alphaProxyUrl:            config.alpha.proxyUrl || proxyUrl,
       alerts:                   config.alerts || {},
       alertNotificationMode:    config.alertNotificationMode,
       alertCooldownMinutes:     config.alertCooldownMinutes,

@@ -1,8 +1,8 @@
 // src/services/aShareService.ts
 import type { MarketItem } from "../types";
-import { smartNetworkGet } from "./network.ts";
 import { logger } from "../utils/logger.ts";
-import { chunkArray, decodeGbk, normalizeAShareCode } from "../utils/symbolHelper.ts";
+import { normalizeAShareCode } from "../utils/symbolHelper.ts";
+import { TencentBaseService } from "./tencentBaseService.ts";
 
 /**
  * 腾讯行情 API 字段索引（经验证）
@@ -22,10 +22,12 @@ const F = {
   TURNOVER:     37,  // 成交额（万元）
 } as const;
 
-export class AShareService {
-  private readonly CHUNK_SIZE = 40;
+export class AShareService extends TencentBaseService {
+  public readonly serviceName = "AShareService";
+  public readonly currency = "CNY" as const;
+  public readonly assetType = "A_SHARE" as const;
 
-  private normalizeCode(raw: string): string {
+  public normalizeCode(raw: string): string {
     // 统一复用 symbolHelper 的交易所推断规则，确保与输入解析端（inputValidator）绝对一致
     return normalizeAShareCode(raw);
   }
@@ -46,45 +48,26 @@ export class AShareService {
         continue;
       }
 
-      const price     = parseFloat(f[F.PRICE])       || 0;
-      const prevClose = parseFloat(f[F.PREV_CLOSE])  || 0;
-      const open      = parseFloat(f[F.OPEN])        || 0;
-      const high      = parseFloat(f[F.HIGH])        || 0;
-      const low       = parseFloat(f[F.LOW])         || 0;
-      let changeAmt   = parseFloat(f[F.CHANGE_AMT])  || 0;
-      let changePct   = parseFloat(f[F.CHANGE_PCT])  || 0;
+      const price     = parseFloat(f[F.PRICE])      || 0;
+      const prevClose = parseFloat(f[F.PREV_CLOSE]) || 0;
+      const open      = parseFloat(f[F.OPEN])       || 0;
+      const high      = parseFloat(f[F.HIGH])       || 0;
+      const low       = parseFloat(f[F.LOW])        || 0;
+      const rawChangeAmt = parseFloat(f[F.CHANGE_AMT]) || 0;
+      const rawChangePct = parseFloat(f[F.CHANGE_PCT]) || 0;
 
-      // 三角数学自洽校验与容错自愈：防止上游字段插入位移或偶发空值导致静默错值
-      if (price > 0 && prevClose > 0) {
-        const expectedAmt = price - prevClose;
-        const expectedPct = (expectedAmt / prevClose) * 100;
-        const amtDiff = Math.abs(changeAmt - expectedAmt);
-        const pctDiff = Math.abs(changePct - expectedPct);
+      const { changeAmt, changePct } = this.selfHealChange(price, prevClose, rawChangeAmt, rawChangePct, fullCode);
 
-        const isAmtBroken = !changeAmt || (amtDiff > 0.08 && (Math.abs(expectedAmt) > 0 ? amtDiff / Math.abs(expectedAmt) > 0.15 : true));
-        const isPctBroken = !changePct || (pctDiff > 1.5);
-
-        if (isAmtBroken || isPctBroken) {
-          if (changeAmt !== 0 || changePct !== 0) {
-            logger.warn(
-              `[AShareService] 标的 ${fullCode} 字段疑似位移或数据不自洽 (现价:${price}, 昨收:${prevClose}, 报文涨跌额:${changeAmt}), 已自动使用价格自愈`
-            );
-          }
-          changeAmt = Number(expectedAmt.toFixed(price < 1 ? 4 : 2));
-          changePct = Number(expectedPct.toFixed(2));
-        }
-      }
-
-      // 成交量：手 × 100 = 股数
+      // 成交量：腾讯接口 A 股单位为“手”，转换为“股”
       const volume    = (parseFloat(f[F.VOLUME_LOTS]) || 0) * 100;
-      // 成交额：万元 → 元
-      const turnover  = (parseFloat(f[F.TURNOVER])   || 0) * 10000;
+      // 成交额：腾讯接口 A 股单位为“万元”，转换为“元”
+      const turnover  = (parseFloat(f[F.TURNOVER])    || 0) * 10000;
 
       items.push({
         id:           fullCode,
         name:         f[F.NAME] || f[F.CODE],
         symbol:       f[F.CODE],
-        type:         "A_SHARE",
+        type:         this.assetType,
         price,
         changePercent: changePct,
         open,
@@ -94,45 +77,10 @@ export class AShareService {
         change:   changeAmt,
         volume,
         turnover,
-        currency: "CNY",
+        currency: this.currency,
       });
     }
 
     return items;
-  }
-
-  async fetchQuotes(
-    codes: string[],
-    options: { mode: "proxy" | "direct"; proxyUrl?: string } = { mode: "direct" }
-  ): Promise<MarketItem[]> {
-    if (!codes.length) { return []; }
-
-    const normalizedCodes = codes.map((c) => this.normalizeCode(c));
-    const chunks = chunkArray(normalizedCodes, this.CHUNK_SIZE);
-
-    const chunkPromises = chunks.map((batch) => this.fetchBatch(batch, options));
-    const results = await Promise.all(chunkPromises);
-    return results.flat();
-  }
-
-  private async fetchBatch(
-    batch: string[],
-    options: { mode: "proxy" | "direct"; proxyUrl?: string }
-  ): Promise<MarketItem[]> {
-    if (!batch.length) { return []; }
-    const url = `https://qt.gtimg.cn/q=${batch.join(",")}`;
-
-    try {
-      const response = await smartNetworkGet<ArrayBuffer>(url, options, {
-        responseType: "arraybuffer",
-        timeout: 5000,
-      });
-
-      const text = decodeGbk(response.data);
-      return this.parseResponse(text);
-    } catch (err) {
-      logger.error("[AShareService] fetchBatch error:", err);
-      return [];
-    }
   }
 }

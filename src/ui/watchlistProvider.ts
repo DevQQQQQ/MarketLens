@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig, GroupSortMode } from "../types";
-import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme } from "../utils/symbolHelper";
+import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme, ASSET_TYPE_TO_SECTION_MAP } from "../utils/symbolHelper";
 import { isDisplayMasked } from "../utils/maskState";
 
 /**
@@ -273,13 +273,6 @@ export class WatchlistProvider
 
   public onBatchReorderCallback?: (
     items: Array<{ sourceGroup: string; sourceSymbol: string }>,
-    targetGroup: string,
-    targetSymbol?: string
-  ) => void | Promise<void>;
-
-  public onReorderCallback?: (
-    sourceGroup: string,
-    sourceSymbol: string,
     targetGroup: string,
     targetSymbol?: string
   ) => void | Promise<void>;
@@ -588,21 +581,9 @@ export class WatchlistProvider
 
     const isSectionEnabled = (type?: string): boolean => {
       if (!type) return true; // 中立空组不归属任何单一边界板块，默认保持展示
-      switch (type) {
-        case "A_SHARE":
-          return enabledSections.aShare !== false;
-        case "HK_STOCK":
-          return enabledSections.hkStock !== false;
-        case "US_STOCK":
-          return enabledSections.usStock !== false;
-        case "CRYPTO":
-          return enabledSections.binance !== false;
-        case "ALPHA_TOKEN":
-        case "BSC_TOKEN":
-          return enabledSections.alpha !== false;
-        default:
-          return true;
-      }
+      const sec = ASSET_TYPE_TO_SECTION_MAP[type as keyof typeof ASSET_TYPE_TO_SECTION_MAP];
+      if (!sec) return true;
+      return enabledSections[sec] !== false;
     };
 
     const isGroupEnabled = (groupName: string, items?: WatchConfigItem[]): boolean => {
@@ -697,6 +678,9 @@ export class WatchlistProvider
   }
 
   applyQuotes(quotes: MarketItem[]): void {
+    if (!quotes || quotes.length === 0) {
+      return;
+    }
     for (const q of quotes) {
       const candidates = [
         normalizeSymbolKey(q.symbol),

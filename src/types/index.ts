@@ -2,6 +2,9 @@
 
 export type AssetType = "A_SHARE" | "HK_STOCK" | "US_STOCK" | "CRYPTO" | "BSC_TOKEN" | "ALPHA_TOKEN";
 
+export type MarketSection = "fund" | "aShare" | "hkStock" | "usStock" | "binance" | "alpha";
+export type MarketType = MarketSection;
+
 /** 统一行情数据结构 */
 export interface MarketItem {
   id: string;

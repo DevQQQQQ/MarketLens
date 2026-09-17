@@ -9,6 +9,7 @@ import { CryptoNetworkOptions } from "./network";
 import { logger } from "../utils/logger";
 
 export interface PollTargets {
+  funds?: string[];
   aShares?: string[];
   hkStocks?: string[];
   usStocks?: string[];
@@ -41,7 +42,7 @@ export class MarketManager {
   }
 
   /**
-   * 统一调度方法：并行抓取 A股、港股、美股、主流加密货币、Alpha 链上代币五类资产并聚合输出
+   * 统一调度方法：并行抓取 基金、A股、港股、美股、主流加密货币、Alpha 链上代币六类资产并聚合输出
    */
   async pollAll(
     targets: PollTargets,
@@ -49,11 +50,13 @@ export class MarketManager {
     hkStockOptions: CryptoNetworkOptions = { mode: "direct" },
     usStockOptions: CryptoNetworkOptions = { mode: "direct" },
     binanceOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" },
-    alphaOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" }
+    alphaOptions: CryptoNetworkOptions = { mode: "proxy", proxyUrl: "http://127.0.0.1:10808" },
+    fundOptions: CryptoNetworkOptions = { mode: "direct" }
   ): Promise<MarketItem[]> {
-    const { aShares = [], hkStocks = [], usStocks = [], cryptos = [], bscTokens = [] } = targets;
+    const { funds = [], aShares = [], hkStocks = [], usStocks = [], cryptos = [], bscTokens = [] } = targets;
 
-    const [aShareRes, hkRes, usRes, cryptoRes, bscRes] = await Promise.allSettled([
+    const [fundRes, aShareRes, hkRes, usRes, cryptoRes, bscRes] = await Promise.allSettled([
+      funds.length ? this.aShareService.fetchQuotes(funds, fundOptions) : Promise.resolve([]),
       aShares.length ? this.aShareService.fetchQuotes(aShares, aShareOptions) : Promise.resolve([]),
       hkStocks.length ? this.hkStockService.fetchQuotes(hkStocks, hkStockOptions) : Promise.resolve([]),
       usStocks.length ? this.usStockService.fetchQuotes(usStocks, usStockOptions) : Promise.resolve([]),
@@ -62,6 +65,12 @@ export class MarketManager {
     ]);
 
     const aggregated: MarketItem[] = [];
+
+    if (fundRes.status === "fulfilled") {
+      aggregated.push(...fundRes.value);
+    } else {
+      logger.error("[MarketManager] Fund fetch failed:", fundRes.reason);
+    }
 
     if (aShareRes.status === "fulfilled") {
       aggregated.push(...aShareRes.value);

@@ -20,3 +20,7 @@ scripts/**
 *.log
 *.txt
 _verify_*
+package-lock.json
+AUDIT*
+.gitattributes
+tsconfig.test.json
