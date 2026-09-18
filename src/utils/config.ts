@@ -2,7 +2,7 @@
 import type * as vscodeTypes from "vscode";
 import type { MarketLensConfig } from "../types/index.ts";
 import { computeStatusBarEnabled } from "./symbolHelper.ts";
-import { getSystemProxyUrl } from "../services/network.ts";
+import { getSystemProxyUrl, DEFAULT_PROXY_PORT } from "../services/network.ts";
 
 let vscodeModule: typeof vscodeTypes | undefined;
 try {
@@ -45,7 +45,7 @@ export function readConfig(): MarketLensConfig {
   const isCustomPort = portInspect?.globalValue !== undefined || portInspect?.workspaceValue !== undefined;
   const isCustomUrl = urlInspect?.globalValue !== undefined || urlInspect?.workspaceValue !== undefined;
 
-  let proxyPort = cfg.get<number>("proxyPort", 10808);
+  let proxyPort = cfg.get<number>("proxyPort", DEFAULT_PROXY_PORT);
   let globalProxy = cfg.get<string>("proxyUrl") || `http://127.0.0.1:${proxyPort}`;
 
   // 若用户未主动在 VS Code 设置中显式配置自定义代理端口与地址，自适应读取操作系统代理环境变量
@@ -86,6 +86,7 @@ export function readConfig(): MarketLensConfig {
     statusBar: {
       enabled: isStatusBarEnabled,
     },
+    autoCollapseClosedGroups: cfg.get<boolean>("autoCollapseClosedGroups", true),
 
     fund,
     aShare,

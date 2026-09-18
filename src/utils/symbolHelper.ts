@@ -1,5 +1,6 @@
 // src/utils/symbolHelper.ts
 import type { AssetType, MarketSection } from "../types";
+import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen } from "./marketHours.ts";
 export type { AssetType, MarketSection };
 
 /**
@@ -480,12 +481,57 @@ export function extractTargetsFromWatchlist(
 
 export interface StatusBarQuotesOptions {
   statusBarEnabled?: boolean;
+  autoCollapseClosedGroups?: boolean;
+  now?: Date;
   fund?: { enabled?: boolean; statusBar?: boolean };
   aShare?: { enabled?: boolean; statusBar?: boolean };
   hkStock?: { enabled?: boolean; statusBar?: boolean };
   usStock?: { enabled?: boolean; statusBar?: boolean };
   binance?: { enabled?: boolean; statusBar?: boolean };
   alpha?: { enabled?: boolean; statusBar?: boolean };
+}
+
+/**
+ * 判断指定标的所属的市场当前是否处于休市状态（用于休市折叠与状态栏过滤）
+ */
+export function isItemMarketClosed(
+  item: { symbol?: string; type?: string },
+  groupName: string = "",
+  now: Date = new Date()
+): boolean {
+  if (groupName.includes("基金") || /\betf\b/i.test(groupName)) {
+    return !isAShareMarketOpen(now);
+  }
+  const assetType = resolveItemAssetType(item, groupName);
+  if (assetType === "A_SHARE") {
+    return !isAShareMarketOpen(now);
+  }
+  if (assetType === "HK_STOCK") {
+    return !isHKMarketOpen(now);
+  }
+  if (assetType === "US_STOCK") {
+    return !isUSMarketOpen(now);
+  }
+  return false;
+}
+
+/**
+ * 判断指定分组当前是否处于全休市状态
+ * - 组内有标的时：仅当组内所有有效标的对应的市场均已休市，才判定为休市
+ * - 组内无标的时：按组名关键词推导所属市场判定
+ */
+export function isGroupMarketClosed(
+  groupName: string,
+  items?: Array<{ symbol?: string; type?: string }>,
+  now: Date = new Date()
+): boolean {
+  if (items && items.length > 0) {
+    const validItems = items.filter((it) => it && it.symbol);
+    if (validItems.length > 0) {
+      return validItems.every((item) => isItemMarketClosed(item, groupName, now));
+    }
+  }
+  return isItemMarketClosed({ symbol: "" }, groupName, now);
 }
 
 /**
@@ -595,6 +641,13 @@ export function extractStatusBarQuotes<
         }
       } else if (!isSectionActive(assetType)) {
         continue;
+      }
+
+      if (options.autoCollapseClosedGroups) {
+        const checkNow = options.now || new Date();
+        if (isItemMarketClosed(item, groupName, checkNow)) {
+          continue;
+        }
       }
 
       seenSymbols.add(symKey);

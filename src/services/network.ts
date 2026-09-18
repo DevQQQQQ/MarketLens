@@ -14,12 +14,16 @@ export interface ProxyStatus {
   cooldownRemainingSeconds: number;
 }
 
+/** 默认本地代理端口与地址常量 */
+export const DEFAULT_PROXY_PORT = 10808;
+export const DEFAULT_PROXY_URL = `http://127.0.0.1:${DEFAULT_PROXY_PORT}`;
+
 /**
  * 主流代理客户端 HTTP/Mixed 端口探测池
  * 优先探测 HTTP 监听端口，确保与 Axios HTTP 代理协议无缝匹配
  */
 export const COMMON_PROXY_PORTS = [
-  10808, // v2rayN (Socks/Mixed)
+  DEFAULT_PROXY_PORT, // v2rayN (Socks/Mixed)
   10809, // v2rayN (HTTP)
   7890,  // Clash / Clash Verge / ClashX (HTTP/Socks Mixed)
   7897,  // Mihomo Party (HTTP/Socks Mixed)
@@ -118,12 +122,12 @@ export function normalizeProxyUrlString(rawStr: string): string {
     const u = new URL(str);
     const host = u.hostname || "127.0.0.1";
     const isLocal = host === "127.0.0.1" || host === "localhost";
-    const defaultPort = isLocal ? "10808" : "8080";
+    const defaultPort = isLocal ? String(DEFAULT_PROXY_PORT) : "8080";
     const port = u.port || defaultPort;
     const authPart = u.username ? `${u.username}${u.password ? `:${u.password}` : ""}@` : "";
     return `http://${authPart}${host}:${port}`;
   } catch {
-    return "http://127.0.0.1:10808";
+    return DEFAULT_PROXY_URL;
   }
 }
 
@@ -144,7 +148,7 @@ export function validateAndNormalizeProxyUrl(rawUrl: string | undefined): string
     if (sysProxy) {
       return sysProxy;
     }
-    return "http://127.0.0.1:10808";
+    return DEFAULT_PROXY_URL;
   }
   return normalizeProxyUrlString(rawUrl);
 }
@@ -159,7 +163,7 @@ export function parseProxy(proxyUrlStr: string) {
     const url = new URL(normalized);
     const host = url.hostname || "127.0.0.1";
     const isLocal = host === "127.0.0.1" || host === "localhost";
-    const defaultPort = isLocal ? 10808 : 8080;
+    const defaultPort = isLocal ? DEFAULT_PROXY_PORT : 8080;
     const port = parseInt(url.port, 10) || defaultPort;
 
     const res: {
@@ -182,7 +186,7 @@ export function parseProxy(proxyUrlStr: string) {
 
     return res;
   } catch {
-    return { host: "127.0.0.1", port: 10808, protocol: "http" };
+    return { host: "127.0.0.1", port: DEFAULT_PROXY_PORT, protocol: "http" };
   }
 }
 
@@ -200,7 +204,10 @@ function testLocalPort(port: number): Promise<boolean> {
         timeout: 600,
       },
       (res) => {
-        resolve(res.statusCode !== undefined && res.statusCode < 500);
+        resolve(
+          res.statusCode !== undefined &&
+            ((res.statusCode >= 200 && res.statusCode < 400) || res.statusCode === 407)
+        );
       }
     );
     req.on("error", () => resolve(false));
@@ -269,7 +276,7 @@ export async function smartNetworkGet<T = any>(
   // 优先使用用户输入的代理或缺省/缓存代理（若 proxyUrl 为空，validateAndNormalizeProxyUrl 已自适应返回 cachedWorkingPort/系统代理/10808）
   const rawProxy = parseProxy(proxyUrl || "");
   const targetProxy =
-    cachedWorkingPort && (rawProxy.host === "127.0.0.1" || rawProxy.host === "localhost") && rawProxy.port === 10808
+    cachedWorkingPort && !proxyUrl && (rawProxy.host === "127.0.0.1" || rawProxy.host === "localhost") && rawProxy.port === DEFAULT_PROXY_PORT
       ? { ...rawProxy, port: cachedWorkingPort }
       : rawProxy;
 

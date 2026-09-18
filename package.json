@@ -1,8 +1,8 @@
 {
 	"name": "marketlens",
-	"displayName": "MarketLens - 全球行情看板 (A股/港股/美股/基金ETF/加密货币)",
-	"description": "实时查看A股/港股/美股/基金ETF/主流加密货币与链上DEX资产，支持快捷键隐藏、简洁模式及网络代理。专为开发者打造的摸鱼盯盘与股票看板效率工具，支持自定义自选列表、价格预警、底部状态栏轮播。",
-	"version": "1.1.7",
+	"displayName": "MarketLens - 全球行情看板 (A股/港股/美股/加密货币/基金)",
+	"description": "实时查看A股/港股/美股/加密货币/基金与链上DEX资产，支持快捷键隐藏、简洁模式及网络代理。专为开发者打造的摸鱼盯盘与股票看板效率工具，支持自定义自选列表、价格预警、底部状态栏轮播。",
+	"version": "1.1.8",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
@@ -64,7 +64,7 @@
 			"activitybar": [
 				{
 					"id": "marketlens-container",
-					"title": "MarketLens",
+					"title": "%viewsContainers.title%",
 					"icon": "assets/icon.svg"
 				}
 			]
@@ -73,7 +73,7 @@
 			"marketlens-container": [
 				{
 					"id": "marketlens.watchlist",
-					"name": "MarketLens",
+					"name": "%views.watchlist.name%",
 					"icon": "assets/icon.svg"
 				}
 			]
@@ -81,77 +81,77 @@
 		"commands": [
 			{
 				"command": "marketlens.refresh",
-				"title": "立即刷新全部",
+				"title": "%command.refresh%",
 				"icon": "$(refresh)"
 			},
 			{
 				"command": "marketlens.refreshGroup",
-				"title": "刷新当前分类",
+				"title": "%command.refreshGroup%",
 				"icon": "$(refresh)"
 			},
 			{
 				"command": "marketlens.sortGroup",
-				"title": "排序方式",
+				"title": "%command.sortGroup%",
 				"icon": "$(list-ordered)"
 			},
 			{
 				"command": "marketlens.toggleMask",
-				"title": "切换简洁展示模式",
+				"title": "%command.toggleMask%",
 				"icon": "$(eye)"
 			},
 			{
 				"command": "marketlens.toggleBossKey",
-				"title": "专注模式（一键隐藏/恢复）",
+				"title": "%command.toggleBossKey%",
 				"icon": "$(eye-closed)"
 			},
 			{
 				"command": "marketlens.addItem",
-				"title": "添加自选",
+				"title": "%command.addItem%",
 				"icon": "$(add)"
 			},
 			{
 				"command": "marketlens.removeItem",
-				"title": "删除",
+				"title": "%command.removeItem%",
 				"icon": "$(trash)"
 			},
 			{
 				"command": "marketlens.toggleColorNeutral",
-				"title": "切换颜色脱敏模式",
+				"title": "%command.toggleColorNeutral%",
 				"icon": "$(paintcan)"
 			},
 			{
 				"command": "marketlens.openKeybindings",
-				"title": "自定义快捷键",
+				"title": "%command.openKeybindings%",
 				"icon": "$(keyboard)"
 			},
 			{
 				"command": "marketlens.openSettings",
-				"title": "设置",
+				"title": "%command.openSettings%",
 				"icon": "$(gear)"
 			},
 			{
 				"command": "marketlens.restoreDefaults",
-				"title": "恢复出厂默认设置",
+				"title": "%command.restoreDefaults%",
 				"icon": "$(discard)"
 			},
 			{
 				"command": "marketlens.clearWatchlist",
-				"title": "一键清空自选标的",
+				"title": "%command.clearWatchlist%",
 				"icon": "$(clear-all)"
 			},
 			{
 				"command": "marketlens.pinToTop",
-				"title": "置顶",
+				"title": "%command.pinToTop%",
 				"icon": "$(pin)"
 			},
 			{
 				"command": "marketlens.setAlert",
-				"title": "设置价格预警...",
+				"title": "%command.setAlert%",
 				"icon": "$(bell)"
 			},
 			{
 				"command": "marketlens.showLogs",
-				"title": "查看运行日志",
+				"title": "%command.showLogs%",
 				"icon": "$(output)"
 			}
 		],
@@ -308,18 +308,24 @@
 					"order": 6,
 					"description": "【全局】全部标的参与底部轮播：是否在底部状态栏轮播展示行情（关闭后彻底隐藏底部状态栏）"
 				},
+				"marketlens.autoCollapseClosedGroups": {
+					"type": "boolean",
+					"default": true,
+					"order": 7,
+					"description": "【休市管理】休市时左侧看板分组自动折叠收起，且底部状态栏停止轮播休市标的（全休市时状态栏静默隐藏）"
+				},
 				"marketlens.proxyPort": {
 					"type": "integer",
 					"minimum": 1,
 					"maximum": 65535,
 					"default": 10808,
-					"order": 7,
+					"order": 8,
 					"description": "【全局】本地代理端口号（1-65535，默认 10808。未配置时自适应读取系统 HTTP_PROXY / HTTPS_PROXY / ALL_PROXY 或常用代理端口）"
 				},
 				"marketlens.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
-					"order": 8,
+					"order": 9,
 					"description": "【全局】统一代理地址（仅支持 HTTP / 混合代理。未配置时自动感知系统代理环境变量或自动探测工作代理）"
 				},
 				"marketlens.fund.enabled": {
@@ -582,38 +588,13 @@
 								"type": "A_SHARE"
 							},
 							{
-								"symbol": "sz002385",
-								"name": "大北农",
-								"type": "A_SHARE"
-							},
-							{
 								"symbol": "sh603686",
 								"name": "福龙马",
 								"type": "A_SHARE"
 							},
 							{
-								"symbol": "sz002867",
-								"name": "周大生",
-								"type": "A_SHARE"
-							},
-							{
 								"symbol": "sh603031",
 								"name": "安孚科技",
-								"type": "A_SHARE"
-							},
-							{
-								"symbol": "sz000977",
-								"name": "浪潮信息",
-								"type": "A_SHARE"
-							},
-							{
-								"symbol": "sh688545",
-								"name": "兴福电子",
-								"type": "A_SHARE"
-							},
-							{
-								"symbol": "sh688584",
-								"name": "上海合晶",
 								"type": "A_SHARE"
 							},
 							{
@@ -631,11 +612,6 @@
 							{
 								"symbol": "hk00700",
 								"name": "腾讯控股",
-								"type": "HK_STOCK"
-							},
-							{
-								"symbol": "hk03690",
-								"name": "美团-W",
 								"type": "HK_STOCK"
 							},
 							{
@@ -679,26 +655,6 @@
 								"symbol": "usTSM",
 								"name": "台积电",
 								"type": "US_STOCK"
-							},
-							{
-								"symbol": "usAMD",
-								"name": "超威半导体",
-								"type": "US_STOCK"
-							},
-							{
-								"symbol": "usAVGO",
-								"name": "博通",
-								"type": "US_STOCK"
-							},
-							{
-								"symbol": "usARM",
-								"name": "安谋",
-								"type": "US_STOCK"
-							},
-							{
-								"symbol": "usIXIC",
-								"name": "纳斯达克综合指数",
-								"type": "US_STOCK"
 							}
 						],
 						"Binance": [
@@ -713,11 +669,6 @@
 								"type": "CRYPTO"
 							},
 							{
-								"symbol": "ETCUSDT",
-								"name": "ETC/USDT",
-								"type": "CRYPTO"
-							},
-							{
 								"symbol": "SOLUSDT",
 								"name": "SOL/USDT",
 								"type": "CRYPTO"
@@ -728,38 +679,8 @@
 								"type": "CRYPTO"
 							},
 							{
-								"symbol": "ARBUSDT",
-								"name": "ARB/USDT",
-								"type": "CRYPTO"
-							},
-							{
-								"symbol": "OPUSDT",
-								"name": "OP/USDT",
-								"type": "CRYPTO"
-							},
-							{
-								"symbol": "APTUSDT",
-								"name": "APT/USDT",
-								"type": "CRYPTO"
-							},
-							{
 								"symbol": "DOGEUSDT",
 								"name": "DOGE/USDT",
-								"type": "CRYPTO"
-							},
-							{
-								"symbol": "ORDIUSDT",
-								"name": "ORDI/USDT",
-								"type": "CRYPTO"
-							},
-							{
-								"symbol": "ASTERUSDT",
-								"name": "ASTER/USDT",
-								"type": "CRYPTO"
-							},
-							{
-								"symbol": "LUNAUSDT",
-								"name": "LUNA/USDT",
 								"type": "CRYPTO"
 							}
 						],
@@ -767,6 +688,11 @@
 							{
 								"symbol": "0x73b84f7e3901f39fc29f3704a03126d317ab4444",
 								"name": "PUP",
+								"type": "ALPHA_TOKEN"
+							},
+							{
+								"symbol": "0xa49fa5e8106e2d6d6a69e78df9b6a20aab9c4444",
+								"name": "DONKEY",
 								"type": "ALPHA_TOKEN"
 							},
 							{
@@ -780,48 +706,8 @@
 								"type": "ALPHA_TOKEN"
 							},
 							{
-								"symbol": "0x3ac8e2c113d5d7824ac6ebe82a3c60b1b9d64444",
-								"name": "客服小何",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0x0a43fc31a73013089df59194872ecae4cae14444",
-								"name": "4",
-								"type": "ALPHA_TOKEN"
-							},
-							{
 								"symbol": "0x1a1e69f1e6182e2f8b9e8987e83c016ac9444444",
 								"name": "人生K线",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0x4fa7c69a7b69f8bc48233024d546bc299d6b03bf",
-								"name": "quq",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0x02e75d28a8aa2a0033b8cf866fcf0bb0e1ee4444",
-								"name": "PALU",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0xa49fa5e8106e2d6d6a69e78df9b6a20aab9c4444",
-								"name": "DONKEY",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0xe1e93e92c0c2aff2dc4d7d4a8b250d973cad4444",
-								"name": "恶俗企鹅",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0xc51a9250795c0186a6fb4a7d20a90330651e4444",
-								"name": "我踏马来了",
-								"type": "ALPHA_TOKEN"
-							},
-							{
-								"symbol": "0x28cd1fc7b6eebf46b59001ff49c9d14f8bb97777",
-								"name": "翻身币",
 								"type": "ALPHA_TOKEN"
 							}
 						]
@@ -862,8 +748,8 @@
 	},
 	"scripts": {
 		"sync-version": "node scripts/sync-version.js",
+		"sync-readme": "node scripts/sync-readme-en.js",
 		"vscode:prepublish": "npm run build",
-		"prebuild": "node scripts/sync-version.js",
 		"build": "node esbuild.js --production",
 		"dev": "node esbuild.js --watch",
 		"prepackage": "node scripts/sync-version.js --clean-all",

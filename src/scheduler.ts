@@ -127,14 +127,19 @@ export class RefreshScheduler implements vscode.Disposable {
     const activeWatchlist = customWatchlist || currentCfg.watchlist;
     this.treeProvider.setAlerts(currentCfg.alerts || {});
     pruneQuoteCache(activeWatchlist, this.quoteCache);
-    this.treeProvider.buildTree(activeWatchlist, this.quoteCache, {
-      fund: currentCfg.fund?.enabled ?? true,
-      aShare: currentCfg.aShare.enabled,
-      hkStock: currentCfg.hkStock.enabled,
-      usStock: currentCfg.usStock.enabled,
-      binance: currentCfg.binance.enabled,
-      alpha: currentCfg.alpha.enabled,
-    });
+    this.treeProvider.buildTree(
+      activeWatchlist,
+      this.quoteCache,
+      {
+        fund: currentCfg.fund?.enabled ?? true,
+        aShare: currentCfg.aShare.enabled,
+        hkStock: currentCfg.hkStock.enabled,
+        usStock: currentCfg.usStock.enabled,
+        binance: currentCfg.binance.enabled,
+        alpha: currentCfg.alpha.enabled,
+      },
+      currentCfg.autoCollapseClosedGroups ?? true
+    );
   }
 
   /**
@@ -146,6 +151,7 @@ export class RefreshScheduler implements vscode.Disposable {
     const config = currentConfig || readConfig();
     const statusBarQuotes = extractStatusBarQuotes(config.watchlist, this.quoteCache, {
       statusBarEnabled: config.statusBar?.enabled,
+      autoCollapseClosedGroups: config.autoCollapseClosedGroups ?? true,
       fund: config.fund,
       aShare: config.aShare,
       hkStock: config.hkStock,

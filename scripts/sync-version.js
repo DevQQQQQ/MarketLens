@@ -65,7 +65,7 @@ function syncVersion(rootDir = path.resolve(__dirname, '..'), cleanAll = false, 
 		if (!hasCurrentVersion) {
 			const unreleasedPattern = /^## \[(?:Unreleased|unreleased)\]/m;
 			if (unreleasedPattern.test(original)) {
-				const today = new Date().toISOString().slice(0, 10);
+				const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
 				const replacement = `## [Unreleased]\n\n## [${version}] - ${today}`;
 				const updated = original.replace(unreleasedPattern, replacement);
 				if (updated !== original) {

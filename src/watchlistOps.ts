@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { StockItem } from "./ui/watchlistProvider";
+import { StockItem, WatchlistProvider } from "./ui/watchlistProvider";
 import { MarketItem, PriceAlertItem } from "./types";
 import { isSameSymbol, normalizeSymbolKey, resolveItemDisplayName, batchReorderWatchlist, ReorderItemDescriptor } from "./utils/symbolHelper";
 import { validateAndParseInput } from "./utils/inputValidator";
@@ -9,15 +9,18 @@ import { SettingsWebviewPanel } from "./ui/settingsWebview";
 export interface WatchlistOpsContext {
   quoteCache: Map<string, MarketItem>;
   rebuildTree: (customWatchlist?: Record<string, any[]>) => void;
+  treeProvider?: WatchlistProvider;
 }
 
 export class WatchlistOps {
   private readonly quoteCache: Map<string, MarketItem>;
   private readonly rebuildTree: (customWatchlist?: Record<string, any[]>) => void;
+  private readonly treeProvider?: WatchlistProvider;
 
   constructor(context: WatchlistOpsContext) {
     this.quoteCache = context.quoteCache;
     this.rebuildTree = context.rebuildTree;
+    this.treeProvider = context.treeProvider;
   }
 
   /**
@@ -357,22 +360,67 @@ export class WatchlistOps {
         .getConfiguration("marketlens")
         .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
 
-      // 清理缓存（支持原生代码、小写、无符号及 normalizeSymbolKey 规范化键）
-      if (targetSymbol) {
-        this.quoteCache.delete(targetSymbol.toLowerCase());
-        this.quoteCache.delete(targetSymbol.toLowerCase().replace(/[\._\-]/g, ""));
-        const normTarget = normalizeSymbolKey(targetSymbol);
-        if (normTarget) { this.quoteCache.delete(normTarget); }
+      // 检查该标的是否在其它分组中依然保留；若全部分组均已不存在该标的，同步清理孤儿预警规则与缓存
+      let stillExists = false;
+      for (const items of Object.values(watchlist)) {
+        if (items && items.some((it) => matchItem(it))) {
+          stillExists = true;
+          break;
+        }
       }
-      if (node?.item?.id) {
-        this.quoteCache.delete(node.item.id.toLowerCase());
-        const normId = normalizeSymbolKey(node.item.id);
-        if (normId) { this.quoteCache.delete(normId); }
-      }
-      if (node?.item?.symbol) {
-        this.quoteCache.delete(node.item.symbol.toLowerCase());
-        const normSym = normalizeSymbolKey(node.item.symbol);
-        if (normSym) { this.quoteCache.delete(normSym); }
+
+      if (!stillExists) {
+        // 清理孤儿预警规则
+        const currentAlerts = { ...(cfg.alerts || {}) };
+        const keysToDelete = new Set<string>();
+        if (targetSymbol) {
+          keysToDelete.add(targetSymbol);
+          keysToDelete.add(targetSymbol.toLowerCase());
+          keysToDelete.add(normalizeSymbolKey(targetSymbol));
+        }
+        if (node?.item?.id) {
+          keysToDelete.add(node.item.id);
+          keysToDelete.add(node.item.id.toLowerCase());
+          keysToDelete.add(normalizeSymbolKey(node.item.id));
+        }
+        if (node?.item?.symbol) {
+          keysToDelete.add(node.item.symbol);
+          keysToDelete.add(node.item.symbol.toLowerCase());
+          keysToDelete.add(normalizeSymbolKey(node.item.symbol));
+        }
+
+        let alertModified = false;
+        for (const k of keysToDelete) {
+          if (k && k in currentAlerts) {
+            delete currentAlerts[k];
+            alertModified = true;
+          }
+        }
+
+        if (alertModified) {
+          await vscode.workspace
+            .getConfiguration("marketlens")
+            .update("alerts", currentAlerts, vscode.ConfigurationTarget.Global);
+          this.treeProvider?.setAlerts(currentAlerts);
+        }
+
+        // 清理缓存（支持原生代码、小写、无符号及 normalizeSymbolKey 规范化键）
+        if (targetSymbol) {
+          this.quoteCache.delete(targetSymbol.toLowerCase());
+          this.quoteCache.delete(targetSymbol.toLowerCase().replace(/[\._\-]/g, ""));
+          const normTarget = normalizeSymbolKey(targetSymbol);
+          if (normTarget) { this.quoteCache.delete(normTarget); }
+        }
+        if (node?.item?.id) {
+          this.quoteCache.delete(node.item.id.toLowerCase());
+          const normId = normalizeSymbolKey(node.item.id);
+          if (normId) { this.quoteCache.delete(normId); }
+        }
+        if (node?.item?.symbol) {
+          this.quoteCache.delete(node.item.symbol.toLowerCase());
+          const normSym = normalizeSymbolKey(node.item.symbol);
+          if (normSym) { this.quoteCache.delete(normSym); }
+        }
       }
 
       // 重新构建树视图

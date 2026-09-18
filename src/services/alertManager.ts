@@ -12,14 +12,20 @@ try {
 function readConfigFallback(): Partial<MarketLensConfig> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { readConfig } = require("../utils/config");
+    const { readConfig } = require("../utils/config.ts");
     return readConfig();
   } catch (_) {
-    return {
-      alerts: {},
-      alertNotificationMode: "both",
-      alertCooldownMinutes: 15,
-    };
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { readConfig } = require("../utils/config");
+      return readConfig();
+    } catch (_) {
+      return {
+        alerts: {},
+        alertNotificationMode: "both",
+        alertCooldownMinutes: 15,
+      };
+    }
   }
 }
 

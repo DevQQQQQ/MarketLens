@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { detectAvailablePort, getCachedWorkingPort, resetProxyCache } from "../services/network";
+import { detectAvailablePort, getCachedWorkingPort, resetProxyCache, DEFAULT_PROXY_PORT, DEFAULT_PROXY_URL } from "../services/network";
 import { getSettingsWebviewHtml } from "./settingsHtml";
 import { logger } from "../utils/logger";
 import { MarketItem } from "../types";
@@ -21,18 +21,20 @@ const GLOBAL_CONFIG_KEYS = [
   "colorNeutral",
   "colorScheme",
   "statusBar.enabled",
+  "autoCollapseClosedGroups",
   "alerts",
   "alertNotificationMode",
   "alertCooldownMinutes",
 ] as const;
 
-const SECTION_PROPERTIES = [
+const COMMON_SECTION_PROPERTIES = [
   "enabled",
   "statusBar",
   "networkMode",
   "proxyUrl",
-  "stopOnMarketClosed",
 ] as const;
+
+const MARKET_CLOSING_SECTIONS = ["fund", "aShare", "hkStock", "usStock"] as const;
 
 /**
  * 允许由 Webview 设置面板前端发起变更的配置项白名单，严格从 MARKET_SECTIONS 唯一真相源派生
@@ -40,8 +42,9 @@ const SECTION_PROPERTIES = [
 export const ALLOWED_CONFIG_KEYS = new Set<string>([
   ...GLOBAL_CONFIG_KEYS,
   ...MARKET_SECTIONS.flatMap((sec) =>
-    SECTION_PROPERTIES.map((prop) => `${sec}.${prop}`)
+    COMMON_SECTION_PROPERTIES.map((prop) => `${sec}.${prop}`)
   ),
+  ...MARKET_CLOSING_SECTIONS.map((sec) => `${sec}.stopOnMarketClosed`),
 ]);
 
 function isAllowedUrl(urlString: string): boolean {
@@ -137,14 +140,20 @@ export class SettingsWebviewPanel {
                   resetProxyCache();
                   const port = parseInt(message.value, 10);
                   if (port >= 1 && port <= 65535) {
-                    const pUrl = `http://127.0.0.1:${port}`;
+                    const currentUrl = cfg.get<string>("proxyUrl") || DEFAULT_PROXY_URL;
+                    let pUrl = `http://127.0.0.1:${port}`;
+                    try {
+                      const parsed = new URL(currentUrl);
+                      parsed.port = String(port);
+                      pUrl = parsed.toString().replace(/\/$/, "");
+                    } catch (_) {}
                     await persistProxyToAllSections(cfg, pUrl, port);
                     this.sendCurrentSettings();
                   }
                 } else if (message.key === "proxyUrl") {
                   resetProxyCache();
-                  const pUrl = message.value || "http://127.0.0.1:10808";
-                  let port = 10808;
+                  const pUrl = message.value || DEFAULT_PROXY_URL;
+                  let port = DEFAULT_PROXY_PORT;
                   try {
                     const u = new URL(pUrl);
                     if (u.port) port = parseInt(u.port, 10);
@@ -272,7 +281,7 @@ export class SettingsWebviewPanel {
 
   public static async restoreDefaults(): Promise<boolean> {
     const confirm = await vscode.window.showWarningMessage(
-      "确定要将 MarketLens 恢复为出厂默认设置吗？\n所有自选标的列表将重置为初始预设（基金5只/A股10只/港股6只/美股9只/Binance12个/Alpha12个），所有价格预警规则与自定义配置也将全部还原。",
+      "确定要将 MarketLens 恢复为出厂默认设置吗？\n所有自选标的列表将重置为初始预设（基金/A股/港股/美股/Binance/Alpha 各精选 5 只，共 30 个标的），所有价格预警规则与自定义配置也将全部还原。",
       { modal: true },
       "确认恢复",
       "取消"
@@ -349,10 +358,10 @@ export class SettingsWebviewPanel {
   private _getCurrentSettingsData() {
     const config = readConfig();
 
-    // 解析当前生效的统一代理端口与地址
+    // 解析当前生效的统一代理端口与地址（优先尊重用户配置的自定义代理地址）
     const cachedPort = getCachedWorkingPort();
-    const effectivePort = cachedPort || config.proxyPort || 10808;
-    const proxyUrl = cachedPort ? `http://127.0.0.1:${cachedPort}` : config.proxyUrl;
+    const effectivePort = config.proxyPort || cachedPort || DEFAULT_PROXY_PORT;
+    const proxyUrl = config.proxyUrl || (cachedPort ? `http://127.0.0.1:${cachedPort}` : DEFAULT_PROXY_URL);
 
     return {
       autoRefresh:              config.autoRefresh,
@@ -363,6 +372,7 @@ export class SettingsWebviewPanel {
       // 总控开关直接采用全局 statusBar.enabled 语义（未显式关闭即为开启）。
       // 此前用五个板块 statusBar 的逻辑与判定，会导致「只关掉 A 股轮播」时总控开关被误显示为关闭。
       statusBarEnabled:         config.statusBar.enabled,
+      autoCollapseClosedGroups: config.autoCollapseClosedGroups ?? true,
       proxyPort:                effectivePort,
       proxyUrl:                 proxyUrl,
       fundEnabled:              config.fund.enabled,

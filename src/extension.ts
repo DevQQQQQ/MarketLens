@@ -4,7 +4,7 @@ import { MarketManager } from "./services/marketManager";
 import { WatchlistProvider } from "./ui/watchlistProvider";
 import { StatusBar } from "./ui/statusBar";
 import { logger } from "./utils/logger";
-import { resetProxyCache } from "./services/network";
+import { resetProxyCache, DEFAULT_PROXY_PORT, DEFAULT_PROXY_URL } from "./services/network";
 import {
   readConfig,
   getWatchlistFingerprint,
@@ -32,6 +32,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const marketManager = new MarketManager();
   const treeProvider  = new WatchlistProvider(config.maskMode, config.colorNeutral, config.colorScheme);
+  treeProvider.setAutoCollapseClosedGroups(config.autoCollapseClosedGroups ?? true);
   const statusBar     = new StatusBar({
     maskMode:     config.maskMode,
     colorNeutral: config.colorNeutral,
@@ -63,6 +64,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const watchlistOps = new WatchlistOps({
     quoteCache: scheduler.quoteCache,
     rebuildTree: (customWatchlist) => scheduler.rebuildTree(customWatchlist),
+    treeProvider,
   });
 
   // 恢复持久化的各分组排序模式并监听变更
@@ -134,6 +136,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     if (key === "statusBar.enabled") {
       applyStatusBarToAllSections(config, !!value);
+    } else if (key === "autoCollapseClosedGroups") {
+      config.autoCollapseClosedGroups = !!value;
+      treeProvider.setAutoCollapseClosedGroups(config.autoCollapseClosedGroups);
     } else if (key === "maskMode") {
       config.maskMode = !!value;
       statusBar.setMaskMode(config.maskMode);
@@ -157,11 +162,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     } else if (key === "refreshInterval") {
       config.refreshInterval = Number(value) || 5000;
     } else if (key === "proxyPort") {
-      const port = Number(value) || 10808;
-      applyProxyToAllSections(config, `http://127.0.0.1:${port}`, port);
+      const port = Number(value) || DEFAULT_PROXY_PORT;
+      const currentUrl = config.proxyUrl || DEFAULT_PROXY_URL;
+      let pUrl = `http://127.0.0.1:${port}`;
+      try {
+        const parsed = new URL(currentUrl);
+        parsed.port = String(port);
+        pUrl = parsed.toString().replace(/\/$/, "");
+      } catch (_) {}
+      applyProxyToAllSections(config, pUrl, port);
       resetProxyCache();
     } else if (key === "proxyUrl") {
-      const pUrl = String(value || "http://127.0.0.1:10808");
+      const pUrl = String(value || DEFAULT_PROXY_URL);
       applyProxyToAllSections(config, pUrl);
       resetProxyCache();
     } else if (key === "alertNotificationMode") {
@@ -185,11 +197,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }
 
+    lastWebviewUpdateTimestamp = Date.now();
     scheduler.updateStatusBar(config);
     scheduler.rebuildTree(undefined, config);
   };
 
   // 配置变更监听（50ms 去抖动与状态聚合，杜绝连续修改多项配置时的重复重排与时序抖动）
+  let lastWebviewUpdateTimestamp = 0;
   let pendingAffectsNetwork = false;
   let pendingAffectsColorScheme = false;
   let pendingAffectsColorNeutral = false;
@@ -223,18 +237,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeProvider.setColorNeutral(config.colorNeutral);
     treeProvider.setColorScheme(config.colorScheme);
     treeProvider.setAlerts(config.alerts || {});
+    treeProvider.setAutoCollapseClosedGroups(config.autoCollapseClosedGroups ?? true);
     statusBar.setMaskMode(config.maskMode);
     statusBar.setColorNeutral(config.colorNeutral);
     statusBar.setColorScheme(config.colorScheme);
 
+    const isFromRecentWebview = Date.now() - lastWebviewUpdateTimestamp < 400;
+    const watchlistContentChanged = oldFingerprint !== getWatchlistFingerprint(config.watchlist);
+
     scheduler.updateStatusBar(config);
-    scheduler.rebuildTree(undefined, config);
+    // 若变更由 Webview 面板发起且自选内容未变动，onDidUpdateSetting 已执行即时内存重排，跳过落盘二次重复 rebuild
+    if (!isFromRecentWebview || watchlistContentChanged) {
+      scheduler.rebuildTree(undefined, config);
+    }
     SettingsWebviewPanel.syncSettings();
 
     // 仅在网络/轮询周期/板块开关变动，或自选列表发生实际标的增删时才重启定时器并触发网络拉取
     // 纯 UI 配置（如 maskMode, colorNeutral, statusBar）或同组拖拽、跨组移动完全不重复打全量网络（标的报价已在内存缓存中）
-    const watchlistContentChanged = oldFingerprint !== getWatchlistFingerprint(config.watchlist);
-
     if (hadNetworkChange || watchlistContentChanged) {
       resetProxyCache();
       marketManager.clearInvalidCache();

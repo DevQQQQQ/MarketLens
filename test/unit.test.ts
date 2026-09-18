@@ -6,7 +6,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 
-import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT } from "../src/utils/symbolHelper.ts";
+import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT, isItemMarketClosed, isGroupMarketClosed } from "../src/utils/symbolHelper.ts";
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling, MAX_COVERED_HOLIDAY_YEAR, checkHolidayCoverage, US_HOLIDAYS } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache, getSystemProxyUrl } from "../src/services/network.ts";
@@ -2314,6 +2314,166 @@ test("NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT - 前端 Webview 注入脚本与后端 
     );
   }
 });
+
+test("scripts/sync-readme-en - Markdown 语法隔离保护与专有名词映射测试", async () => {
+  const req = createRequire(import.meta.url);
+  const { computeHash, protectMarkdown, restoreMarkdown, GLOSSARY_MAP, syncReadmeEn } = req("../scripts/sync-readme-en.js");
+
+  // 1. 哈希计算一致性
+  const hash1 = computeHash("hello world");
+  const hash2 = computeHash("hello world");
+  const hash3 = computeHash("hello world 2");
+  assert.strictEqual(hash1, hash2, "相同内容哈希值应严格相等");
+  assert.notStrictEqual(hash1, hash3, "不同内容哈希值不应相等");
+
+  // 2. Markdown 占位保护与还原（代码块、内联代码、HTML标签、图片徽章、链接URL）
+  const sampleMarkdown = [
+    "# Title",
+    "<p align=\"center\"><img src=\"icon.png\"></p>",
+    "Use `npm test` to run tests.",
+    "```typescript",
+    "const a = 1;",
+    "```",
+    "Visit [GitHub](https://github.com/DevQQQQQ/MarketLens).",
+    "![Badge](https://img.shields.io/badge/1-2)",
+  ].join("\n");
+
+  const { processed, tokens } = protectMarkdown(sampleMarkdown);
+  assert.strictEqual(tokens.length >= 5, true, "应识别并提取至少 5 个受保护的 Markdown 占位符");
+  assert.strictEqual(processed.includes("https://github.com/DevQQQQQ/MarketLens"), false, "URL应被占位符替换保护");
+  assert.strictEqual(processed.includes("const a = 1;"), false, "代码块内容应被占位符替换保护");
+
+  const restored = restoreMarkdown(processed, tokens);
+  assert.strictEqual(restored, sampleMarkdown, "还原后内容应与原 Markdown 100% 字节无损匹配");
+
+  // 3. 专有名词映射字典覆盖校验
+  let testText = "支持老板键一键隐藏，提供摸鱼模式和颜色脱敏，具备活跃集修剪与六合一全能行情。";
+  for (const [pattern, replacement] of GLOSSARY_MAP) {
+    testText = testText.replace(pattern, replacement);
+  }
+  assert.strictEqual(testText.includes("Boss Key"), true, "老板键应映射为 Boss Key");
+  assert.strictEqual(testText.includes("Active-Set Pruning"), true, "活跃集修剪应映射为 Active-Set Pruning");
+  assert.strictEqual(testText.includes("6-in-1 Unified Market Coverage"), true, "六合一全能行情应映射为 6-in-1 Unified Market Coverage");
+
+  // 4. 沙盒隔离环境下的同步与幂等性测试（杜绝真实仓库写盘副作用）
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "marketlens-readme-sync-"));
+  try {
+    fs.mkdirSync(path.join(tempDir, "scripts"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, "README.md"),
+      "# MarketLens\nhttps://img.shields.io/badge/Release-v1.1.7-blue.svg\n",
+      "utf8"
+    );
+    fs.writeFileSync(
+      path.join(tempDir, "README.en.md"),
+      "# MarketLens EN\nhttps://img.shields.io/badge/Release-v1.1.6-blue.svg\n",
+      "utf8"
+    );
+
+    const syncResult = await syncReadmeEn(tempDir, false);
+    assert.strictEqual(syncResult, true, "沙盒目录下同步应返回 true");
+
+    const updatedEn = fs.readFileSync(path.join(tempDir, "README.en.md"), "utf8");
+    assert.strictEqual(
+      updatedEn.includes("Release-v1.1.7-blue.svg"),
+      true,
+      "README.en.md 徽章应与 README.md 同步更新为 v1.1.7"
+    );
+    assert.strictEqual(
+      fs.existsSync(path.join(tempDir, "scripts", ".readme-hash")),
+      true,
+      ".readme-hash 应在沙盒 scripts 目录下生成"
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("autoCollapseClosedGroups - 休市自动折叠与状态栏过滤纯算法测试", () => {
+  // 1. 测试时间基准
+  // 周日 10:00 UTC (北京时间 18:00 周日，A股/港股/美股全休市，加密资产全天开盘)
+  const sundayClosed = new Date("2026-09-20T10:00:00.000Z");
+  // 周五 02:00 UTC (北京时间 10:00 周五，A股/基金盘中正常开盘)
+  const fridayOpen = new Date("2026-09-18T02:00:00.000Z");
+
+  // 2. isItemMarketClosed 标的级休市判定
+  assert.strictEqual(isItemMarketClosed({ symbol: "sh600519", type: "A_SHARE" }, "A股", sundayClosed), true);
+  assert.strictEqual(isItemMarketClosed({ symbol: "hk00700", type: "HK_STOCK" }, "港股", sundayClosed), true);
+  assert.strictEqual(isItemMarketClosed({ symbol: "usAAPL", type: "US_STOCK" }, "美股", sundayClosed), true);
+  assert.strictEqual(isItemMarketClosed({ symbol: "510300" }, "场内基金", sundayClosed), true);
+  // 加密资产 24/7 永不休市
+  assert.strictEqual(isItemMarketClosed({ symbol: "BTCUSDT", type: "CRYPTO" }, "Binance", sundayClosed), false);
+  assert.strictEqual(isItemMarketClosed({ symbol: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", type: "ALPHA_TOKEN" }, "Alpha", sundayClosed), false);
+
+  // 开盘时段
+  assert.strictEqual(isItemMarketClosed({ symbol: "sh600519", type: "A_SHARE" }, "A股", fridayOpen), false);
+  assert.strictEqual(isItemMarketClosed({ symbol: "510300" }, "场内基金", fridayOpen), false);
+
+  // 3. isGroupMarketClosed 分组级休市判定
+  assert.strictEqual(
+    isGroupMarketClosed("🇨🇳 A股", [{ symbol: "sh600519", type: "A_SHARE" }, { symbol: "sz000001", type: "A_SHARE" }], sundayClosed),
+    true
+  );
+  assert.strictEqual(
+    isGroupMarketClosed("📁 场内基金", [{ symbol: "510300" }], sundayClosed),
+    true
+  );
+  assert.strictEqual(
+    isGroupMarketClosed("💰 Binance", [{ symbol: "BTCUSDT", type: "CRYPTO" }], sundayClosed),
+    false
+  );
+  // 混杂资产分组：只要组内包含 24/7 开盘标的，该组即不判定为全休市
+  assert.strictEqual(
+    isGroupMarketClosed("自选", [{ symbol: "sh600519", type: "A_SHARE" }, { symbol: "BTCUSDT", type: "CRYPTO" }], sundayClosed),
+    false
+  );
+  // 空组推导
+  assert.strictEqual(isGroupMarketClosed("A股", [], sundayClosed), true);
+  assert.strictEqual(isGroupMarketClosed("Binance", [], sundayClosed), false);
+
+  // 4. extractStatusBarQuotes 在 autoCollapseClosedGroups 开启时的状态栏过滤
+  const mockWatchlist = {
+    "A股": [{ symbol: "sh600519", name: "贵州茅台", type: "A_SHARE" }],
+    "场内基金": [{ symbol: "510300", name: "300ETF" }],
+    "美股": [{ symbol: "usAAPL", name: "苹果", type: "US_STOCK" }],
+    "Binance": [{ symbol: "BTCUSDT", name: "BTC", type: "CRYPTO" }],
+  };
+  const mockCache = new Map<string, any>();
+  mockCache.set("sh600519", { symbol: "sh600519", name: "贵州茅台", price: 1780, changePercent: 1.2 });
+  mockCache.set("510300", { symbol: "510300", name: "300ETF", price: 3.5, changePercent: 0.5 });
+  mockCache.set("aapl", { symbol: "usAAPL", name: "苹果", price: 220, changePercent: -0.8 });
+  mockCache.set("btcusdt", { symbol: "BTCUSDT", name: "BTC", price: 65000, changePercent: 2.5 });
+
+  // 4.1 未开启休市过滤：4 个标的全量参与轮播
+  const allQuotes = extractStatusBarQuotes(mockWatchlist, mockCache, {
+    statusBarEnabled: true,
+    autoCollapseClosedGroups: false,
+    now: sundayClosed,
+  });
+  assert.strictEqual(allQuotes.length, 4);
+
+  // 4.2 开启休市过滤：A股/基金/美股休市被自动剔除，仅保留 24/7 的 BTCUSDT
+  const filteredQuotes = extractStatusBarQuotes(mockWatchlist, mockCache, {
+    statusBarEnabled: true,
+    autoCollapseClosedGroups: true,
+    now: sundayClosed,
+  });
+  assert.strictEqual(filteredQuotes.length, 1);
+  assert.strictEqual(filteredQuotes[0].symbol, "BTCUSDT");
+
+  // 4.3 若用户仅关注 A 股与基金，且处于休市时：返回空数组（状态栏静默隐藏）
+  const aShareOnlyWatchlist = {
+    "A股": [{ symbol: "sh600519", name: "贵州茅台", type: "A_SHARE" }],
+    "场内基金": [{ symbol: "510300", name: "300ETF" }],
+  };
+  const emptyClosedQuotes = extractStatusBarQuotes(aShareOnlyWatchlist, mockCache, {
+    statusBarEnabled: true,
+    autoCollapseClosedGroups: true,
+    now: sundayClosed,
+  });
+  assert.strictEqual(emptyClosedQuotes.length, 0);
+});
+
 
 
 

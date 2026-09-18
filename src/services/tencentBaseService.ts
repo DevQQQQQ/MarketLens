@@ -88,9 +88,16 @@ export abstract class TencentBaseService {
       const amtDiff = Math.abs(changeAmt - expectedAmt);
       const pctDiff = Math.abs(changePct - expectedPct);
 
-      const isAmtBroken =
-        !changeAmt || (amtDiff > 0.08 && (Math.abs(expectedAmt) > 0 ? amtDiff / Math.abs(expectedAmt) > 0.15 : true));
-      const isPctBroken = !changePct || pctDiff > 1.5;
+      // 区分"真实 0 (平盘日)"与"字段缺失/NaN"：
+      // 平盘时 changeAmt 与 changePct 均为 0 且 expectedAmt 也为 0，属于合法行情，不误入自愈分支
+      const isAmtMissing = changeAmt === undefined || Number.isNaN(changeAmt) || !Number.isFinite(changeAmt);
+      const isPctMissing = changePct === undefined || Number.isNaN(changePct) || !Number.isFinite(changePct);
+      const isAmtDiscrepancy =
+        amtDiff > 0.08 && (Math.abs(expectedAmt) > 0 ? amtDiff / Math.abs(expectedAmt) > 0.15 : amtDiff > 0.08);
+      const isPctDiscrepancy = pctDiff > 1.5;
+
+      const isAmtBroken = isAmtMissing || isAmtDiscrepancy;
+      const isPctBroken = isPctMissing || isPctDiscrepancy;
 
       if (isAmtBroken || isPctBroken) {
         if (changeAmt !== 0 || changePct !== 0) {

@@ -73,6 +73,7 @@ export interface MarketLensConfig {
   colorNeutral: boolean;
   colorScheme: ColorScheme;
   statusBar: { enabled: boolean };
+  autoCollapseClosedGroups?: boolean;
   proxyPort?: number;
   proxyUrl?: string;
 

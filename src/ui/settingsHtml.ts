@@ -9,6 +9,7 @@ export interface SettingsFormData {
 	colorNeutral?: boolean;
 	colorScheme?: 'greenUpRedDown' | 'redUpGreenDown';
 	statusBarEnabled?: boolean;
+	autoCollapseClosedGroups?: boolean;
 	proxyPort?: number;
 	proxyUrl?: string;
 	fundEnabled?: boolean;
@@ -55,6 +56,8 @@ export function getSettingsWebviewHtml(
 		colorScheme: initialData.colorScheme || 'greenUpRedDown',
 		statusBarEnabled:
 			initialData.statusBarEnabled !== undefined ? initialData.statusBarEnabled : true,
+		autoCollapseClosedGroups:
+			initialData.autoCollapseClosedGroups !== undefined ? !!initialData.autoCollapseClosedGroups : true,
 		proxyPort: defaultPort,
 		proxyUrl: defaultProxyUrl,
 		fundEnabled: initialData.fundEnabled !== undefined ? initialData.fundEnabled : true,
@@ -444,7 +447,7 @@ export function getSettingsWebviewHtml(
         <div class="card">
           <div class="card-info">
             <div class="card-title">恢复出厂默认设置</div>
-            <div class="card-desc">将所有自选标的列表（A股、港股、美股、Binance、Alpha）恢复为首次安装时的初始预设，清空所有到价预警规则，并还原所有配置项。</div>
+            <div class="card-desc">将所有自选标的列表（基金、A股、港股、美股、Binance、Alpha）恢复为首次安装时的初始预设，清空所有到价预警规则，并还原所有配置项。</div>
           </div>
           <button class="btn-restore" id="btnRestoreDefaults">🔄 恢复默认设置</button>
         </div>
@@ -452,7 +455,7 @@ export function getSettingsWebviewHtml(
         <div class="card">
           <div class="card-info">
             <div class="card-title">一键清空自选标的</div>
-            <div class="card-desc">一键清空当前所有板块（A股、港股、美股、Binance、Alpha）的自选标的，保留板块分类，方便您从零开始自定义添加喜欢的资产。</div>
+            <div class="card-desc">一键清空当前所有板块（基金、A股、港股、美股、Binance、Alpha）的自选标的，保留板块分类，方便您从零开始自定义添加喜欢的资产。</div>
           </div>
           <button class="btn-clear" id="btnClearWatchlist">🗑️ 一键清空标的</button>
         </div>
@@ -463,6 +466,14 @@ export function getSettingsWebviewHtml(
             <div class="card-desc">控制 VS Code 底部状态栏是否展示行情轮播。关闭后底部状态栏将完全隐藏自选行情。</div>
           </div>
           <label class="switch"><input type="checkbox" id="statusBarEnabled" ${d.statusBarEnabled ? 'checked' : ''}><span class="slider"></span></label>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">🌙 休市自动折叠与停止轮播</div>
+            <div class="card-desc">当某板块处于收盘休市时（如 15:05 后的 A 股/基金、周末节假日），左侧自选分组将自动折叠收起，且底部状态栏自动剔除休市标的；当关注的全部标的均休市时，底部状态栏静默隐藏。</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="autoCollapseClosedGroups" ${d.autoCollapseClosedGroups ? 'checked' : ''}><span class="slider"></span></label>
         </div>
 
         <div class="card">
@@ -520,7 +531,7 @@ export function getSettingsWebviewHtml(
           </select>
         </div>
 
-        <div class="card" id="globalProxyCard">
+        <div class="card">
           <div class="card-info">
             <div class="card-title">本地代理端口 (仅支持 HTTP / 混合代理)</div>
             <div class="card-desc">全插件统一网络代理端口。只需输入端口号（1 ~ 65535，默认 10808，v2rayN 为 10808/10809，Clash/Verge 为 7890/7897）。未自定义时自动自适应读取系统代理环境变量 (HTTP_PROXY / HTTPS_PROXY / ALL_PROXY) 或探测可用端口。</div>
@@ -1097,7 +1108,8 @@ export function getSettingsWebviewHtml(
 
         // 恢复焦点
         if (activeKey && activeClass) {
-          var targetTr = tbody.querySelector('tr[data-key="' + activeKey + '"]');
+          var safeKey = (window.CSS && CSS.escape) ? CSS.escape(activeKey) : activeKey.replace(/["\\]/g, '\\$&');
+          var targetTr = tbody.querySelector('tr[data-key="' + safeKey + '"]');
           if (targetTr) {
             var targetInput = targetTr.querySelector('.' + activeClass);
             if (targetInput) {
@@ -1202,6 +1214,10 @@ export function getSettingsWebviewHtml(
           input.value = input.getAttribute('data-last-valid') || '10808';
           return;
         }
+        var lastValid = input.getAttribute('data-last-valid');
+        if (lastValid && String(port) === String(lastValid)) {
+          return;
+        }
         input.value = String(port);
         input.setAttribute('data-last-valid', String(port));
         sendUpdate('proxyPort', port);
@@ -1232,6 +1248,10 @@ export function getSettingsWebviewHtml(
         }
         sendUpdate('statusBar.enabled', checked);
         showToast(checked ? '✅ 已开启全部标的参与底部轮播' : '⚪ 已关闭全部标的参与底部轮播');
+      });
+      on('autoCollapseClosedGroups', 'change', function() {
+        sendUpdate('autoCollapseClosedGroups', this.checked);
+        showToast(this.checked ? '🌙 已开启休市自动折叠与停止轮播' : '⚪ 已关闭休市自动折叠与停止轮播');
       });
 
       function syncMasterSwitch() {
@@ -1430,6 +1450,7 @@ export function getSettingsWebviewHtml(
           setChecked('colorNeutral',     d.colorNeutral);
           setValue('colorScheme',        d.colorScheme || 'greenUpRedDown');
           setChecked('statusBarEnabled', d.statusBarEnabled);
+          setChecked('autoCollapseClosedGroups', d.autoCollapseClosedGroups);
           var portVal = d.proxyPort || 10808;
           setValue('globalProxyPort', portVal);
           var portInput = document.getElementById('globalProxyPort');

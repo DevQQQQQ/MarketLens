@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig, GroupSortMode } from "../types";
-import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme, ASSET_TYPE_TO_SECTION_MAP } from "../utils/symbolHelper";
+import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme, ASSET_TYPE_TO_SECTION_MAP, isGroupMarketClosed } from "../utils/symbolHelper";
 import { isDisplayMasked } from "../utils/maskState";
 
 /**
@@ -54,14 +54,20 @@ function formatLargeNumber(num: number | undefined, isVolume: boolean, currency:
   }
 }
 
-/** 分组节点（A股 / 港股 / 美股 / Binance / Alpha） */
+/** 分组节点（基金 / A股 / 港股 / 美股 / Binance / Alpha） */
 export class GroupItem extends vscode.TreeItem {
   constructor(
     public readonly groupName: string,
     public readonly children: StockItem[],
-    public sortMode: GroupSortMode = "default"
+    public sortMode: GroupSortMode = "default",
+    public isClosed: boolean = false,
+    public autoCollapse: boolean = false
   ) {
-    super(groupName, vscode.TreeItemCollapsibleState.Expanded);
+    const initialState =
+      autoCollapse && isClosed
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.Expanded;
+    super(groupName, initialState);
     this.id = `group_${groupName}`;
     this.contextValue = "groupItem";
     this.iconPath = new vscode.ThemeIcon("folder");
@@ -79,7 +85,8 @@ export class GroupItem extends vscode.TreeItem {
         : this.sortMode === "priceDesc"
         ? " · 现价"
         : "";
-    this.description = `(${this.children.length}${sortSuffix})`;
+    const closedSuffix = this.autoCollapse && this.isClosed ? " · 已休市" : "";
+    this.description = `(${this.children.length}${sortSuffix}${closedSuffix})`;
   }
 }
 
@@ -286,6 +293,7 @@ export class WatchlistProvider
   private stockMap = new Map<string, StockItem[]>();
   private alertsConfig: AlertsConfig = {};
   private groupSortModes = new Map<string, GroupSortMode>();
+  public autoCollapseClosedGroups: boolean = true;
 
   public onGroupSortModeChangeCallback?: (
     groupName: string,
@@ -297,6 +305,10 @@ export class WatchlistProvider
     private colorNeutral: boolean = false,
     private colorScheme: ColorScheme = "greenUpRedDown"
   ) {}
+
+  public setAutoCollapseClosedGroups(enabled: boolean): void {
+    this.autoCollapseClosedGroups = !!enabled;
+  }
 
   public getGroups(): GroupItem[] {
     return this.groups;
@@ -575,8 +587,12 @@ export class WatchlistProvider
       usStock: true,
       binance: true,
       alpha: true,
-    }
+    },
+    autoCollapseClosedGroups?: boolean
   ): void {
+    if (autoCollapseClosedGroups !== undefined) {
+      this.autoCollapseClosedGroups = autoCollapseClosedGroups;
+    }
     this.stockMap.clear();
 
     const isSectionEnabled = (type?: string): boolean => {
@@ -671,7 +687,8 @@ export class WatchlistProvider
       });
       const sortMode = this.getGroupSortMode(groupName);
       const sortedChildren = this.sortStockItems(children, sortMode);
-      return new GroupItem(groupName, sortedChildren, sortMode);
+      const isClosed = isGroupMarketClosed(groupName, items, new Date());
+      return new GroupItem(groupName, sortedChildren, sortMode, isClosed, this.autoCollapseClosedGroups);
     });
 
     this._onDidChangeTreeData.fire();
@@ -702,8 +719,25 @@ export class WatchlistProvider
         }
       }
     }
-    // 针对处于非 default 排序模式（如涨幅、跌幅、现价）的分组，根据最新行情重新排序
+
+    const now = new Date();
     for (const group of this.groups) {
+      if (this.autoCollapseClosedGroups) {
+        const closed = isGroupMarketClosed(
+          group.groupName,
+          group.children.map((c) => ({ symbol: c.confSymbol, type: c.item?.type })),
+          now
+        );
+        if (group.isClosed !== closed) {
+          group.isClosed = closed;
+          group.collapsibleState =
+            this.autoCollapseClosedGroups && closed
+              ? vscode.TreeItemCollapsibleState.Collapsed
+              : vscode.TreeItemCollapsibleState.Expanded;
+          group.updateDescription();
+        }
+      }
+      // 针对处于非 default 排序模式（如涨幅、跌幅、现价）的分组，根据最新行情重新排序
       if (group.sortMode && group.sortMode !== "default" && group.children.length > 1) {
         const sorted = this.sortStockItems(group.children, group.sortMode);
         group.children.length = 0;

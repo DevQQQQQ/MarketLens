@@ -5,6 +5,13 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-09-18
+
+- **🧪 单元测试体系扩充**：新增 Markdown 翻译隔离与休市自动折叠单测，全项目核心单测扩充至 **60 例**，全部 100% PASS；
+- **🌐 国际化与本地化加固**：全面规范 `package.json` 的 NLS 占位符引用，补齐 `package.nls.zh-cn.json` 与 `package.nls.json`，纯离线重构 `README.en.md` 同步脚本；
+- **🛡️ 代理与网络配置容错**：修复设置面板端口失焦导致自定义非本地代理 host 丢失的问题，加固端口探测与直连兜底逻辑；
+- **🔔 预警管理器孤儿规则清理**：自选标的删除后自动关联清理预警规则，消除配置与内存冗余。
+
 ## [1.1.7] - 2026-09-17
 
 ### 🚀 架构重构与核心优化 (Architecture & Improvements)
