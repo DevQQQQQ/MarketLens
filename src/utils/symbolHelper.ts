@@ -535,6 +535,37 @@ export function isGroupMarketClosed(
 }
 
 /**
+ * 生成分组节点的稳定标识（TreeItem.id）
+ *
+ * 背景：VS Code 会以 TreeItem.id 作为节点句柄（内部形如 `1/<id>`）记忆用户的展开/折叠操作，
+ * 并在节点重建时优先恢复该记忆，从而覆盖 TreeDataProvider 声明的 collapsibleState。
+ * 因此「休市自动折叠」的分组必须让 id 随会话变化，才能让 VS Code 视其为全新节点，
+ * 重新回到「休市默认折叠」的语义；开盘分组的 id 保持稳定，用户手动折叠的偏好照旧保留。
+ *
+ * @param groupName     分组名
+ * @param autoCollapse  是否启用休市自动折叠
+ * @param isClosed      该分组当前是否全休市
+ * @param sessionTag    会话标识：同一会话内必须稳定，跨会话（激活 / 视图重新可见 / 全部展开）须变化
+ * @param forceExpanded 用户是否显式要求「全部展开」，用于覆盖休市自动折叠
+ */
+export function buildGroupNodeId(
+  groupName: string,
+  autoCollapse: boolean,
+  isClosed: boolean,
+  sessionTag: string,
+  forceExpanded: boolean = false
+): string {
+  // 用户显式「全部展开」时同样必须换 id：VS Code 会记住「用户上一次折叠过该分组」，
+  // 只把 collapsibleState 改成 Expanded 会被该记忆覆盖，换 id 才能让它按全新节点处理
+  if (forceExpanded) {
+    return `group_${groupName}@open#${sessionTag}`;
+  }
+  return autoCollapse && isClosed
+    ? `group_${groupName}@closed#${sessionTag}`
+    : `group_${groupName}`;
+}
+
+/**
  * 纯算法函数：计算状态栏总控与分板块开关聚合后的最终展示状态
  * @param explicitStatusBarEnabled 用户是否显式配置了 statusBar.enabled（undefined 表示未显式配置，遵循默认值开启）
  * @param anyTabsStatusBar 是否至少有一个分板块开启了状态栏轮播

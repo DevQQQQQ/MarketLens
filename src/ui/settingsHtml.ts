@@ -1108,7 +1108,7 @@ export function getSettingsWebviewHtml(
 
         // 恢复焦点
         if (activeKey && activeClass) {
-          var safeKey = (window.CSS && CSS.escape) ? CSS.escape(activeKey) : activeKey.replace(/["\\]/g, '\\$&');
+          var safeKey = (window.CSS && CSS.escape) ? CSS.escape(activeKey) : activeKey.replace(/["\\\\]/g, '\\\\$&');
           var targetTr = tbody.querySelector('tr[data-key="' + safeKey + '"]');
           if (targetTr) {
             var targetInput = targetTr.querySelector('.' + activeClass);

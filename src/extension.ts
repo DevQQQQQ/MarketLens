@@ -87,10 +87,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // 立即构建初版树骨架（展示配置中的所有分组和标的，无需等待首次网络请求返回）
   scheduler.rebuildTree();
 
-  // 当用户展开侧边栏视图时，立即唤醒刷新一次保证最新数据
+  // 当用户展开侧边栏视图时，开启一次新的折叠会话（让休市分组回到默认折叠，
+  // 避免 VS Code 恢复用户上一次的手动展开状态），并立即唤醒刷新一次保证最新数据
   context.subscriptions.push(
     treeView.onDidChangeVisibility((e) => {
       if (e.visible) {
+        treeProvider.beginCollapseSession();
         void scheduler.refresh(true);
       }
     })

@@ -4,6 +4,7 @@
   "command.openSettings": "设置",
   "command.refresh": "立即刷新全部",
   "command.refreshGroup": "刷新当前分类",
+  "command.expandAllGroups": "全部展开",
   "command.sortGroup": "排序方式",
   "command.toggleBossKey": "专注模式（一键隐藏/恢复）",
   "command.toggleMask": "切换简洁展示模式",

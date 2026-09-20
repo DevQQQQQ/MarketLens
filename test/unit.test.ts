@@ -6,7 +6,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 
-import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT, isItemMarketClosed, isGroupMarketClosed } from "../src/utils/symbolHelper.ts";
+import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT, isItemMarketClosed, isGroupMarketClosed, buildGroupNodeId } from "../src/utils/symbolHelper.ts";
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling, MAX_COVERED_HOLIDAY_YEAR, checkHolidayCoverage, US_HOLIDAYS } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache, getSystemProxyUrl } from "../src/services/network.ts";
@@ -2472,6 +2472,51 @@ test("autoCollapseClosedGroups - 休市自动折叠与状态栏过滤纯算法�
     now: sundayClosed,
   });
   assert.strictEqual(emptyClosedQuotes.length, 0);
+});
+
+test("buildGroupNodeId - 休市分组节点 id 随会话失效以规避 VS Code 展开记忆", () => {
+  // 1. 休市 + 自动折叠开启：id 必须携带会话标识。
+  //    否则 VS Code 会按同一节点句柄恢复用户上一次的手动展开，覆盖「休市默认折叠」语义
+  assert.strictEqual(buildGroupNodeId("基金", true, true, "s1"), "group_基金@closed#s1");
+  assert.notStrictEqual(
+    buildGroupNodeId("基金", true, true, "s1"),
+    buildGroupNodeId("基金", true, true, "s2")
+  );
+
+  // 2. 开盘分组：id 保持稳定，用户手动折叠的偏好得以跨会话保留
+  assert.strictEqual(buildGroupNodeId("Binance", true, false, "s1"), "group_Binance");
+  assert.strictEqual(
+    buildGroupNodeId("Binance", true, false, "s1"),
+    buildGroupNodeId("Binance", true, false, "s2")
+  );
+
+  // 3. 自动折叠开关关闭：即使处于休市也退回稳定 id
+  assert.strictEqual(buildGroupNodeId("基金", false, true, "s1"), "group_基金");
+  assert.strictEqual(
+    buildGroupNodeId("基金", false, true, "s1"),
+    buildGroupNodeId("基金", false, true, "s2")
+  );
+
+  // 4. 同一会话内不同分组的 id 互不冲突
+  assert.notStrictEqual(
+    buildGroupNodeId("基金", true, true, "s1"),
+    buildGroupNodeId("🇨🇳 A股", true, true, "s1")
+  );
+
+  // 5. 用户显式「全部展开」：所有分组（含开盘分组）都必须换 id，
+  //    否则 VS Code 会沿用「用户上一次折叠」的记忆，导致 collapsibleState=Expanded 被覆盖
+  assert.strictEqual(buildGroupNodeId("基金", true, true, "s1", true), "group_基金@open#s1");
+  assert.strictEqual(buildGroupNodeId("Binance", true, false, "s1", true), "group_Binance@open#s1");
+  assert.notStrictEqual(
+    buildGroupNodeId("基金", true, true, "s1", true),
+    buildGroupNodeId("基金", true, true, "s1", false)
+  );
+
+  // 6. forceExpanded 默认参数向后兼容：不传时与显式传 false 完全一致
+  assert.strictEqual(
+    buildGroupNodeId("基金", true, true, "s1"),
+    buildGroupNodeId("基金", true, true, "s1", false)
+  );
 });
 
 

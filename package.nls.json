@@ -4,6 +4,7 @@
   "command.openSettings": "MarketLens: Open Settings Panel",
   "command.refresh": "MarketLens: Refresh Market Quotes",
   "command.refreshGroup": "MarketLens: Refresh Group Quotes",
+  "command.expandAllGroups": "MarketLens: Expand All Groups",
   "command.sortGroup": "MarketLens: Change Group Sort Order",
   "command.toggleBossKey": "MarketLens: Toggle Boss Key (Hide/Show)",
   "command.toggleMask": "MarketLens: Toggle Disguise Mode",

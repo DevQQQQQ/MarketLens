@@ -5,6 +5,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-09-20
+
+- **🚀 视图操作优化（全部展开）**：自选列表标题栏新增「全部展开」按钮（`marketlens.expandAllGroups`），与 VS Code 内置的「全部折叠」成对配对，支持一键展开全部分类看板；
+- **🛡️ 休市折叠记忆隔离机制**：重构分组节点 ID 生成逻辑（`buildGroupNodeId`），引入基于激活标识与视图显示递增的会话标识（`collapseSessionTag`），彻底规避 VS Code 优先恢复用户上次手动展开状态导致的「休市默认折叠」失效问题；
+- **⚡ 交互体验与状态自愈**：侧边栏由隐藏转为可见时自动开启新折叠会话并唤醒行情刷新；用户点击「全部展开」时支持临时覆盖休市折叠，直至下一次重新打开视图时自愈复位；
+- **🔧 设置面板字符转义修复**：加固 `src/ui/settingsHtml.ts` 中 `activeKey` 针对反斜杠字符的正则表达式转义，提升包含特殊字符代码时的 DOM 节点选择健壮性；
+- **🧪 单元测试体系扩充**：新增针对 `buildGroupNodeId` 会话隔离机制与展开覆盖的专项单测，核心测试用例扩充至 **61 例**，全部 100% PASS。
+
 ## [1.1.8] - 2026-09-18
 
 - **🧪 单元测试体系扩充**：新增 Markdown 翻译隔离与休市自动折叠单测，全项目核心单测扩充至 **60 例**，全部 100% PASS；

@@ -43,6 +43,11 @@ export function registerCommands(
       }
     ),
 
+    // 全部展开（视图标题栏按钮，与 VS Code 内置的「全部折叠」配对）
+    vscode.commands.registerCommand("marketlens.expandAllGroups", () => {
+      treeProvider.expandAllGroups();
+    }),
+
     // 分组排序方式（分组节点 inline 按钮及右键菜单）
     vscode.commands.registerCommand(
       "marketlens.sortGroup",

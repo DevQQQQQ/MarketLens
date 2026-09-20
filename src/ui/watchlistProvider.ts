@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig, GroupSortMode } from "../types";
-import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme, ASSET_TYPE_TO_SECTION_MAP, isGroupMarketClosed } from "../utils/symbolHelper";
+import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme, ASSET_TYPE_TO_SECTION_MAP, isGroupMarketClosed, buildGroupNodeId } from "../utils/symbolHelper";
 import { isDisplayMasked } from "../utils/maskState";
 
 /**
@@ -54,6 +54,13 @@ function formatLargeNumber(num: number | undefined, isVolume: boolean, currency:
   }
 }
 
+/**
+ * 激活标识：每次扩展宿主加载（即扩展激活）生成一次。
+ * 与 WatchlistProvider 的折叠会话序号共同构成分组节点的会话标识，
+ * 保证「重载窗口」与「关闭侧边栏再打开」两种重开场景下，休市分组的节点 id 都会变化。
+ */
+const ACTIVATION_TAG = Date.now().toString(36);
+
 /** 分组节点（基金 / A股 / 港股 / 美股 / Binance / Alpha） */
 export class GroupItem extends vscode.TreeItem {
   constructor(
@@ -61,17 +68,46 @@ export class GroupItem extends vscode.TreeItem {
     public readonly children: StockItem[],
     public sortMode: GroupSortMode = "default",
     public isClosed: boolean = false,
-    public autoCollapse: boolean = false
+    public autoCollapse: boolean = false,
+    collapseSessionTag: string = "",
+    forceExpanded: boolean = false
   ) {
-    const initialState =
-      autoCollapse && isClosed
-        ? vscode.TreeItemCollapsibleState.Collapsed
-        : vscode.TreeItemCollapsibleState.Expanded;
-    super(groupName, initialState);
-    this.id = `group_${groupName}`;
+    super(groupName, vscode.TreeItemCollapsibleState.Expanded);
     this.contextValue = "groupItem";
     this.iconPath = new vscode.ThemeIcon("folder");
+    this.applyCollapseState(autoCollapse, collapseSessionTag, forceExpanded);
     this.updateDescription();
+  }
+
+  /**
+   * 按最新的自动折叠开关、休市判定与会话标识，重新推导节点的 id 与折叠态。
+   *
+   * id 参与会话标识是刻意为之：VS Code 以 TreeItem.id 作为节点句柄（内部形如 `1/<id>`）
+   * 记忆用户的展开/折叠操作，节点重建时会优先恢复该记忆并覆盖 collapsibleState。
+   * 让休市分组的 id 随会话变化，可令 VS Code 视其为全新节点，回到「休市默认折叠」的语义；
+   * 开盘分组 id 保持稳定，用户手动折叠的偏好继续保留。
+   *
+   * @param autoCollapse       当前是否启用休市自动折叠
+   * @param collapseSessionTag 当前折叠会话标识（调用方须传入 WatchlistProvider.collapseSessionTag）
+   * @param forceExpanded      用户是否显式要求「全部展开」，优先于休市自动折叠
+   */
+  public applyCollapseState(
+    autoCollapse: boolean,
+    collapseSessionTag: string,
+    forceExpanded: boolean = false
+  ): void {
+    this.autoCollapse = !!autoCollapse;
+    this.id = buildGroupNodeId(
+      this.groupName,
+      this.autoCollapse,
+      this.isClosed,
+      collapseSessionTag,
+      forceExpanded
+    );
+    this.collapsibleState =
+      !forceExpanded && this.autoCollapse && this.isClosed
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.Expanded;
   }
 
   public updateDescription(): void {
@@ -295,6 +331,19 @@ export class WatchlistProvider
   private groupSortModes = new Map<string, GroupSortMode>();
   public autoCollapseClosedGroups: boolean = true;
 
+  /**
+   * 折叠会话序号：扩展激活后的首次构建为 0，此后每次「侧边栏视图由隐藏转为可见」递增。
+   * 与模块级 ACTIVATION_TAG 共同构成 collapseSessionTag，用于让休市分组的节点 id 失效。
+   */
+  private collapseSessionSeq = 0;
+
+  /**
+   * 用户是否通过「全部展开」命令临时覆盖了休市自动折叠。
+   * 仅在当前视图会话内有效：视图由隐藏转为可见（beginCollapseSession）时复位，
+   * 重新回到「休市分组默认折叠」的语义。
+   */
+  private forceExpandAll = false;
+
   public onGroupSortModeChangeCallback?: (
     groupName: string,
     mode: GroupSortMode
@@ -307,7 +356,64 @@ export class WatchlistProvider
   ) {}
 
   public setAutoCollapseClosedGroups(enabled: boolean): void {
-    this.autoCollapseClosedGroups = !!enabled;
+    const next = !!enabled;
+    if (this.autoCollapseClosedGroups === next) {
+      return;
+    }
+    this.autoCollapseClosedGroups = next;
+    // 开关变更需立即重算各分组的折叠态：此前若处于关闭状态，applyQuotes 会跳过休市判定，
+    // group.isClosed 可能已过期，必须在此重算后统一刷新
+    this.syncGroupsCollapseState();
+  }
+
+  /** 当前折叠会话标识（激活标识 + 会话序号），语义见 buildGroupNodeId */
+  private get collapseSessionTag(): string {
+    return `${ACTIVATION_TAG}-${this.collapseSessionSeq}`;
+  }
+
+  /**
+   * 开启一次新的折叠会话：让所有休市分组的节点 id 失效，
+   * 从而绕过 VS Code 对「用户上一次手动展开」的记忆，恢复「休市默认折叠」的语义。
+   * 调用时机：侧边栏视图每次由隐藏转为可见时。
+   */
+  public beginCollapseSession(): void {
+    this.collapseSessionSeq += 1;
+    this.forceExpandAll = false;
+    this.syncGroupsCollapseState();
+  }
+
+  /**
+   * 展开全部分组（视图标题栏「全部展开」按钮，与 VS Code 内置的「全部折叠」配对）。
+   * 同时覆盖休市自动折叠，直到下一次视图由隐藏转为可见时自动复位。
+   */
+  public expandAllGroups(): void {
+    this.forceExpandAll = true;
+    // 换一批节点 id：VS Code 会记住「用户上一次折叠过某分组」，
+    // 只改 collapsibleState 会被该记忆覆盖，换 id 才能让它按全新节点处理
+    this.collapseSessionSeq += 1;
+    this.syncGroupsCollapseState();
+  }
+
+  /** 按当前会话标识与最新休市判定，重新推导全部分组的 id、折叠态与描述 */
+  private syncGroupsCollapseState(): void {
+    if (this.groups.length === 0) {
+      return;
+    }
+    const now = new Date();
+    for (const group of this.groups) {
+      group.isClosed = isGroupMarketClosed(
+        group.groupName,
+        group.children.map((c) => ({ symbol: c.confSymbol, type: c.item?.type })),
+        now
+      );
+      group.applyCollapseState(
+        this.autoCollapseClosedGroups,
+        this.collapseSessionTag,
+        this.forceExpandAll
+      );
+      group.updateDescription();
+    }
+    this._onDidChangeTreeData.fire();
   }
 
   public getGroups(): GroupItem[] {
@@ -688,7 +794,15 @@ export class WatchlistProvider
       const sortMode = this.getGroupSortMode(groupName);
       const sortedChildren = this.sortStockItems(children, sortMode);
       const isClosed = isGroupMarketClosed(groupName, items, new Date());
-      return new GroupItem(groupName, sortedChildren, sortMode, isClosed, this.autoCollapseClosedGroups);
+      return new GroupItem(
+        groupName,
+        sortedChildren,
+        sortMode,
+        isClosed,
+        this.autoCollapseClosedGroups,
+        this.collapseSessionTag,
+        this.forceExpandAll
+      );
     });
 
     this._onDidChangeTreeData.fire();
@@ -730,10 +844,11 @@ export class WatchlistProvider
         );
         if (group.isClosed !== closed) {
           group.isClosed = closed;
-          group.collapsibleState =
-            this.autoCollapseClosedGroups && closed
-              ? vscode.TreeItemCollapsibleState.Collapsed
-              : vscode.TreeItemCollapsibleState.Expanded;
+          group.applyCollapseState(
+            this.autoCollapseClosedGroups,
+            this.collapseSessionTag,
+            this.forceExpandAll
+          );
           group.updateDescription();
         }
       }
