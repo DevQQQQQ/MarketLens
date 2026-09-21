@@ -5,12 +5,13 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT, isItemMarketClosed, isGroupMarketClosed, buildGroupNodeId } from "../src/utils/symbolHelper.ts";
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling, MAX_COVERED_HOLIDAY_YEAR, checkHolidayCoverage, US_HOLIDAYS } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache, getSystemProxyUrl } from "../src/services/network.ts";
-import { isDisplayMasked } from "../src/utils/maskState.ts";
+import { isDisplayMasked, shouldAutoExitBossKey, canEmitUserFeedback, resolveMaskToggle } from "../src/utils/maskState.ts";
 import { AlertManager } from "../src/services/alertManager.ts";
 import { DexScreenerService } from "../src/services/dexScreenerService.ts";
 import { BinanceService } from "../src/services/binanceService.ts";
@@ -18,6 +19,67 @@ import { AShareService } from "../src/services/aShareService.ts";
 import { HKStockService } from "../src/services/hkStockService.ts";
 import { USStockService } from "../src/services/usStockService.ts";
 import "./config.test.ts";
+
+test("nls - package.json 占位符与语言包契约一致性", () => {
+  // 防回归闸门：任何新增配置项 / 命令若忘记补 NLS 翻译，或误删既有翻译键，
+  // 都会在此处立即红灯，杜绝「非中文环境下设置页与扩展描述全中文」的问题悄悄回归。
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const readJson = (rel: string) =>
+    JSON.parse(fs.readFileSync(path.join(repoRoot, rel), "utf8").replace(/^\uFEFF/, ""));
+
+  const pkg = readJson("package.json");
+  const en = readJson("package.nls.json");
+  const zh = readJson("package.nls.zh-cn.json");
+
+  // 1. 两个语言包的键集合必须完全一致，否则某一语言会出现「缺翻译」的裸键名
+  assert.deepStrictEqual(
+    Object.keys(zh).sort(),
+    Object.keys(en).sort(),
+    "package.nls.json 与 package.nls.zh-cn.json 的键集合必须完全一致"
+  );
+
+  // 2. 递归收集 package.json 中所有 %key% 占位符
+  const placeholders = new Set<string>();
+  const walk = (val: unknown): void => {
+    if (typeof val === "string") {
+      const matched = val.match(/^%([^%]+)%$/);
+      if (matched) placeholders.add(matched[1]);
+    } else if (Array.isArray(val)) {
+      val.forEach(walk);
+    } else if (val && typeof val === "object") {
+      Object.values(val as Record<string, unknown>).forEach(walk);
+    }
+  };
+  walk(pkg);
+
+  // 3. 每个占位符都必须能在两个语言包中解析出文案
+  for (const key of placeholders) {
+    assert.ok(key in en, `占位符 %${key}% 在 package.nls.json 中缺失`);
+    assert.ok(key in zh, `占位符 %${key}% 在 package.nls.zh-cn.json 中缺失`);
+  }
+
+  // 4. 反向检查：语言包中不得残留从未被引用的死键（如已移除命令的幽灵翻译）
+  const orphans = Object.keys(en).filter((k) => !placeholders.has(k));
+  assert.deepStrictEqual(orphans, [], `语言包中存在未被 package.json 引用的死键：${orphans.join(", ")}`);
+
+  // 5. 全部配置描述必须走占位符，不得残留中文字面量
+  const configProps = pkg.contributes.configuration.properties as Record<string, { description: string }>;
+  for (const key of Object.keys(configProps)) {
+    assert.match(
+      String(configProps[key].description),
+      /^%[^%]+%$/,
+      `配置项 ${key} 的 description 必须使用 %key% 占位符，以便多语言环境正确显示`
+    );
+  }
+
+  // 6. 命令标题与顶层元信息同样必须接线到 NLS
+  const commands = pkg.contributes.commands as Array<{ command: string; title: string }>;
+  for (const cmd of commands) {
+    assert.match(String(cmd.title), /^%[^%]+%$/, `命令 ${cmd.command} 的 title 必须使用 %key% 占位符`);
+  }
+  assert.strictEqual(pkg.displayName, "%displayName%", "顶层 displayName 必须使用 %displayName% 占位符");
+  assert.strictEqual(pkg.description, "%description%", "顶层 description 必须使用 %description% 占位符");
+});
 
 test("symbolHelper - 真实源码逻辑校验", () => {
   // A股
@@ -219,6 +281,73 @@ test("bossKeyActive - 老板键状态与脱敏逻辑守卫校验（真实生产�
   // 2. 老板键激活中：无论用户配置中的 maskMode 为 true 还是 false，始终强制脱敏为 true
   assert.strictEqual(isDisplayMasked(true, false), true);
   assert.strictEqual(isDisplayMasked(true, true), true);
+});
+
+test("bossKeyActive - 重新打开看板自动解除专注模式（杜绝 Alt+K 静默失效回归）", () => {
+  // 1. 仅在「视图可见 + 老板键激活」双前提同时成立时才允许自动解除
+  assert.strictEqual(shouldAutoExitBossKey(true, true), true);
+
+  // 2. 视图不可见时严禁解除，防止行情在隐身期意外暴露
+  assert.strictEqual(shouldAutoExitBossKey(false, true), false);
+
+  // 3. 老板键未激活时无需解除（保持幂等，杜绝重复复位引发状态抖动）
+  assert.strictEqual(shouldAutoExitBossKey(true, false), false);
+  assert.strictEqual(shouldAutoExitBossKey(false, false), false);
+
+  // 4. 交叉时序回归：解除老板键后，maskMode 必须重新成为唯一决定因素
+  const userMaskMode = true;
+  assert.strictEqual(isDisplayMasked(true, userMaskMode), true, "老板键未解除时一票否决，界面必须保持脱敏");
+  assert.strictEqual(isDisplayMasked(false, userMaskMode), true, "解除老板键后应遵循用户 maskMode 配置（仍为脱敏）");
+  assert.strictEqual(isDisplayMasked(false, false), false, "解除老板键且关闭简洁模式后，必须恢复真实行情展示");
+});
+
+test("bossKeyActive - 专注模式静默守卫（状态栏消息 / 信息提示 / 设置面板统一收口）", () => {
+  // 1. 专注模式激活期间必须完全静默：任何 UI 回显（含「已隐蔽」这句本身）都是暴露源
+  assert.strictEqual(canEmitUserFeedback(true), false);
+
+  // 2. 非专注态放行，保证常规操作的状态栏提示不受影响
+  assert.strictEqual(canEmitUserFeedback(false), true);
+
+  // 3. 回归锚定：老板键一票否决脱敏 + 静默守卫必须同时成立（二者是一对协同约束）
+  assert.strictEqual(isDisplayMasked(true, false), true);
+  assert.strictEqual(canEmitUserFeedback(true), false);
+});
+
+test("bossKeyActive - Alt+K 语义决议（杜绝专注态下显示开关静默失效）", () => {
+  // 1. 常规态：保持纯粹的取反语义，与历史行为完全一致
+  assert.deepStrictEqual(resolveMaskToggle(false, false), {
+    exitBossKey: false,
+    nextMaskMode: true,
+    requiresConfigWrite: true,
+  });
+  assert.deepStrictEqual(resolveMaskToggle(false, true), {
+    exitBossKey: false,
+    nextMaskMode: false,
+    requiresConfigWrite: true,
+  });
+
+  // 2. 专注态：语义归属为「退出专注模式 + 关闭打码」，而非单纯翻转配置
+  assert.deepStrictEqual(resolveMaskToggle(true, false), {
+    exitBossKey: true,
+    nextMaskMode: false,
+    requiresConfigWrite: false, // maskMode 本就为 false，无需落盘，避免无谓的配置变更事件
+  });
+  assert.deepStrictEqual(resolveMaskToggle(true, true), {
+    exitBossKey: true,
+    nextMaskMode: false,
+    requiresConfigWrite: true, // maskMode 原为 true，需落盘归零
+  });
+
+  // 3. 交叉验证：执行决议后界面必须恢复真实行情（专注态下不再静默失效）
+  for (const currentMaskMode of [false, true]) {
+    const plan = resolveMaskToggle(true, currentMaskMode);
+    assert.strictEqual(plan.exitBossKey, true, "专注态下的任何 Alt+K 都必须先解除隐身");
+    assert.strictEqual(
+      isDisplayMasked(!plan.exitBossKey, plan.nextMaskMode),
+      false,
+      "决议执行后必须恢复真实行情展示"
+    );
+  }
 });
 
 test("proxyUrl - 代理地址规范化与协议纠偏", () => {

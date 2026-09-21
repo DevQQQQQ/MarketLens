@@ -498,7 +498,7 @@ export function getSettingsWebviewHtml(
               <span>伪装摸鱼模式</span>
               <span class="shortcut-tag">Ctrl+Alt+K</span>
             </div>
-            <div class="card-desc">开启后状态栏伪装为 Git 分支及构建日志（如 <code>git:(main) build: 65.2k</code>），彻底隐蔽。</div>
+            <div class="card-desc">开启后底部状态栏伪装为 Git 分支及构建日志（如 <code>git:(main) build: 65.2k</code>），左侧自选列表中的价格与涨跌幅同步替换为 <code>****</code> 遮罩，彻底隐蔽。</div>
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
             <button class="btn-shortcut" id="btnKeybindMask" title="在 VS Code 中修改此快捷键">⌨️ 自定义快捷键</button>
@@ -880,6 +880,7 @@ export function getSettingsWebviewHtml(
               • <b>老板键一键隐蔽/恢复</b>: <code>Ctrl + Alt + M</code> 或 <code>Alt + M</code> (Mac: <code>Cmd + Alt + M</code>)<br>
               • <b>伪装摸鱼模式开关</b>: <code>Ctrl + Alt + K</code> 或 <code>Alt + K</code> (Mac: <code>Cmd + Alt + K</code>)<br>
               • <b>颜色脱敏模式开关</b>: <code>Ctrl + Alt + L</code> 或 <code>Alt + L</code> (Mac: <code>Cmd + Alt + L</code>)<br>
+              • <b>专注模式期间保持完全静默</b>: 不弹出任何状态栏提示、通知与设置面板；此期间按下 <code>Alt + K</code> 会先自动退出专注模式再关闭打码，点击活动栏图标重新打开看板同样会自动退出专注模式。<br>
               • <b>悬停详情卡片</b>: 鼠标放至任意资产上，即可查看今开、昨收、高低、涨跌与成交额。
             </div>
           </div>

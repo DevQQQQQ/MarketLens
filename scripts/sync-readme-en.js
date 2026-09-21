@@ -1,12 +1,18 @@
 /**
  * MarketLens Automated README.en.md Synchronization Tool
  * 
- * 机制说明：
- * 1. 自动计算 README.md 的 SHA-256 哈希值并与本地缓存比对。
- * 2. 仅当 README.md 发生实质变更或指定 --force 时触发自动同步。
- * 3. 采用 Markdown 语法隔离（代码块、内联代码、HTML标签、链接URL、徽章占位符保护）。
- * 4. 内置金融与摸鱼专有名词术语映射字典（保证 Boss Key, Active-Set Pruning 等精准无误）。
- * 5. 采用公共免鉴权并发批量翻译服务（带超时重试与断网优雅降级），绝不中断构建与打包流水线。
+ * 实际行为（与现实严格对齐，请勿据历史注释推断）：
+ * 1. 读取 README.md，提取其中的 Release 徽章 URL（img.shields.io/badge/Release-vX.Y.Z-blue.svg）；
+ * 2. 若 README.en.md 中的同名徽章与之不一致则就地改写；一致时不触碰该文件；
+ * 3. 计算 README.md 的 SHA-256 并写入 scripts/.readme-hash（当前仅供人工比对，无消费方）；
+ * 4. 全程纯离线：不发起任何网络请求、不做任何翻译，README.en.md 的正文由人工维护。
+ *
+ * 历史说明：本脚本曾依赖公共机翻 API 并发翻译正文，该链路已移除
+ * （原因：用户文档数据外发 + 构建非确定性 + CI 硬依赖外部服务）。
+ * 现存下列导出仅为历史契约，请勿据其推断生产行为：
+ * - `computeHash`：生产路径仍在调用（上述第 3 步）；
+ * - `_force` 形参、`GLOSSARY_MAP`、`protectMarkdown`、`restoreMarkdown`：
+ *   生产路径无调用方，仅被 test/unit.test.ts 引用。删除需同步调整测试，故保留原样。
  */
 
 const fs = require('node:fs');

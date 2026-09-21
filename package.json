@@ -1,8 +1,8 @@
 {
 	"name": "marketlens",
-	"displayName": "MarketLens-全球行情看板(A股/港股/美股/基金/加密货币)",
-	"description": "实时查看A股/港股/美股/基金/加密货币与链上DEX资产，支持快捷键隐藏、简洁模式及网络代理。专为开发者打造的摸鱼盯盘与股票看板效率工具，支持自定义自选列表、价格预警、底部状态栏轮播。",
-	"version": "1.1.9",
+	"displayName": "%displayName%",
+	"description": "%description%",
+	"version": "1.1.10",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
@@ -276,7 +276,7 @@
 					"type": "boolean",
 					"default": true,
 					"order": 1,
-					"description": "【全局】是否开启定时自动刷新（取消勾选则不自动刷新，仅在手动点击刷新按钮时更新）"
+					"description": "%configuration.autoRefresh.description%"
 				},
 				"marketlens.refreshInterval": {
 					"type": "number",
@@ -284,19 +284,19 @@
 					"minimum": 1000,
 					"maximum": 300000,
 					"order": 2,
-					"description": "【全局】定时刷新间隔（毫秒），如 5000 表示 5 秒"
+					"description": "%configuration.refreshInterval.description%"
 				},
 				"marketlens.maskMode": {
 					"type": "boolean",
 					"default": false,
 					"order": 3,
-					"description": "【全局】紧凑展示模式：将行情数据展示为简洁构建信息格式"
+					"description": "%configuration.maskMode.description%"
 				},
 				"marketlens.colorNeutral": {
 					"type": "boolean",
 					"default": false,
 					"order": 4,
-					"description": "【全局】中性色彩模式：关闭红绿色彩标记，使用编辑器默认主题文本颜色"
+					"description": "%configuration.colorNeutral.description%"
 				},
 				"marketlens.colorScheme": {
 					"type": "string",
@@ -310,19 +310,19 @@
 					],
 					"default": "greenUpRedDown",
 					"order": 5,
-					"description": "【全局】涨跌配色习惯：greenUpRedDown (绿涨红跌，默认) 或 redUpGreenDown (红涨绿跌)"
+					"description": "%configuration.colorScheme.description%"
 				},
 				"marketlens.statusBar.enabled": {
 					"type": "boolean",
 					"default": true,
 					"order": 6,
-					"description": "【全局】全部标的参与底部轮播：是否在底部状态栏轮播展示行情（关闭后彻底隐藏底部状态栏）"
+					"description": "%configuration.statusBar.enabled.description%"
 				},
 				"marketlens.autoCollapseClosedGroups": {
 					"type": "boolean",
 					"default": true,
 					"order": 7,
-					"description": "【休市管理】休市时左侧看板分组自动折叠收起，且底部状态栏停止轮播休市标的（全休市时状态栏静默隐藏）"
+					"description": "%configuration.autoCollapseClosedGroups.description%"
 				},
 				"marketlens.proxyPort": {
 					"type": "integer",
@@ -330,19 +330,19 @@
 					"maximum": 65535,
 					"default": 10808,
 					"order": 8,
-					"description": "【全局】本地代理端口号（1-65535，默认 10808。未配置时自适应读取系统 HTTP_PROXY / HTTPS_PROXY / ALL_PROXY 或常用代理端口）"
+					"description": "%configuration.proxyPort.description%"
 				},
 				"marketlens.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
 					"order": 9,
-					"description": "【全局】统一代理地址（仅支持 HTTP / 混合代理。未配置时自动感知系统代理环境变量或自动探测工作代理）"
+					"description": "%configuration.proxyUrl.description%"
 				},
 				"marketlens.fund.enabled": {
 					"type": "boolean",
 					"default": true,
 					"order": 10,
-					"description": "【基金板块】是否启用基金与场内 ETF 行情（取消勾选则在自选列表中隐藏基金）"
+					"description": "%configuration.fund.enabled.description%"
 				},
 				"marketlens.fund.networkMode": {
 					"type": "string",
@@ -356,31 +356,31 @@
 					],
 					"default": "direct",
 					"order": 11,
-					"description": "【基金板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
+					"description": "%configuration.fund.networkMode.description%"
 				},
 				"marketlens.fund.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
 					"order": 12,
-					"description": "【基金板块】代理地址"
+					"description": "%configuration.fund.proxyUrl.description%"
 				},
 				"marketlens.fund.stopOnMarketClosed": {
 					"type": "boolean",
 					"default": true,
 					"order": 13,
-					"description": "【基金板块】闭市期间停止轮询（开启后仅在基金与 A 股交易时段 9:15-11:30, 13:00-15:05 请求数据）"
+					"description": "%configuration.fund.stopOnMarketClosed.description%"
 				},
 				"marketlens.fund.statusBar": {
 					"type": "boolean",
 					"default": true,
 					"order": 14,
-					"description": "【基金板块】基金标的是否参与底部状态栏轮播"
+					"description": "%configuration.fund.statusBar.description%"
 				},
 				"marketlens.aShare.enabled": {
 					"type": "boolean",
 					"default": true,
 					"order": 20,
-					"description": "【A股板块】是否启用 A 股市场行情（取消勾选则在自选列表中隐藏 A 股）"
+					"description": "%configuration.aShare.enabled.description%"
 				},
 				"marketlens.aShare.networkMode": {
 					"type": "string",
@@ -394,31 +394,31 @@
 					],
 					"default": "direct",
 					"order": 21,
-					"description": "【A股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
+					"description": "%configuration.aShare.networkMode.description%"
 				},
 				"marketlens.aShare.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
 					"order": 22,
-					"description": "【A股板块】代理地址"
+					"description": "%configuration.aShare.proxyUrl.description%"
 				},
 				"marketlens.aShare.stopOnMarketClosed": {
 					"type": "boolean",
 					"default": true,
 					"order": 23,
-					"description": "【A股板块】闭市期间停止轮询（开启后仅在 A 股交易时段 9:15-11:30, 13:00-15:05 请求数据）"
+					"description": "%configuration.aShare.stopOnMarketClosed.description%"
 				},
 				"marketlens.aShare.statusBar": {
 					"type": "boolean",
 					"default": true,
 					"order": 24,
-					"description": "【A股板块】A股标的是否参与底部状态栏轮播"
+					"description": "%configuration.aShare.statusBar.description%"
 				},
 				"marketlens.hkStock.enabled": {
 					"type": "boolean",
 					"default": true,
 					"order": 30,
-					"description": "【港股板块】是否启用港股行情（取消勾选则在自选列表中隐藏港股）"
+					"description": "%configuration.hkStock.enabled.description%"
 				},
 				"marketlens.hkStock.networkMode": {
 					"type": "string",
@@ -432,31 +432,31 @@
 					],
 					"default": "direct",
 					"order": 31,
-					"description": "【港股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
+					"description": "%configuration.hkStock.networkMode.description%"
 				},
 				"marketlens.hkStock.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
 					"order": 32,
-					"description": "【港股板块】代理地址"
+					"description": "%configuration.hkStock.proxyUrl.description%"
 				},
 				"marketlens.hkStock.stopOnMarketClosed": {
 					"type": "boolean",
 					"default": true,
 					"order": 33,
-					"description": "【港股板块】闭市期间停止轮询（开启后仅在港股交易时段 9:30-12:00, 13:00-16:10 请求数据）"
+					"description": "%configuration.hkStock.stopOnMarketClosed.description%"
 				},
 				"marketlens.hkStock.statusBar": {
 					"type": "boolean",
 					"default": true,
 					"order": 34,
-					"description": "【港股板块】港股标的是否参与底部状态栏轮播"
+					"description": "%configuration.hkStock.statusBar.description%"
 				},
 				"marketlens.usStock.enabled": {
 					"type": "boolean",
 					"default": true,
 					"order": 40,
-					"description": "【美股板块】是否启用美股行情（取消勾选则在自选列表中隐藏美股）"
+					"description": "%configuration.usStock.enabled.description%"
 				},
 				"marketlens.usStock.networkMode": {
 					"type": "string",
@@ -470,31 +470,31 @@
 					],
 					"default": "direct",
 					"order": 41,
-					"description": "【美股板块】网络访问模式：direct (直连，默认) 或 proxy (走代理)"
+					"description": "%configuration.usStock.networkMode.description%"
 				},
 				"marketlens.usStock.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
 					"order": 42,
-					"description": "【美股板块】代理地址"
+					"description": "%configuration.usStock.proxyUrl.description%"
 				},
 				"marketlens.usStock.stopOnMarketClosed": {
 					"type": "boolean",
 					"default": true,
 					"order": 43,
-					"description": "【美股板块】闭市期间停止轮询（开启后仅在美股交易时段工作日 21:00 至次日 05:00 请求数据）"
+					"description": "%configuration.usStock.stopOnMarketClosed.description%"
 				},
 				"marketlens.usStock.statusBar": {
 					"type": "boolean",
 					"default": true,
 					"order": 44,
-					"description": "【美股板块】美股标的是否参与底部状态栏轮播"
+					"description": "%configuration.usStock.statusBar.description%"
 				},
 				"marketlens.binance.enabled": {
 					"type": "boolean",
 					"default": true,
 					"order": 50,
-					"description": "【Binance板块】是否启用 Binance 主流加密货币行情"
+					"description": "%configuration.binance.enabled.description%"
 				},
 				"marketlens.binance.networkMode": {
 					"type": "string",
@@ -508,25 +508,25 @@
 					],
 					"default": "proxy",
 					"order": 51,
-					"description": "【Binance板块】网络访问模式：proxy (走代理) 或 direct (直连)"
+					"description": "%configuration.binance.networkMode.description%"
 				},
 				"marketlens.binance.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
 					"order": 52,
-					"description": "【Binance板块】代理地址（支持自动探测 10808, 10809, 7890, 7897, 2080 等本地端口）"
+					"description": "%configuration.binance.proxyUrl.description%"
 				},
 				"marketlens.binance.statusBar": {
 					"type": "boolean",
 					"default": true,
 					"order": 53,
-					"description": "【Binance板块】Binance标的是否参与底部状态栏轮播"
+					"description": "%configuration.binance.statusBar.description%"
 				},
 				"marketlens.alpha.enabled": {
 					"type": "boolean",
 					"default": true,
 					"order": 60,
-					"description": "【Alpha板块】是否启用 Alpha 链上代币行情（BSC、Solana、Base 等全链 DEX）"
+					"description": "%configuration.alpha.enabled.description%"
 				},
 				"marketlens.alpha.networkMode": {
 					"type": "string",
@@ -540,24 +540,24 @@
 					],
 					"default": "proxy",
 					"order": 61,
-					"description": "【Alpha板块】网络访问模式：proxy (走代理) 或 direct (直连)"
+					"description": "%configuration.alpha.networkMode.description%"
 				},
 				"marketlens.alpha.proxyUrl": {
 					"type": "string",
 					"default": "http://127.0.0.1:10808",
 					"order": 62,
-					"description": "【Alpha板块】代理地址（支持自动探测主流代理客户端端口）"
+					"description": "%configuration.alpha.proxyUrl.description%"
 				},
 				"marketlens.alpha.statusBar": {
 					"type": "boolean",
 					"default": true,
 					"order": 63,
-					"description": "【Alpha板块】Alpha标的是否参与底部状态栏轮播"
+					"description": "%configuration.alpha.statusBar.description%"
 				},
 				"marketlens.watchlist": {
 					"type": "object",
 					"order": 99,
-					"description": "自选列表配置，按分组组织",
+					"description": "%configuration.watchlist.description%",
 					"default": {
 						"基金": [
 							{
@@ -727,7 +727,7 @@
 					"type": "object",
 					"default": {},
 					"order": 70,
-					"description": "【到价预警】各标的价格突破、跌破与涨跌幅预警配置字典"
+					"description": "%configuration.alerts.description%"
 				},
 				"marketlens.alertNotificationMode": {
 					"type": "string",
@@ -743,7 +743,7 @@
 					],
 					"default": "notification",
 					"order": 71,
-					"description": "【到价预警】触碰阈值时的提醒展示形式"
+					"description": "%configuration.alertNotificationMode.description%"
 				},
 				"marketlens.alertCooldownMinutes": {
 					"type": "number",
@@ -751,7 +751,7 @@
 					"minimum": 1,
 					"maximum": 1440,
 					"order": 72,
-					"description": "【到价预警】同一标的连续报警的冷却静音时间（分钟）"
+					"description": "%configuration.alertCooldownMinutes.description%"
 				}
 			}
 		}

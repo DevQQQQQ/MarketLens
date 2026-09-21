@@ -29,12 +29,12 @@ npm run package
 
 ### 方式二：指定输出版本文件名
 ```powershell
-npx @vscode/vsce package -o marketlens-1.1.9.vsix --allow-missing-repository --no-dependencies
+npx @vscode/vsce package -o marketlens-1.1.10.vsix --allow-missing-repository --no-dependencies
 ```
 
 > **参数解析**：
 > - `--allow-missing-repository`：允许私有仓库或自建仓库跳过代码仓库强制检测；
-> - `--no-dependencies`：配合 esbuild 打包，避免将整个庞大的 `node_modules` 重复打进安装包，使得最终生成的 `.vsix` 仅约 **140KB**，轻量便携秒安装。
+> - `--no-dependencies`：配合 esbuild 打包，避免将整个庞大的 `node_modules` 重复打进安装包，使得最终生成的 `.vsix` 仅约 **150KB**，轻量便携秒安装。
 
 ---
 
@@ -44,7 +44,7 @@ npx @vscode/vsce package -o marketlens-1.1.9.vsix --allow-missing-repository --n
 
 ### 终端一键强制安装
 ```powershell
-code --install-extension marketlens-1.1.9.vsix --force
+code --install-extension marketlens-1.1.10.vsix --force
 ```
 
 ### VS Code 图形界面安装
@@ -71,7 +71,7 @@ code --install-extension marketlens-1.1.9.vsix --force
   npx ovsx publish -p <YOUR_OVSX_PAT> --no-dependencies
   ```
 
-> 💡 **GitHub Actions 自动化**：推送版本 tag（如 `git tag v1.1.9 && git push origin v1.1.9`）后，`.github/workflows/release.yml` 将自动并发打包并同时发布到双平台。
+> 💡 **GitHub Actions 自动化**：推送版本 tag（如 `git tag v1.1.10 && git push origin v1.1.10`）后，`.github/workflows/release.yml` 将自动并发打包并同时发布到双平台。
 
 ---
 

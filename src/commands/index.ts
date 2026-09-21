@@ -7,6 +7,7 @@ import { WatchlistProvider, GroupItem, StockItem } from "../ui/watchlistProvider
 import { SettingsWebviewPanel } from "../ui/settingsWebview";
 import { readConfig } from "../utils/config";
 import { logger } from "../utils/logger";
+import { canEmitUserFeedback, resolveMaskToggle } from "../utils/maskState";
 
 export interface CommandServices {
   scheduler: RefreshScheduler;
@@ -15,18 +16,59 @@ export interface CommandServices {
   treeProvider: WatchlistProvider;
 }
 
+/**
+ * 状态栏临时消息的安全出口：老板键（专注模式）激活期间一票否决，保证完全静默。
+ *
+ * 注意：`vscode.window.setStatusBarMessage` 独立于 `StatusBar` 自身的 `barItem.hide()` 逻辑，
+ * 行情条隐藏后该临时消息依然会在状态栏区域闪现——「已隐蔽」这类提示本身就是暴露源。
+ * 所有面向用户的状态栏回显必须经由本函数，严禁直接调用 `setStatusBarMessage`。
+ */
+function emitStatusMessage(statusBar: StatusBar, message: string, timeout: number = 2500): void {
+  if (!canEmitUserFeedback(statusBar.isBossKeyActive())) {
+    return;
+  }
+  vscode.window.setStatusBarMessage(message, timeout);
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   services: CommandServices
 ): void {
   const { scheduler, watchlistOps, statusBar, treeProvider } = services;
 
+  /**
+   * 解除老板键（专注模式）隐身状态
+   *
+   * 语义约定：用户在专注模式激活期间主动表达「我要看行情」的显式操作，
+   * 即构成专注模式的自然出口（与重新打开自选看板同源）。
+   *
+   * @param reason 触发原因，仅写入 OutputChannel 日志用于审计，不产生任何 UI 回显
+   * @returns 本次调用是否实际执行了解除动作（幂等：非激活态直接返回 false）
+   */
+  const exitBossKey = (reason: string): boolean => {
+    if (!statusBar.isBossKeyActive()) {
+      return false;
+    }
+    statusBar.toggleBossKey(false);
+    treeProvider.setBossKey(false);
+    logger.info(`检测到${reason}，已自动退出专注模式`);
+    return true;
+  };
+
   context.subscriptions.push(
     // 打开设置界面（专属 Webview 控制台面板）
     vscode.commands.registerCommand("marketlens.openSettings", () => {
+      // 老板键守卫：专注模式激活期间静默拒绝打开，且不解除隐身状态、不弹出任何提示。
+      // 设置面板会完整列出用户的自选标的名称，此刻打开等同于自曝关注范围。
+      // 需要查看行情时，请点击活动栏图标（会自动解除专注模式）或再次按下老板键。
+      if (!canEmitUserFeedback(statusBar.isBossKeyActive())) {
+        logger.info("专注模式激活期间拒绝打开设置面板（老板键守卫已生效）");
+        return;
+      }
       const extVersion = context.extension?.packageJSON?.version;
       SettingsWebviewPanel.createOrShow(context.extensionUri, extVersion);
     }),
+
 
     // 全量刷新（手动点击无论是否闭市都重新获取最新收盘/盘中数据）
     vscode.commands.registerCommand("marketlens.refresh", () => {
@@ -117,7 +159,8 @@ export function registerCommands(
 
         if (selected && selected.mode !== currentMode) {
           treeProvider.setGroupSortMode(targetGroup, selected.mode);
-          vscode.window.setStatusBarMessage(
+          emitStatusMessage(
+            statusBar,
             `【${targetGroup}】已切换为：${selected.label.replace(/\$\([a-z0-9-]+\)\s*/, "")}`,
             2500
           );
@@ -141,8 +184,11 @@ export function registerCommands(
         // 3. 关闭正在打开的设置 Webview
         SettingsWebviewPanel.currentPanel?.dispose();
 
-        // 4. 底部微弱状态提示
-        vscode.window.setStatusBarMessage("$(eye-closed) MarketLens 已隐蔽 (再次按下快捷键恢复)", 3500);
+        // 4. 专注模式已激活：此处必须保持完全静默。
+        // `vscode.window.setStatusBarMessage` 独立于 StatusBar.barItem.hide()，
+        // 行情条虽已隐藏，但「已隐蔽」这类临时消息仍会在状态栏区域闪现，
+        // 直接瓦解老板键的隐身初衷，故改为仅写入 OutputChannel 日志。
+        logger.info("老板键已激活：自选看板、状态栏与设置面板均已隐蔽");
       } else {
         // 1. 恢复自选树视图原配置（解除老板键状态）
         treeProvider.setBossKey(false);
@@ -154,20 +200,34 @@ export function registerCommands(
           await vscode.commands.executeCommand("workbench.view.extension.marketlens-container");
         } catch (_) {}
 
-        // 3. 底部状态提示
-        vscode.window.setStatusBarMessage("$(eye) MarketLens 行情已恢复", 3000);
+        // 3. 底部状态提示（此时已退出专注模式，回显安全）
+        emitStatusMessage(statusBar, "$(eye) MarketLens 行情已恢复", 3000);
       }
     }),
 
     // 伪装摸鱼模式开关
     vscode.commands.registerCommand("marketlens.toggleMask", async () => {
       const config = readConfig();
-      const next = !config.maskMode;
-      await vscode.workspace
-        .getConfiguration("marketlens")
-        .update("maskMode", next, vscode.ConfigurationTarget.Global);
-      vscode.window.setStatusBarMessage(
-        next ? "$(git-branch) MarketLens: 伪装摸鱼模式已开启" : "$(eye) MarketLens: 伪装摸鱼模式已关闭",
+      const plan = resolveMaskToggle(statusBar.isBossKeyActive(), config.maskMode);
+
+      // 老板键激活期间 maskMode 被一票否决（见 isDisplayMasked）：若照常翻转并落盘，
+      // 界面不会有任何变化，只会造成「配置已改、观感未变」的静默失效。
+      // 按 resolveMaskToggle 的语义约定，先解除专注模式，使操作结果与用户意图一致。
+      const exitedBossKey = plan.exitBossKey && exitBossKey("专注模式激活期间切换简洁展示模式");
+
+      if (plan.requiresConfigWrite) {
+        await vscode.workspace
+          .getConfiguration("marketlens")
+          .update("maskMode", plan.nextMaskMode, vscode.ConfigurationTarget.Global);
+      }
+
+      emitStatusMessage(
+        statusBar,
+        exitedBossKey
+          ? "$(eye) MarketLens 已退出专注模式 (伪装摸鱼模式已关闭)"
+          : plan.nextMaskMode
+            ? "$(git-branch) MarketLens: 伪装摸鱼模式已开启"
+            : "$(eye) MarketLens: 伪装摸鱼模式已关闭",
         2500
       );
     }),
@@ -179,7 +239,8 @@ export function registerCommands(
       await vscode.workspace
         .getConfiguration("marketlens")
         .update("colorNeutral", next, vscode.ConfigurationTarget.Global);
-      vscode.window.setStatusBarMessage(
+      emitStatusMessage(
+        statusBar,
         next ? "$(paintcan) MarketLens: 颜色脱敏已开启 (无红绿视觉刺激)" : "$(paintcan) MarketLens: 颜色脱敏已关闭 (恢复红绿涨跌)",
         2500
       );
@@ -234,6 +295,14 @@ export function registerCommands(
 
     // 查看运行日志（OutputChannel）
     vscode.commands.registerCommand("marketlens.showLogs", () => {
+      // 老板键守卫：诊断日志中包含真实标的代码与行情数值（服务请求/预警记录），
+      // 专注模式激活期间打开等同于自曝关注范围。
+      // 与 openSettings 保持同一策略——失败安全地拒绝，而非先解除隐身
+      // （后者会把侧边栏与状态栏的真实行情一并带回，隐蔽性反而更差）。
+      if (!canEmitUserFeedback(statusBar.isBossKeyActive())) {
+        logger.info("专注模式激活期间拒绝打开运行日志（老板键守卫已生效）");
+        return;
+      }
       logger.show();
     })
   );

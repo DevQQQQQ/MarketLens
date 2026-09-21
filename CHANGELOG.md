@@ -5,6 +5,43 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.1.10] - 2026-09-21
+
+- **🕶️ 老板键（专注模式）自动解除**：
+    - 新增 `shouldAutoExitBossKey(viewVisible, bossKeyActive)` 语义判定（`src/utils/maskState.ts`）：专注模式激活期间，用户重新打开自选看板（点击活动栏 MarketLens 图标，或任何使视图由隐藏转为可见的操作）即自动退出专注模式并恢复真实行情；
+    - 修复根因：`isDisplayMasked` 对 `bossKeyActive` 执行一票否决（`bossKeyActive || userMaskMode`），而 `bossKeyActive` 原先仅能由 `Alt + M` 复位且全程仅存内存，导致专注模式期间按下 `Alt + K` 时配置虽已变更、界面却持续被覆盖，呈现「点了没反应」且无任何报错的静默失效；
+    - 安全边界：视图不可见时严格不解除，规避窗口重载与布局切换引发的误触发；`Alt + M` 的既有恢复链路行为完全不变。
+- **🕶️ 老板键（专注模式）全链路静默守卫**：
+    - 新增 `canEmitUserFeedback(bossKeyActive)` 语义判定（`src/utils/maskState.ts`），统一收口所有面向用户的回显通道；
+    - 修复专注模式激活期间仍会弹出「MarketLens 已隐蔽」状态栏提示的隐蔽性泄漏——`vscode.window.setStatusBarMessage` 独立于 `StatusBar.barItem.hide()`，行情条虽已隐藏，该提示仍会在状态栏区域闪现，反而成为最扎眼的暴露源；现改为仅写入 OutputChannel 日志；
+    - 新增 `marketlens.openSettings` 老板键守卫：专注模式期间静默拒绝打开设置面板（该面板会完整列出全部自选标的名称），且不解除隐身状态、不弹出任何提示，需要查看行情时请点击活动栏图标（自动解除专注模式）或再次按下老板键；
+    - 同步加固「排序方式」切换提示与「颜色脱敏」切换提示，专注模式期间一律静默；退出专注模式后的恢复提示（`Alt + M`）保持原有行为不变。
+- **🎯 专注模式与简洁展示模式的入口语义统一（补全）**：
+    - 新增 `resolveMaskToggle(bossKeyActive, currentMaskMode)` 语义决议（`src/utils/maskState.ts`）：老板键激活期间按下 `Alt + K` 不再静默失效，而是先自动退出专注模式、再将 `maskMode` 归零，确保「我要看真实数据」的意图被完整满足；仅在 `maskMode` 原为 `true` 时才落盘，避免无谓的配置变更事件与树重建；
+    - 常规态下 `Alt + K` 保持纯粹的取反语义，与历史行为完全一致；
+    - 同步对齐设置面板入口：经面板修改「简洁展示模式」时若老板键仍处于激活态，先自动解除专注模式再应用，杜绝同一缺陷的第二个入口出现「配置已改、观感未变」；
+    - 兼容性：`Alt + K` / `Ctrl + Alt + K` 键位、全部配置 key 与命令 ID 均保持不变，老用户已持久化的 `settings.json` 继续完全有效。
+- **📖 文档与文案对齐**：
+    - `README.md` / `README.en.md` 补充专注模式静默行为与 `Alt + K` 语义说明；
+    - 设置面板「伪装摸鱼模式」卡片描述补充左侧自选列表的 `****` 遮罩行为（此前仅声明作用于状态栏，与实现不符），快捷键提示卡同步补充专注模式说明；
+    - `package.json` 中 `marketlens.maskMode` 的配置描述修订为「简洁展示模式：将底部状态栏与左侧自选列表的行情数据打码为简洁构建信息格式」。
+- **🛡️ 运行日志面板纳入老板键守卫**：
+    - `marketlens.showLogs` 补齐与设置面板一致的专注模式守卫：诊断日志中包含真实标的代码与行情数值，专注模式激活期间静默拒绝打开，且不解除隐身状态、不弹出任何提示。
+- **🔧 调度器停用后的定时器泄漏修复**：
+    - `RefreshScheduler` 新增 `disposed` 终止标志。此前 `dispose()` 仅调用 `stop()` 清理当前定时器，若此刻恰有一次刷新在飞行中，其 `finally` 分支会重新挂出一个不再受 `stop()` 管辖的定时器，导致扩展停用后仍在后台周期性发起网络请求，直至 VS Code 进程退出；现 `dispose()` 先置位终止标志、`refresh()` 与 `scheduleNextTick()` 统一早退，`start()` 对称复位以支持「停用后重新启用」的合法路径。
+- **🌐 国际化补齐（配置描述与顶层元信息）**：
+    - `package.json` 中 **41 项**配置项的 `description` 由中文字面量改为 `%key%` 占位符，并同步补齐 `package.nls.json`（英文）与 `package.nls.zh-cn.json`（中文）双语翻译，修复此前非中文环境下设置页 41 条说明全为中文的问题；
+    - 顶层 `displayName` / `description` 接线到 NLS，激活此前「定义即死」的两个英文键，Marketplace 与扩展列表在英文环境不再显示中文；
+    - 移除无对应命令声明的死键 `command.clearAllAlerts`（该功能实际经 Webview 消息通道实现，从未注册为 VS Code 命令）；
+    - 兼容性：仅改写描述性文案，全部配置 key、默认值、`order`、枚举定义与命令 ID 零改动，老用户已持久化的 `settings.json` 继续完全有效。
+- **📖 脚本注释与文档数字校正**：
+    - `scripts/sync-readme-en.js` 头注释重写为与实现严格一致（此前仍宣称「采用公共免鉴权并发批量翻译服务」，实际早已是纯离线脚本，会误导后续维护者）；如实标注 `GLOSSARY_MAP` / `protectMarkdown` / `restoreMarkdown` 等导出仅为单测契约保留、生产路径无调用方；
+    - `RELEASE.md` 的 `.vsix` 体积说明由「约 140KB」校正为「约 150KB」（实测 1.1.9 产物为 153.3KB）。
+- **🧪 单元测试体系扩充**：
+    - 新增「专注模式静默守卫」与「`Alt + K` 语义决议」真值表及交叉时序用例；
+    - 新增「`package.json` 占位符与语言包契约一致性」防回归用例（校验双语言包键集合一致、占位符全部可解析、无孤儿死键、配置描述与命令标题必须走 NLS）；
+    - 核心单测扩充至 **65 例**，全部 100% PASS。
+
 ## [1.1.9] - 2026-09-20
 
 - **🚀 视图操作优化（全部展开）**：自选列表标题栏新增「全部展开」按钮（`marketlens.expandAllGroups`），与 VS Code 内置的「全部折叠」成对配对，支持一键展开全部分类看板；

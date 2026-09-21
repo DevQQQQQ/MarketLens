@@ -26,6 +26,13 @@ export class RefreshScheduler implements vscode.Disposable {
   private readonly MAX_RETRY_COUNT = 2;
   private hasLoadedInitialQuotes = false;
   private isRefreshing = false;
+  /**
+   * 终止标志：dispose() 之后永久为 true。
+   *
+   * 与 stop() 的区别：stop() 是「暂停」（扩展仍在使用中，仅清理当前定时器），
+   * dispose() 是「终点」——此后不得再有任何新定时器被挂出。
+   */
+  private disposed = false;
 
   // 休市与无行情变动自适应降频
   private consecutiveUnchangedCount = 0;
@@ -179,6 +186,9 @@ export class RefreshScheduler implements vscode.Disposable {
   // ── 全量刷新 ────────────────────────────────────────────────────
 
   public async refresh(forceRefreshAll: boolean = false): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     const config = readConfig();
     // 资源节流控制：若状态栏未开启且侧边栏视图不可见，且非显式强制唤醒刷新，暂停后台打网
     const isStatusBarActive = config.statusBar?.enabled !== false;
@@ -219,6 +229,10 @@ export class RefreshScheduler implements vscode.Disposable {
         { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl },
         { mode: config.fund?.networkMode ?? "direct", proxyUrl: config.fund?.proxyUrl }
       );
+
+      if (this.disposed) {
+        return;
+      }
 
       const isWatchlistCompletelyEmpty =
         !config.watchlist ||
@@ -286,13 +300,18 @@ export class RefreshScheduler implements vscode.Disposable {
       logger.error("全量刷新失败", err);
     } finally {
       this.isRefreshing = false;
-      this.scheduleNextTick();
+      if (!this.disposed) {
+        this.scheduleNextTick();
+      }
     }
   }
 
   // ── 分类刷新 ────────────────────────────────────────────────────
 
   public async refreshGroup(group: GroupItem): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     if (this.isRefreshing) {
       // 若当前已有全量或分组刷新在执行，避免并发重叠打网
       return;
@@ -310,6 +329,10 @@ export class RefreshScheduler implements vscode.Disposable {
         { mode: config.alpha.networkMode, proxyUrl: config.alpha.proxyUrl },
         { mode: config.fund?.networkMode ?? "direct", proxyUrl: config.fund?.proxyUrl }
       );
+
+      if (this.disposed) {
+        return;
+      }
 
       for (const q of quotes) {
         this.saveToQuoteCache(q);
@@ -335,6 +358,9 @@ export class RefreshScheduler implements vscode.Disposable {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
+    if (this.disposed) {
+      return;
+    }
     const config = readConfig();
     // 如果关闭了自动刷新，则不调度下一次轮询
     if (!config.autoRefresh) {
@@ -350,6 +376,8 @@ export class RefreshScheduler implements vscode.Disposable {
   }
 
   public start(): void {
+    // 与 dispose() 对称：允许「停用后重新启用」的合法路径撤销终止标志
+    this.disposed = false;
     this.stop();
     this.consecutiveUnchangedCount = 0;
     this.isThrottled = false;
@@ -372,6 +400,15 @@ export class RefreshScheduler implements vscode.Disposable {
   }
 
   public dispose(): void {
+    // 必须先置终止标志、再 stop()：
+    // 若此刻恰有一次刷新在飞行中，其 finally 会在 stop() 之后调用 scheduleNextTick()，
+    // 把已经被清理的 timer 重新挂回来，导致扩展停用后仍在后台周期性发起网络请求，
+    // 直至 VS Code 进程退出（轮询窗口 5s、请求最长 5s，命中概率不低）。
+    this.disposed = true;
     this.stop();
+  }
+
+  public isDisposed(): boolean {
+    return this.disposed;
   }
 }

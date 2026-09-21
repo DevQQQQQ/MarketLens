@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/VS_Code-^1.85.0-007ACC?logo=visualstudiocode" alt="VS Code Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Release-v1.1.9-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.1.10-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platform">
 </p>
 
@@ -112,9 +112,13 @@ Stay focused on your code without watching tickers constantly. Receive accurate,
 
 - 🕶️ **Boss Key Instant Hide / Restore (`Ctrl + Alt + M` / `Alt + M`)**:
     - Instantly hides the sidebar watchlist, empties the status bar ticker, and closes the settings panel;
-    - Press the shortcut again to restore everything with millisecond response.
+    - Press the shortcut again to restore everything with millisecond response;
+    - Reopening the watchlist on your own (clicking the MarketLens icon in the activity bar) also exits focus mode automatically, so display switches such as `Alt + K` take effect immediately instead of being silently overridden by the hidden state;
+    - **The extension stays completely silent while focus mode is active**: no status bar messages, notifications or info popups are emitted; the settings panel lists every watchlist symbol and is therefore silently refused while focus mode is active, so nothing can reveal your intent.
 - 🎭 **Disguise Stealth Mode (`Ctrl + Alt + K` / `Alt + K`)**:
-    - Disguises status bar tickers as realistic build logs or Git branch info (e.g., `git:(main) build: 65.2k`).
+    - Disguises status bar tickers as realistic build logs or Git branch info (e.g., `git:(main) build: 65.2k`);
+    - Also applies to the sidebar watchlist: prices and change percentages are replaced with `****`, so the panel never exposes live quotes;
+    - Pressing `Alt + K` while focus mode is active automatically exits focus mode first and then disables the disguise, so the display switch can never be silently overridden.
 - ⚪ **Color-Neutral Mode (`Ctrl + Alt + L` / `Alt + L`)**:
     - Replaces eye-catching red/green colors with the editor's neutral foreground color.
 - 💤 **Smart Market Hour Throttling**:

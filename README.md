@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/VS_Code-^1.85.0-007ACC?logo=visualstudiocode" alt="VS Code Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Release-v1.1.9-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.1.10-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platform">
 </p>
 
@@ -112,9 +112,13 @@
 
 - 🕶️ **老板键一键隐藏 / 恢复 (`Ctrl + Alt + M` / `Alt + M`)**：
     - 瞬间隐藏左侧自选看板、清空底部状态栏行情、关闭设置面板；
-    - 再次按下快捷键，所有看板与状态栏立即恢复，响应毫秒级。
+    - 再次按下快捷键，所有看板与状态栏立即恢复，响应毫秒级；
+    - 主动重新打开自选看板（点击活动栏 MarketLens 图标）同样会自动退出专注模式，确保「简洁展示模式 (`Alt + K`)」等显示开关即时生效，不会被隐身状态持续覆盖；
+    - **专注模式期间插件保持完全静默**：不弹出任何状态栏临时提示、通知与信息弹窗；设置面板因会完整列出全部自选标的名称，故在专注模式期间静默拒绝打开，杜绝任何回显自曝意图。
 - 🎭 **伪装摸鱼模式 (`Ctrl + Alt + K` / `Alt + K`)**：
-    - 将底部状态栏行情伪装成极度真实的编译日志或 Git 分支状态（例如：`git:(main) build: 65.2k`），路过者毫无察觉。
+    - 将底部状态栏行情伪装成极度真实的编译日志或 Git 分支状态（例如：`git:(main) build: 65.2k`），路过者毫无察觉；
+    - 同时作用于左侧自选列表：价格与涨跌幅同步替换为 `****` 遮罩，避免侧边栏露出真实盘面；
+    - 专注模式激活期间按下 `Alt + K`，会先自动退出专注模式再关闭打码，确保显示开关永远不会被隐身状态静默覆盖。
 - ⚪ **颜色脱敏模式 (`Ctrl + Alt + L` / `Alt + L`)**：
     - 一键关停刺眼的“红涨绿跌”或“绿涨红跌”视觉刺激；
     - 所有数值采用编辑器默认的中性前景色，低调优雅。

@@ -4,6 +4,7 @@ import { MarketManager } from "./services/marketManager";
 import { WatchlistProvider } from "./ui/watchlistProvider";
 import { StatusBar } from "./ui/statusBar";
 import { logger } from "./utils/logger";
+import { shouldAutoExitBossKey } from "./utils/maskState";
 import { resetProxyCache, DEFAULT_PROXY_PORT, DEFAULT_PROXY_URL } from "./services/network";
 import {
   readConfig,
@@ -91,10 +92,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // 避免 VS Code 恢复用户上一次的手动展开状态），并立即唤醒刷新一次保证最新数据
   context.subscriptions.push(
     treeView.onDidChangeVisibility((e) => {
-      if (e.visible) {
-        treeProvider.beginCollapseSession();
-        void scheduler.refresh(true);
+      if (!e.visible) {
+        return;
       }
+
+      // 用户主动打开看板 = 明确要查看行情，此处作为专注模式（老板键）的自然出口：
+      // 老板键状态仅存内存且原本只由 Alt+M 复位，若不在此解除，bossKeyActive 会
+      // 一票否决 maskMode，导致「切换简洁展示模式 (Alt+K)」静默失效——界面永久停留在
+      // 脱敏态且无任何提示。判据以 statusBar 为准（其 bossKeyActive 先于 treeProvider 更新）。
+      if (shouldAutoExitBossKey(e.visible, statusBar.isBossKeyActive())) {
+        statusBar.toggleBossKey(false);
+        treeProvider.setBossKey(false);
+        logger.info("检测到用户重新打开自选看板，已自动退出专注模式");
+      }
+
+      treeProvider.beginCollapseSession();
+      void scheduler.refresh(true);
     })
   );
 
@@ -143,6 +156,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       treeProvider.setAutoCollapseClosedGroups(config.autoCollapseClosedGroups);
     } else if (key === "maskMode") {
       config.maskMode = !!value;
+      // 入口语义对齐（与 `marketlens.toggleMask` 命令同源）：老板键激活期间 maskMode 被
+      // isDisplayMasked 一票否决，若放任自持状态会造成「配置已改、观感未变」的静默失效。
+      // 此处先解除专注模式，保证用户在任何入口的显式显示开关都立即生效。
+      if (statusBar.isBossKeyActive()) {
+        statusBar.toggleBossKey(false);
+        treeProvider.setBossKey(false);
+        logger.info("检测到设置面板变更简洁展示模式，已自动退出专注模式");
+      }
       statusBar.setMaskMode(config.maskMode);
       treeProvider.setMaskMode(config.maskMode);
     } else if (key === "colorNeutral") {
