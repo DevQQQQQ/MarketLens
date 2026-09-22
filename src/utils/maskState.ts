@@ -91,3 +91,29 @@ export function resolveMaskToggle(bossKeyActive: boolean, currentMaskMode: boole
     requiresConfigWrite: true,
   };
 }
+
+/** 简洁展示模式下自选列表标的节点的脱敏 Tooltip 静态提示 */
+export const MASKED_TOOLTIP_TEXT = "MarketLens — 简洁展示模式 (Alt+K 切换)";
+
+/**
+ * 决议自选列表节点的 Tooltip 内容与展示策略
+ *
+ * 核心安全规则与设计动机：
+ * 1. 简洁展示模式 (maskMode / isDisplayMasked) 开启时，侧边栏标的行情数据已被替换为打码占位符；
+ * 2. 若继续向节点赋予包含开高低收、涨跌额、成交量额、预警阈值与真实代码名称的 Markdown 卡片，
+ *    用户鼠标无意悬停即会全量暴露敏感财务数据，致使脱敏形同虚设；
+ * 3. 必须在脱敏态下一票否决 Markdown 详情卡片，强制收敛为无害的静态纯文本提示（与状态栏保持同等安全防线）；
+ * 4. 采用回调函数惰性求值：脱敏态下完全跳过卡片文本拼接、数值格式化与对象创建，提升轮询刷新性能。
+ *
+ * @param masked 是否处于脱敏状态 (isDisplayMasked)
+ * @param cardBuilder 生成常规详情卡片的回调函数（仅在非脱敏态下执行）
+ */
+export function resolveStockTooltip<T>(
+  masked: boolean,
+  cardBuilder: () => T
+): string | T {
+  if (masked) {
+    return MASKED_TOOLTIP_TEXT;
+  }
+  return cardBuilder();
+}

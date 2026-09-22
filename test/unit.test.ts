@@ -9,9 +9,9 @@ import { fileURLToPath } from "node:url";
 
 import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT, isItemMarketClosed, isGroupMarketClosed, buildGroupNodeId } from "../src/utils/symbolHelper.ts";
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
-import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling, MAX_COVERED_HOLIDAY_YEAR, checkHolidayCoverage, US_HOLIDAYS } from "../src/utils/marketHours.ts";
+import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling, MAX_COVERED_HOLIDAY_YEAR, checkHolidayCoverage, US_HOLIDAYS, HK_HOLIDAYS } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache, getSystemProxyUrl } from "../src/services/network.ts";
-import { isDisplayMasked, shouldAutoExitBossKey, canEmitUserFeedback, resolveMaskToggle } from "../src/utils/maskState.ts";
+import { isDisplayMasked, shouldAutoExitBossKey, canEmitUserFeedback, resolveMaskToggle, MASKED_TOOLTIP_TEXT, resolveStockTooltip } from "../src/utils/maskState.ts";
 import { AlertManager } from "../src/services/alertManager.ts";
 import { DexScreenerService } from "../src/services/dexScreenerService.ts";
 import { BinanceService } from "../src/services/binanceService.ts";
@@ -347,6 +347,54 @@ test("bossKeyActive - Alt+K 语义决议（杜绝专注态下显示开关静默�
       false,
       "决议执行后必须恢复真实行情展示"
     );
+  }
+});
+
+test("resolveStockTooltip - 自选列表脱敏态 Tooltip 安全收敛与惰性求值", () => {
+  let builderCalled = false;
+  const mockCardBuilder = () => {
+    builderCalled = true;
+    return { value: "### 贵州茅台 (sh600519)\n| 最新价格 | ¥1850.00 |" };
+  };
+
+  // 1. 脱敏态 (masked: true)：强制收敛为无害静态文本，且绝对不触发卡片构建函数
+  builderCalled = false;
+  const maskedTooltip = resolveStockTooltip(true, mockCardBuilder);
+  assert.strictEqual(maskedTooltip, MASKED_TOOLTIP_TEXT);
+  assert.strictEqual(builderCalled, false, "脱敏态下不得调用卡片构建回调，杜绝性能损耗与内存分配");
+  assert.ok(!String(maskedTooltip).includes("贵州茅台"), "脱敏 Tooltip 严禁泄露标的真实名称");
+  assert.ok(!String(maskedTooltip).includes("sh600519"), "脱敏 Tooltip 严禁泄露标的代码");
+  assert.ok(!String(maskedTooltip).includes("1850"), "脱敏 Tooltip 严禁泄露财务价格指标");
+
+  // 2. 常规态 (masked: false)：正常调用卡片构建回调并返回卡片对象
+  builderCalled = false;
+  const normalTooltip = resolveStockTooltip(false, mockCardBuilder);
+  assert.strictEqual(builderCalled, true, "常规态下必须执行卡片构建回调");
+  assert.deepStrictEqual(normalTooltip, { value: "### 贵州茅台 (sh600519)\n| 最新价格 | ¥1850.00 |" });
+
+  // 3. 与 isDisplayMasked 联动真值表交叉验证（老板键与 maskMode 协同）
+  const scenarios = [
+    { bossKeyActive: true,  userMaskMode: false, expectMasked: true },
+    { bossKeyActive: true,  userMaskMode: true,  expectMasked: true },
+    { bossKeyActive: false, userMaskMode: true,  expectMasked: true },
+    { bossKeyActive: false, userMaskMode: false, expectMasked: false },
+  ];
+
+  for (const s of scenarios) {
+    const masked = isDisplayMasked(s.bossKeyActive, s.userMaskMode);
+    assert.strictEqual(masked, s.expectMasked);
+    let called = false;
+    const res = resolveStockTooltip(masked, () => {
+      called = true;
+      return "CARD_CONTENT";
+    });
+    if (s.expectMasked) {
+      assert.strictEqual(res, MASKED_TOOLTIP_TEXT);
+      assert.strictEqual(called, false);
+    } else {
+      assert.strictEqual(res, "CARD_CONTENT");
+      assert.strictEqual(called, true);
+    }
   }
 });
 
@@ -1529,10 +1577,36 @@ test("marketHours - 节假日离线日历与休市精准判定", () => {
   assert.strictEqual(isAShareHoliday(aNormalDayUtc), false, "普通工作日不应误判为休市");
   assert.strictEqual(isAShareMarketOpen(aNormalDayUtc), true);
 
-  // 2. 港股休市日拦截（2026耶稣受难节 2026-04-03 周五 10:00）
+  // 2. 港股休市日与正常开市日判定（含清明复活节顺延、圣诞不顺延及总数守卫）
   const hkGoodFridayUtc = new Date("2026-04-03T02:00:00Z");
   assert.strictEqual(isHKHoliday(hkGoodFridayUtc), true, "2026-04-03 应为港股受难节休市日");
   assert.strictEqual(isHKMarketOpen(hkGoodFridayUtc), false, "港股节假日应判定为闭市");
+
+  // 2026复活节翌日增补假期（清明顺延补休）2026-04-07 周二 10:00
+  const hkEasterTueUtc = new Date("2026-04-07T02:00:00Z");
+  assert.strictEqual(isHKHoliday(hkEasterTueUtc), true, "2026-04-07 应为港股清明复活节顺延补休日");
+  assert.strictEqual(isHKMarketOpen(hkEasterTueUtc), false, "2026-04-07 港股顺延休市日应判定为闭市");
+
+  // 2026-12-28 周一 10:00（节后首个工作日落在周六，周一不补休，港交所正常开市）
+  const hkDec28TradingUtc = new Date("2026-12-28T02:00:00Z");
+  assert.strictEqual(isHKHoliday(hkDec28TradingUtc), false, "2026-12-28 港交所正常开市，严禁误判为休市");
+  assert.strictEqual(isHKMarketOpen(hkDec28TradingUtc), true, "2026-12-28 港股盘中应判定为开市");
+
+  // 港股平日休市日数量守卫（2024: 15天, 2025: 15天, 2026: 14天）
+  const hk2024Count = Array.from(HK_HOLIDAYS).filter((d) => d.startsWith("2024-")).length;
+  const hk2025Count = Array.from(HK_HOLIDAYS).filter((d) => d.startsWith("2025-")).length;
+  const hk2026Count = Array.from(HK_HOLIDAYS).filter((d) => d.startsWith("2026-")).length;
+  assert.strictEqual(hk2024Count, 15, "2024 年港股休市日应严格为 15 天");
+  assert.strictEqual(hk2025Count, 15, "2025 年港股休市日应严格为 15 天");
+  assert.strictEqual(hk2026Count, 14, "2026 年港股平日休市日应严格为 14 天");
+
+  // 港股日历不得包含周末日期（杜绝照抄公众假期混入周六周日）
+  for (const dateStr of HK_HOLIDAYS) {
+    if (dateStr.startsWith("2024-") || dateStr.startsWith("2025-") || dateStr.startsWith("2026-")) {
+      const day = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+      assert.ok(day >= 1 && day <= 5, `港股休市日 ${dateStr} 不得包含周末（星期 ${day}）`);
+    }
+  }
 
   // 3. 美股休市日拦截（2026圣诞节 2026-12-25 周五美东 10:30）
   const usChristmasUtc = new Date("2026-12-25T15:30:00Z"); // 冬令时 UTC 15:30 -> NY 10:30

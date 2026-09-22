@@ -1,6 +1,6 @@
 {
-  "displayName": "MarketLens - Global Market Ticker (A-Share / HK / US / Crypto / DEX)",
-  "description": "Real-time stock & crypto market tracker in VS Code status bar and sidebar. Features customizable watchlists, price alerts, boss key privacy hiding, and proxy configurations for developers.",
+  "displayName": "MarketLens - Global Market Ticker (A-Share / HK / US / Crypto / Funds / DEX)",
+  "description": "Real-time stock, fund, crypto & DEX token tracker for developers. Features boss key stealth mode, compact display, custom proxies, price alerts, and status bar carousel.",
   "command.openSettings": "MarketLens: Open Settings Panel",
   "command.refresh": "MarketLens: Refresh Market Quotes",
   "command.refreshGroup": "MarketLens: Refresh Group Quotes",

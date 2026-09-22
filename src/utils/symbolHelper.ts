@@ -612,9 +612,11 @@ export function resolveItemDisplayName(
 }
 
 /**
- * 纯算法函数：从 watchlist 中按板块开关与轮播开关提取所有参与底部状态栏轮播的标的行情
- * 优先从 quoteCache 读取最新报价（即使对应市场因闭市跳过了周期网络拉取，依然保留收盘报价轮播），
- * 若 quoteCache 暂无则提供基础占位，确保全量预设（如 49 个标的）正常流转。
+ * 纯算法函数：从 watchlist 中按板块开关、轮播开关与休市管理策略提取参与底部状态栏轮播的标的行情
+ * 1. 优先从 quoteCache 读取最新报价，若 quoteCache 暂无则提供基础占位，确保标的正常流转；
+ * 2. 休市管理协同（autoCollapseClosedGroups）：
+ *    - 若开启 autoCollapseClosedGroups（默认开启），已闭市标的将被动态跳过剔除（全休市时返回空数组，促使状态栏静默隐藏）；
+ *    - 若未开启 autoCollapseClosedGroups，即使对应市场因闭市跳过了周期网络拉取，依然保留收盘报价持续轮播。
  */
 export function extractStatusBarQuotes<
   T extends { symbol: string; name?: string; type?: string; price?: number; changePercent?: number }

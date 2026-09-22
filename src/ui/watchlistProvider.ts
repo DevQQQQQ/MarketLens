@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig, GroupSortMode } from "../types";
 import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme, ASSET_TYPE_TO_SECTION_MAP, isGroupMarketClosed, buildGroupNodeId } from "../utils/symbolHelper";
-import { isDisplayMasked } from "../utils/maskState";
+import { isDisplayMasked, resolveStockTooltip } from "../utils/maskState";
 
 /**
  * 智能格式化价格
@@ -197,98 +197,101 @@ export class StockItem extends vscode.TreeItem {
       : (hasQuote ? `${priceStr}  ${arrow} ${pctStr}${alertSuffix}` : `获取行情中…${alertSuffix}`);
 
     // ── 差异化构建 Tooltip ──
-    const isAlpha = item.type === "ALPHA_TOKEN" || item.type === "BSC_TOKEN" || item.chain !== undefined;
+    this.tooltip = resolveStockTooltip(maskMode, () => {
+      const isAlpha = item.type === "ALPHA_TOKEN" || item.type === "BSC_TOKEN" || item.chain !== undefined;
 
-    let mdText = "";
-    if (isAlpha) {
-      // 链上 Alpha 专属卡片
-      const chainBadge = item.chain ? `\`${item.chain}\`` : "`DEX`";
-      const dexBadge = item.dex ? `\`${item.dex}\`` : "`DEX`";
-      const liqStr = formatLargeNumber(item.liquidity, false, "USD");
-      const turnoverStr = formatLargeNumber(item.turnover, false, "USD");
-      const openStr = item.open ? formatPrice(item.open, "USD") : "--";
+      let mdText = "";
+      if (isAlpha) {
+        // 链上 Alpha 专属卡片
+        const chainBadge = item.chain ? `\`${item.chain}\`` : "`DEX`";
+        const dexBadge = item.dex ? `\`${item.dex}\`` : "`DEX`";
+        const liqStr = formatLargeNumber(item.liquidity, false, "USD");
+        const turnoverStr = formatLargeNumber(item.turnover, false, "USD");
+        const openStr = item.open ? formatPrice(item.open, "USD") : "--";
 
-      let changeAmtStr = "--";
-      if (item.price && item.changePercent !== undefined) {
-        const approxChange = item.price * (item.changePercent / 100);
-        const cSign = approxChange >= 0 ? "+" : "";
-        changeAmtStr = `${cSign}$${Math.abs(approxChange).toFixed(item.price < 1 ? 6 : 2)}`;
+        let changeAmtStr = "--";
+        if (item.price && item.changePercent !== undefined) {
+          const approxChange = item.price * (item.changePercent / 100);
+          const cSign = approxChange >= 0 ? "+" : "";
+          changeAmtStr = `${cSign}$${Math.abs(approxChange).toFixed(item.price < 1 ? 6 : 2)}`;
+        }
+
+        mdText =
+          `### ${item.name} (\`${item.symbol}\`)\n` +
+          `公链网络：${chainBadge} &nbsp;|&nbsp; 交易池：${dexBadge}\n\n` +
+          `| 核心指标 | 实时行情 |\n` +
+          `| :--- | :--- |\n` +
+          `| **最新价格** | ${colorHint} **${priceStr}** |\n` +
+          `| **24h 涨跌幅** | **${pctStr}** |\n` +
+          `| **24h 涨跌额** | **${changeAmtStr}** |\n` +
+          `| **开盘参考价** | ${openStr} |\n` +
+          `| **流动性池 (Liquidity)** | **${liqStr}** |\n` +
+          `| **24h 成交额** | **${turnoverStr}** |\n` +
+          `| **合约地址** | \`${item.id}\` |\n\n` +
+          `_数据源: DexScreener · ${new Date().toLocaleTimeString()}_`;
+      } else {
+        // A 股与 Binance 传统金融卡片
+        const openStr = item.open !== undefined && item.open > 0 ? formatPrice(item.open, currency) : "--";
+        const prevCloseStr = item.prevClose !== undefined && item.prevClose > 0 ? formatPrice(item.prevClose, currency) : "--";
+        const highStr = item.high !== undefined && item.high > 0 ? formatPrice(item.high, currency) : "--";
+        const lowStr = item.low !== undefined && item.low > 0 ? formatPrice(item.low, currency) : "--";
+
+        let changeAmtStr = "--";
+        if (item.change !== undefined) {
+          const cSign = item.change >= 0 ? "+" : "";
+          changeAmtStr = `${cSign}${currSym}${Math.abs(item.change).toFixed(item.price > 0 && item.price < 1 ? 4 : 2)}`;
+        } else if (item.price > 0 && item.changePercent !== undefined) {
+          const approxChange = item.price * (item.changePercent / 100);
+          const cSign = approxChange >= 0 ? "+" : "";
+          changeAmtStr = `${cSign}${currSym}${Math.abs(approxChange).toFixed(item.price < 1 ? 4 : 2)}`;
+        }
+
+        const volStr = formatLargeNumber(item.volume, true, currency);
+        const turnoverStr = formatLargeNumber(item.turnover, false, currency);
+        const currencyLabel = currency === "CNY" ? "人民币 (¥ CNY)" : (currency === "HKD" ? "港币 (HK$ HKD)" : "美元 ($ USD)");
+
+        mdText =
+          `### ${item.name} (\`${item.symbol}\`)\n` +
+          `计价货币：**${currencyLabel}**\n\n` +
+          `| 核心指标 | 实时行情 |\n` +
+          `| :--- | :--- |\n` +
+          `| **最新价格** | ${colorHint} **${priceStr}** |\n` +
+          `| **涨跌百分比** | **${pctStr}** |\n` +
+          `| **涨跌额** | **${changeAmtStr}** |\n` +
+          `| **今日开盘** | ${openStr} |\n` +
+          `| **昨日收盘** | ${prevCloseStr} |\n` +
+          `| **今日最高** | ${highStr} |\n` +
+          `| **今日最低** | ${lowStr} |\n` +
+          `| **成交量** | ${volStr} |\n` +
+          `| **成交额** | ${turnoverStr} |\n\n` +
+          `_更新时间: ${new Date().toLocaleTimeString()}_`;
       }
 
-      mdText =
-        `### ${item.name} (\`${item.symbol}\`)\n` +
-        `公链网络：${chainBadge} &nbsp;|&nbsp; 交易池：${dexBadge}\n\n` +
-        `| 核心指标 | 实时行情 |\n` +
-        `| :--- | :--- |\n` +
-        `| **最新价格** | ${colorHint} **${priceStr}** |\n` +
-        `| **24h 涨跌幅** | **${pctStr}** |\n` +
-        `| **24h 涨跌额** | **${changeAmtStr}** |\n` +
-        `| **开盘参考价** | ${openStr} |\n` +
-        `| **流动性池 (Liquidity)** | **${liqStr}** |\n` +
-        `| **24h 成交额** | **${turnoverStr}** |\n` +
-        `| **合约地址** | \`${item.id}\` |\n\n` +
-        `_数据源: DexScreener · ${new Date().toLocaleTimeString()}_`;
-    } else {
-      // A 股与 Binance 传统金融卡片
-      const openStr = item.open !== undefined && item.open > 0 ? formatPrice(item.open, currency) : "--";
-      const prevCloseStr = item.prevClose !== undefined && item.prevClose > 0 ? formatPrice(item.prevClose, currency) : "--";
-      const highStr = item.high !== undefined && item.high > 0 ? formatPrice(item.high, currency) : "--";
-      const lowStr = item.low !== undefined && item.low > 0 ? formatPrice(item.low, currency) : "--";
-
-      let changeAmtStr = "--";
-      if (item.change !== undefined) {
-        const cSign = item.change >= 0 ? "+" : "";
-        changeAmtStr = `${cSign}${currSym}${Math.abs(item.change).toFixed(item.price > 0 && item.price < 1 ? 4 : 2)}`;
-      } else if (item.price > 0 && item.changePercent !== undefined) {
-        const approxChange = item.price * (item.changePercent / 100);
-        const cSign = approxChange >= 0 ? "+" : "";
-        changeAmtStr = `${cSign}${currSym}${Math.abs(approxChange).toFixed(item.price < 1 ? 4 : 2)}`;
+      if (!hasQuote) {
+        mdText += `\n\n> 💡 **提示**：若长期处于“获取行情中”，可能是当前网络或公司内网拦截了该接口。建议在插件设置中开启本地代理端口（如 10808），或在设置中暂时关闭该分组。`;
       }
 
-      const volStr = formatLargeNumber(item.volume, true, currency);
-      const turnoverStr = formatLargeNumber(item.turnover, false, currency);
-      const currencyLabel = currency === "CNY" ? "人民币 (¥ CNY)" : (currency === "HKD" ? "港币 (HK$ HKD)" : "美元 ($ USD)");
-
-      mdText =
-        `### ${item.name} (\`${item.symbol}\`)\n` +
-        `计价货币：**${currencyLabel}**\n\n` +
-        `| 核心指标 | 实时行情 |\n` +
-        `| :--- | :--- |\n` +
-        `| **最新价格** | ${colorHint} **${priceStr}** |\n` +
-        `| **涨跌百分比** | **${pctStr}** |\n` +
-        `| **涨跌额** | **${changeAmtStr}** |\n` +
-        `| **今日开盘** | ${openStr} |\n` +
-        `| **昨日收盘** | ${prevCloseStr} |\n` +
-        `| **今日最高** | ${highStr} |\n` +
-        `| **今日最低** | ${lowStr} |\n` +
-        `| **成交量** | ${volStr} |\n` +
-        `| **成交额** | ${turnoverStr} |\n\n` +
-        `_更新时间: ${new Date().toLocaleTimeString()}_`;
-    }
-
-    if (!hasQuote) {
-      mdText += `\n\n> 💡 **提示**：若长期处于“获取行情中”，可能是当前网络或公司内网拦截了该接口。建议在插件设置中开启本地代理端口（如 10808），或在设置中暂时关闭该分组。`;
-    }
-
-    if (hasAlert && currentAlert) {
-      const parts: string[] = [];
-      if (currentAlert.above !== undefined && Number.isFinite(currentAlert.above)) {
-        parts.push(`突破上限 ≥ ${currentAlert.above} ${currSym}`);
+      if (hasAlert && currentAlert) {
+        const parts: string[] = [];
+        if (currentAlert.above !== undefined && Number.isFinite(currentAlert.above)) {
+          parts.push(`突破上限 ≥ ${currentAlert.above} ${currSym}`);
+        }
+        if (currentAlert.below !== undefined && Number.isFinite(currentAlert.below)) {
+          parts.push(`跌破下限 ≤ ${currentAlert.below} ${currSym}`);
+        }
+        if (currentAlert.changePercent !== undefined && Number.isFinite(currentAlert.changePercent)) {
+          parts.push(`单日剧烈波动 ≥ ±${currentAlert.changePercent}%`);
+        }
+        mdText += `\n\n---\n🔔 **到价与波动预警（已生效）**\n• ${parts.join("\n• ")}`;
       }
-      if (currentAlert.below !== undefined && Number.isFinite(currentAlert.below)) {
-        parts.push(`跌破下限 ≤ ${currentAlert.below} ${currSym}`);
-      }
-      if (currentAlert.changePercent !== undefined && Number.isFinite(currentAlert.changePercent)) {
-        parts.push(`单日剧烈波动 ≥ ±${currentAlert.changePercent}%`);
-      }
-      mdText += `\n\n---\n🔔 **到价与波动预警（已生效）**\n• ${parts.join("\n• ")}`;
-    }
 
-    this.tooltip = new vscode.MarkdownString(mdText);
-    // 允许渲染 Markdown 表格，但显式禁用全部命令链接：
-    // mdText 内嵌了 DexScreener 等第三方接口返回的代币名称（外部可控），
-    // 若直接置为 true，恶意名称中的 `[x](command:...)` 将可被点击执行。
-    this.tooltip.isTrusted = { enabledCommands: [] };
+      const md = new vscode.MarkdownString(mdText);
+      // 允许渲染 Markdown 表格，但显式禁用全部命令链接：
+      // mdText 内嵌了 DexScreener 等第三方接口返回的代币名称（外部可控），
+      // 若直接置为 true，恶意名称中的 `[x](command:...)` 将可被点击执行。
+      md.isTrusted = { enabledCommands: [] };
+      return md;
+    });
 
     if (!hasQuote) {
       this.iconPath = new vscode.ThemeIcon("sync~spin");
