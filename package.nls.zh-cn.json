@@ -15,6 +15,8 @@
   "command.removeItem": "删除",
   "command.setAlert": "设置价格预警...",
   "command.clearWatchlist": "一键清空自选标的",
+  "command.exportSettings": "导出配置备份 (JSON)...",
+  "command.importSettings": "导入配置恢复 (JSON)...",
   "command.restoreDefaults": "恢复出厂默认设置",
   "command.showLogs": "查看运行日志",
   "viewsContainers.title": "MarketLens",

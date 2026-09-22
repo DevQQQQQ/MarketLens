@@ -2,7 +2,7 @@
 	"name": "marketlens",
 	"displayName": "%displayName%",
 	"description": "%description%",
-	"version": "1.1.11",
+	"version": "1.2.0",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
@@ -143,6 +143,16 @@
 				"command": "marketlens.clearWatchlist",
 				"title": "%command.clearWatchlist%",
 				"icon": "$(clear-all)"
+			},
+			{
+				"command": "marketlens.exportSettings",
+				"title": "%command.exportSettings%",
+				"icon": "$(export)"
+			},
+			{
+				"command": "marketlens.importSettings",
+				"title": "%command.importSettings%",
+				"icon": "$(desktop-download)"
 			},
 			{
 				"command": "marketlens.pinToTop",

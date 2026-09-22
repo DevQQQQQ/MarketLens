@@ -5,6 +5,36 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-22
+
+<details>
+<summary><b>✨ 新增功能 (Features)</b></summary>
+
+- **📤 自选标的与配置一键导出备份 (JSON)**：
+    - 支持一键将当前全部自选标的列表（基金/A股/港股/美股/Binance/Alpha）、自定义分组、手动拖拽顺序、价格预警规则及全局个性化偏好导出为标准 `.json` 文件；
+    - 解决了跨电脑换机、设备重装、企业内网无账号环境无法使用 VS Code 云同步的迁移痛点；同时支持将优质自选组合一键分享给好友。
+- **📥 自选标的与配置一键导入恢复 (JSON)**：
+    - 支持从备份 `.json` 文件一键恢复全部自选标的与设置，具备 Schema 数据合法性校验与弹窗数量确认，防止误操作；
+    - 写入后无需重启 VS Code，侧边栏看板、状态栏与设置面板即时 0 延迟渲染刷新。
+- **🎮 双通道交互支持**：
+    - **命令面板快捷指令**：新增 `marketlens.exportSettings`（导出配置备份）与 `marketlens.importSettings`（导入配置恢复）；
+    - **设置面板专属卡片**：通用设置面板中直观提供【📤 导出配置备份】与【📥 导入配置恢复】操作按钮。
+
+</details>
+
+<details>
+<summary><b>🚀 优化改进与文档对齐 (Improvements & Documentation)</b></summary>
+
+- **Open VSX 网页展示优化**：
+    - 国际化默认语言包采用“核心中文在前 + 简明英文在后”双拼策略，解决 Open VSX 网页端无法动态切换语言的问题，国内开发者在 Open VSX 官网检索可直接清晰展示中文卡片；
+    - `package.json` 保持严格的 `%displayName%` / `%description%` 占位符契约，保障海外用户多语言分发与单元测试自洽。
+- **调度逻辑与 JSDoc 注释对齐**：
+    - 更新 `extractStatusBarQuotes` JSDoc，如实对齐休市管理（`autoCollapseClosedGroups`）下已闭市标的动态剔除与全休市静默隐藏的真实业务契约。
+- **单元测试体系扩充**：
+    - 单元测试全量升级至 67 项，新增配置导出与导入校验契约测试，覆盖标准包装、平铺结构及非法数据防御。
+
+</details>
+
 ## [1.1.11] - 2026-09-22
 
 - **🛡️ 简洁展示模式（摸鱼打码）侧边栏悬停信息防泄露**：

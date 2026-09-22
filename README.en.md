@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/VS_Code-^1.85.0-007ACC?logo=visualstudiocode" alt="VS Code Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Release-v1.1.11-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.2.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platform">
 </p>
 
@@ -84,7 +84,20 @@ Stay focused on your code without watching tickers constantly. Receive accurate,
 
 ---
 
-### 3. 🖱️ Watchlist Management & Batch Reordering
+### 3. 💾 One-Click Configuration Export & Import (Backup & Sharing)
+
+- **📤 One-Click Backup Export (JSON)**:
+    - Export all active watchlist symbols (Funds, A-Shares, HK Stocks, US Stocks, Binance, Alpha), custom aliases, reordered positions, price alert rules, and personal preferences into a standard JSON backup file;
+    - Ideal for offline backups, intranet migrations without cloud sync, and sharing your watchlist with peers.
+- **📥 One-Click Restore Import (JSON)**:
+    - Restore your entire watchlist and configuration in seconds with strict schema validation and modal confirmation protection;
+    - Immediately refreshes the sidebar watchlist, status bar, and settings panel without requiring a VS Code reload.
+- **🎮 Dual Access Channels**:
+    - Accessible via the Command Palette (`MarketLens: Export Settings (Backup JSON)...` / `MarketLens: Import Settings (Restore JSON)...`) or dedicated buttons in the Graphical Settings Panel.
+
+---
+
+### 4. 🖱️ Watchlist Management & Batch Reordering
 
 - **Multi-Select Batch Drag & Drop**:
     - Hold `Shift` (range selection) or `Ctrl` / `Cmd` (discrete selection) to select multiple symbols;
@@ -98,7 +111,7 @@ Stay focused on your code without watching tickers constantly. Receive accurate,
 
 ---
 
-### 4. 📊 Smooth Status Bar Carousel
+### 5. 📊 Smooth Status Bar Carousel
 
 - **Seamless Scrolling**: Quote fetching is decoupled from the carousel timer, preventing stuttering and resets;
 - **Global Status Bar Switch**: Toggle the status bar ticker on or off globally under General Settings;
@@ -108,7 +121,7 @@ Stay focused on your code without watching tickers constantly. Receive accurate,
 
 ---
 
-### 5. 🕶️ Stealth Productivity & Privacy Features
+### 6. 🕶️ Stealth Productivity & Privacy Features
 
 - 🕶️ **Boss Key Instant Hide / Restore (`Ctrl + Alt + M` / `Alt + M`)**:
     - Instantly hides the sidebar watchlist, empties the status bar ticker, and closes the settings panel;
@@ -126,7 +139,7 @@ Stay focused on your code without watching tickers constantly. Receive accurate,
 
 ---
 
-### 6. 🧹 Active-Set Pruning & Dynamic Memory Reclamation
+### 7. 🧹 Active-Set Pruning & Dynamic Memory Reclamation
 
 - **Zero Memory Leaks**:
     - Traditional extensions often retain dead cache entries and active timers after symbols are deleted;
@@ -135,7 +148,7 @@ Stay focused on your code without watching tickers constantly. Receive accurate,
 
 ---
 
-### 7. 🛡️ Network Architecture, Sources & Privacy
+### 8. 🛡️ Network Architecture, Sources & Privacy
 
 Designed for corporate network environments with firewall audits, DPI, and DNS logging:
 
@@ -166,11 +179,11 @@ Designed for corporate network environments with firewall audits, DPI, and DNS l
 
 ---
 
-### 8. ⚙️ Dedicated Graphical Settings Panel
+### 9. ⚙️ Dedicated Graphical Settings Panel
 
 Click the **`⚙️`** gear icon at the top of the watchlist sidebar to open the modern Webview configuration panel:
 
-- **General Settings**: Factory reset, clear all symbols, auto-refresh toggles, refresh interval (ms precision), stealth modes, color neutrality, and global carousel control;
+- **General Settings**: Backup export & import restoration, factory reset, clear all symbols, auto-refresh toggles, refresh interval (ms precision), stealth modes, color neutrality, and global carousel control;
 - **⚡ Price Alerts**: Centralized alert management matrix for all market symbols with threshold adjustments and cooldown timers;
 - **Dedicated Section Tabs**: Independent control for Funds, A-Shares, HK Stocks, US Stocks, Binance, and Alpha;
 - **About & Help**: Check version numbers, view keyboard shortcut cheatsheets, file GitHub issues, or join the community.

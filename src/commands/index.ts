@@ -285,6 +285,16 @@ export function registerCommands(
       await SettingsWebviewPanel.clearWatchlist();
     }),
 
+    // 导出配置备份（JSON 文件）
+    vscode.commands.registerCommand("marketlens.exportSettings", async () => {
+      await SettingsWebviewPanel.exportSettings(context.globalState);
+    }),
+
+    // 导入配置恢复（JSON 文件）
+    vscode.commands.registerCommand("marketlens.importSettings", async () => {
+      await SettingsWebviewPanel.importSettings(context.globalState);
+    }),
+
     // 设置价格预警（右键菜单或命令面板触发）
     vscode.commands.registerCommand(
       "marketlens.setAlert",

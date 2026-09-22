@@ -11,6 +11,7 @@ import {
   persistSectionStatusBarAndRecompute,
   MARKET_SECTIONS,
 } from "../utils/config";
+import { exportSettingsToFile, importSettingsFromFile } from "../utils/backupHelper";
 
 const GLOBAL_CONFIG_KEYS = [
   "proxyPort",
@@ -60,6 +61,7 @@ export class SettingsWebviewPanel {
   public static currentPanel: SettingsWebviewPanel | undefined;
   public static onDidUpdateSetting?: (key: string, value: any) => void;
   public static getQuoteCache?: () => Map<string, MarketItem>;
+  public static globalState?: vscode.Memento;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _version: string;
   private _disposables: vscode.Disposable[] = [];
@@ -224,6 +226,12 @@ export class SettingsWebviewPanel {
           case "clearWatchlist":
             await SettingsWebviewPanel.clearWatchlist();
             break;
+          case "exportSettings":
+            await SettingsWebviewPanel.exportSettings();
+            break;
+          case "importSettings":
+            await SettingsWebviewPanel.importSettings();
+            break;
           case "clearAllAlerts": {
             const confirm = await vscode.window.showWarningMessage(
               "确定要清空当前所有自选标的的价格预警规则吗？",
@@ -353,6 +361,26 @@ export class SettingsWebviewPanel {
 
     vscode.window.showInformationMessage("🗑️ 已成功清空所有自选标的！您可以点击自选栏顶部的加号 [+] 开始添加属于您的标的。");
     return true;
+  }
+
+  public static async exportSettings(globalState?: vscode.Memento): Promise<boolean> {
+    const config = readConfig();
+    const targetState = globalState || SettingsWebviewPanel.globalState;
+    const savedSortModes = targetState?.get<Record<string, any>>("marketlens.groupSortModes", {}) || {};
+    const version = vscode.extensions.getExtension("devqqqqq.marketlens")?.packageJSON?.version;
+    return await exportSettingsToFile(config, savedSortModes, version);
+  }
+
+  public static async importSettings(globalState?: vscode.Memento): Promise<boolean> {
+    const targetState = globalState || SettingsWebviewPanel.globalState;
+    return await importSettingsFromFile({
+      globalState: targetState,
+      onSuccess: async (backupData) => {
+        SettingsWebviewPanel.onDidUpdateSetting?.("importSettings", backupData);
+        SettingsWebviewPanel.syncSettings();
+        await vscode.commands.executeCommand("marketlens.refresh");
+      },
+    });
   }
 
   private _getCurrentSettingsData() {

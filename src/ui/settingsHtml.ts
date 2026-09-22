@@ -347,6 +347,26 @@ export function getSettingsWebviewHtml(
       border-color: rgba(239, 68, 68, 0.6);
       color: #fff;
     }
+    .btn-action {
+      background: var(--hover-bg);
+      color: var(--fg);
+      border: 1px solid var(--card-border);
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-action:hover {
+      background: var(--primary);
+      color: var(--primary-fg);
+      border-color: var(--primary);
+    }
     .btn-telegram {
       background: #0088cc;
       color: #ffffff;
@@ -458,6 +478,22 @@ export function getSettingsWebviewHtml(
             <div class="card-desc">一键清空当前所有板块（基金、A股、港股、美股、Binance、Alpha）的自选标的，保留板块分类，方便您从零开始自定义添加喜欢的资产。</div>
           </div>
           <button class="btn-clear" id="btnClearWatchlist">🗑️ 一键清空标的</button>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">📤 导出配置备份 (JSON)</div>
+            <div class="card-desc">将当前全部自选标的列表、到价预警规则、分组排序模式及全局个性化设置导出为 JSON 文件，便于备份与跨设备迁移。</div>
+          </div>
+          <button class="btn-action" id="btnExportSettings">📤 导出配置备份</button>
+        </div>
+
+        <div class="card">
+          <div class="card-info">
+            <div class="card-title">📥 导入配置恢复 (JSON)</div>
+            <div class="card-desc">从此前导出的 JSON 备份文件中一键恢复自选标的、价格预警与偏好设置，实现换机或重装后的秒级还原。</div>
+          </div>
+          <button class="btn-action" id="btnImportSettings">📥 导入配置恢复</button>
         </div>
 
         <div class="card">
@@ -1239,6 +1275,12 @@ export function getSettingsWebviewHtml(
       on('btnClearWatchlist', 'click', function() {
         postCmd('clearWatchlist');
         showToast('🗑️ 正在请求清空自选标的...');
+      });
+      on('btnExportSettings', 'click', function() {
+        postCmd('exportSettings');
+      });
+      on('btnImportSettings', 'click', function() {
+        postCmd('importSettings');
       });
       var subIds = ${JSON.stringify(MARKET_SECTIONS.map((s) => `${s}StatusBar`))};
       on('statusBarEnabled', 'change', function() {

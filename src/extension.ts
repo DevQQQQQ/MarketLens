@@ -61,6 +61,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   _scheduler = scheduler;
   SettingsWebviewPanel.getQuoteCache = () => scheduler.quoteCache;
+  SettingsWebviewPanel.globalState = context.globalState;
 
   const watchlistOps = new WatchlistOps({
     quoteCache: scheduler.quoteCache,
@@ -130,6 +131,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void context.globalState.update("marketlens.groupSortModes", {});
       scheduler.updateStatusBar(config);
       scheduler.rebuildTree(undefined, config);
+      SettingsWebviewPanel.syncSettings();
+      return;
+    }
+
+    if (key === "importSettings") {
+      config = readConfig();
+      treeProvider.setAlerts(config.alerts || {});
+      if (value?.groupSortModes) {
+        treeProvider.setAllGroupSortModes(value.groupSortModes);
+      }
+      scheduler.updateStatusBar(config);
+      scheduler.rebuildTree(config.watchlist, config);
       SettingsWebviewPanel.syncSettings();
       return;
     }

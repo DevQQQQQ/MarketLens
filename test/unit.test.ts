@@ -18,6 +18,7 @@ import { BinanceService } from "../src/services/binanceService.ts";
 import { AShareService } from "../src/services/aShareService.ts";
 import { HKStockService } from "../src/services/hkStockService.ts";
 import { USStockService } from "../src/services/usStockService.ts";
+import { generateBackupData, validateBackupData } from "../src/utils/backupHelper.ts";
 import "./config.test.ts";
 
 test("nls - package.json 占位符与语言包契约一致性", () => {
@@ -2720,6 +2721,91 @@ test("buildGroupNodeId - 休市分组节点 id 随会话失效以规避 VS Code 
     buildGroupNodeId("基金", true, true, "s1"),
     buildGroupNodeId("基金", true, true, "s1", false)
   );
+});
+
+test("backupHelper - 配置导出与导入校验契约", () => {
+  const sampleConfig: any = {
+    autoRefresh: true,
+    refreshInterval: 6000,
+    maskMode: false,
+    colorNeutral: false,
+    colorScheme: "redUpGreenDown",
+    statusBar: { enabled: true },
+    autoCollapseClosedGroups: true,
+    proxyPort: 7890,
+    proxyUrl: "http://127.0.0.1:7890",
+    fund: { enabled: true, networkMode: "direct", proxyUrl: "http://127.0.0.1:7890", stopOnMarketClosed: true, statusBar: true },
+    aShare: { enabled: true, networkMode: "direct", proxyUrl: "http://127.0.0.1:7890", stopOnMarketClosed: true, statusBar: true },
+    hkStock: { enabled: true, networkMode: "direct", proxyUrl: "http://127.0.0.1:7890", stopOnMarketClosed: true, statusBar: true },
+    usStock: { enabled: true, networkMode: "direct", proxyUrl: "http://127.0.0.1:7890", stopOnMarketClosed: true, statusBar: true },
+    binance: { enabled: true, networkMode: "proxy", proxyUrl: "http://127.0.0.1:7890", statusBar: true },
+    alpha: { enabled: true, networkMode: "proxy", proxyUrl: "http://127.0.0.1:7890", statusBar: true },
+    watchlist: {
+      "A股": [
+        { symbol: "sh600519", name: "贵州茅台", type: "A_SHARE" },
+        { symbol: "sz000001", name: "平安银行", type: "A_SHARE" },
+      ],
+      "Binance": [
+        { symbol: "BTCUSDT", name: "BTC/USDT", type: "CRYPTO" },
+      ],
+    },
+    alerts: {
+      "sh600519": { symbol: "sh600519", name: "贵州茅台", above: 2000, enabled: true },
+    },
+    alertNotificationMode: "notification",
+    alertCooldownMinutes: 15,
+  };
+
+  const sampleSortModes: any = {
+    "A股": "changeDesc",
+    "Binance": "priceDesc",
+  };
+
+  // 1. 生成备份对象
+  const backup = generateBackupData(sampleConfig, sampleSortModes, "1.1.11");
+  assert.strictEqual(backup.version, "1.1.11");
+  assert.strictEqual(backup.schemaVersion, 1);
+  assert.ok(typeof backup.exportedAt === "string");
+  assert.strictEqual(backup.settings.autoRefresh, true);
+  assert.strictEqual(backup.settings.refreshInterval, 6000);
+  assert.strictEqual(backup.settings.colorScheme, "redUpGreenDown");
+  assert.strictEqual(backup.settings.proxyPort, 7890);
+  assert.strictEqual(backup.settings.watchlist?.["A股"]?.length, 2);
+  assert.strictEqual(backup.settings.alerts?.["sh600519"]?.above, 2000);
+  assert.strictEqual(backup.groupSortModes?.["A股"], "changeDesc");
+
+  // 2. 校验标准备份对象
+  const val1 = validateBackupData(backup);
+  assert.strictEqual(val1.valid, true);
+  assert.strictEqual(val1.summary?.totalSymbols, 3);
+  assert.strictEqual(val1.summary?.groupCount, 2);
+  assert.strictEqual(val1.summary?.alertCount, 1);
+  assert.strictEqual(val1.data?.settings.colorScheme, "redUpGreenDown");
+  assert.strictEqual(val1.data?.groupSortModes?.["A股"], "changeDesc");
+
+  // 3. 校验平铺结构（无 settings 包装，直接顶层配置）兼容
+  const flatConfig = {
+    watchlist: {
+      "港股": ["hk00700"],
+    },
+    alerts: {
+      "hk00700": { symbol: "hk00700", below: 300, enabled: true },
+    },
+    colorScheme: "greenUpRedDown",
+  };
+  const val2 = validateBackupData(flatConfig);
+  assert.strictEqual(val2.valid, true);
+  assert.strictEqual(val2.summary?.totalSymbols, 1);
+  assert.strictEqual(val2.summary?.alertCount, 1);
+  assert.strictEqual(val2.data?.settings.watchlist?.["港股"]?.[0]?.symbol, "hk00700");
+
+  // 4. 非法数据防御
+  assert.strictEqual(validateBackupData(null).valid, false);
+  assert.strictEqual(validateBackupData("").valid, false);
+  assert.strictEqual(validateBackupData([]).valid, false);
+  assert.strictEqual(validateBackupData({ watchlist: "not an object" }).valid, false);
+  assert.strictEqual(validateBackupData({ watchlist: { "A股": "not an array" } }).valid, false);
+  assert.strictEqual(validateBackupData({ alerts: "not an object" }).valid, false);
 });
 
 
