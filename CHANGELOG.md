@@ -5,6 +5,23 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-24
+<details>
+<summary><b>🐛 缺陷修复与交互安全 (Bug Fixes & UX Hardening)</b></summary>
+- **🛡️ 简洁展示模式（摸鱼模式）右键命令交互解阻**：
+    - 修复此前开启简洁展示模式（`Alt + K`）后，在自选树视图上右键点击“置顶标的”、“删除自选”或“设置预警”时被守卫误拦截、导致右键菜单失灵的问题；
+    - 新增 `shouldBlockNodeCommand` 守卫判定（`src/utils/maskState.ts`）：精准区分老板键（一票否决全量操作）与简洁模式（仅在从 VS Code 命令面板唤起无 node 节点时拦截 QuickPick 弹窗以防标的自曝，右键传入 node 时放行）。
+- **📦 配置备份导入清洗与资产类型智能推导**：
+    - 修复导入配置备份（JSON）时，若缺少 `type` 字段或存在纯字符串标的会被一律硬编码写死为 `"A_SHARE"` 的严重缺陷；
+    - 接入 `resolveItemAssetType` 结合代码绝对强特征与所属分组名动态推导正确的市场板块（美股为 `US_STOCK`、港股为 `HK_STOCK`、加密货币为 `CRYPTO`），杜绝跨板块串味导致轮询无数据。
+- **🕶️ 状态栏摸鱼伪装防覆盖守卫**：
+    - 修复在简洁展示模式下点击右下角预警通知的【静音 15 分钟】按钮时，状态栏消息会短暂覆盖 Git 分支伪装文本的问题。
+- **⚡ 配置变更异常防御**：
+    - 为 `flushConfigChange` 增加全局异常捕获，防止脏配置落盘或时序异常阻塞后续行情轮询。
+- **🧪 单元测试体系扩充**：
+    - 单元测试增至 68 项，补充命令面板/右键菜单守卫真值表与纯字符串标的指纹提取校验。
+</details>
+
 ## [1.2.0] - 2026-09-22
 
 <details>

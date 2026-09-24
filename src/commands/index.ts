@@ -7,7 +7,7 @@ import { WatchlistProvider, GroupItem, StockItem } from "../ui/watchlistProvider
 import { SettingsWebviewPanel } from "../ui/settingsWebview";
 import { readConfig } from "../utils/config";
 import { logger } from "../utils/logger";
-import { canEmitUserFeedback, resolveMaskToggle } from "../utils/maskState";
+import { canEmitUserFeedback, resolveMaskToggle, shouldBlockNodeCommand } from "../utils/maskState";
 
 export interface CommandServices {
   scheduler: RefreshScheduler;
@@ -263,6 +263,11 @@ export function registerCommands(
     vscode.commands.registerCommand(
       "marketlens.pinToTop",
       async (node?: StockItem) => {
+        // 老板键激活期间一票否决；简洁展示模式下仅在无 node 分支（命令面板触发会弹出含真实名称+代码的 QuickPick）时静默拒绝。
+        if (shouldBlockNodeCommand(statusBar.isBossKeyActive(), readConfig().maskMode, Boolean(node))) {
+          logger.info("专注/简洁展示模式激活期间拒绝置顶标的（老板键/打码守卫已生效）");
+          return;
+        }
         await watchlistOps.pinToTop(node);
       }
     ),
@@ -271,6 +276,10 @@ export function registerCommands(
     vscode.commands.registerCommand(
       "marketlens.removeItem",
       async (node?: StockItem) => {
+        if (shouldBlockNodeCommand(statusBar.isBossKeyActive(), readConfig().maskMode, Boolean(node))) {
+          logger.info("专注/简洁展示模式激活期间拒绝删除自选（老板键/打码守卫已生效）");
+          return;
+        }
         await watchlistOps.removeItem(node);
       }
     ),
@@ -299,6 +308,10 @@ export function registerCommands(
     vscode.commands.registerCommand(
       "marketlens.setAlert",
       async (node?: StockItem) => {
+        if (shouldBlockNodeCommand(statusBar.isBossKeyActive(), readConfig().maskMode, Boolean(node))) {
+          logger.info("专注/简洁展示模式激活期间拒绝设置预警（老板键/打码守卫已生效）");
+          return;
+        }
         await watchlistOps.setAlert(node);
       }
     ),

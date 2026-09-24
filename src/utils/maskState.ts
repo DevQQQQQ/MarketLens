@@ -15,6 +15,26 @@ export function isDisplayMasked(bossKeyActive: boolean, userMaskMode: boolean): 
 }
 
 /**
+ * 判定命令入口（pinToTop / removeItem / setAlert）是否应因脱敏而拒绝执行
+ *
+ * 核心安全规则：
+ * 1. 老板键激活期间：一票否决全部操作，全系统保持完全隐蔽静默；
+ * 2. 简洁展示模式（maskMode）开启期间：
+ *    - 若无 node 节点（从 VS Code 命令面板 Ctrl+Shift+P 唤起），会弹出包含所有自选真实名称/代码的 QuickPick，必须静默拒绝防自曝；
+ *    - 若携带 node 节点（用户在侧边栏树视图上右键点击或点击 inline 按钮），放行以保障正常交互功能。
+ *
+ * @param bossKeyActive 老板键是否激活中
+ * @param userMaskMode  用户配置的摸鱼打码开关
+ * @param hasNode       是否传入了树节点上下文（右键/inline 按钮触发）
+ */
+export function shouldBlockNodeCommand(bossKeyActive: boolean, userMaskMode: boolean, hasNode: boolean): boolean {
+  if (bossKeyActive) {
+    return true;
+  }
+  return !hasNode && userMaskMode;
+}
+
+/**
  * 判定「用户主动重新打开自选看板」时，是否应当自动解除老板键（专注模式）隐身状态
  *
  * 核心安全规则与设计动机：

@@ -246,54 +246,58 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let baselineFingerprint: string | undefined;
 
   const flushConfigChange = () => {
-    _configDebounceTimer = undefined;
-    const oldFingerprint = baselineFingerprint ?? getWatchlistFingerprint(config.watchlist);
-    baselineFingerprint = undefined;
+    try {
+      _configDebounceTimer = undefined;
+      const oldFingerprint = baselineFingerprint ?? getWatchlistFingerprint(config.watchlist);
+      baselineFingerprint = undefined;
 
-    const hadNetworkChange = pendingAffectsNetwork;
-    const hadColorSchemeChange = pendingAffectsColorScheme;
-    const hadColorNeutralChange = pendingAffectsColorNeutral;
-    pendingAffectsNetwork = false;
-    pendingAffectsColorScheme = false;
-    pendingAffectsColorNeutral = false;
+      const hadNetworkChange = pendingAffectsNetwork;
+      const hadColorSchemeChange = pendingAffectsColorScheme;
+      const hadColorNeutralChange = pendingAffectsColorNeutral;
+      pendingAffectsNetwork = false;
+      pendingAffectsColorScheme = false;
+      pendingAffectsColorNeutral = false;
 
-    config = readConfig();
+      config = readConfig();
 
-    if (hadColorSchemeChange && !hadColorNeutralChange) {
-      const cfg = vscode.workspace.getConfiguration("marketlens");
-      if (cfg.get<boolean>("colorNeutral")) {
-        void cfg.update("colorNeutral", false, vscode.ConfigurationTarget.Global);
-        config.colorNeutral = false;
+      if (hadColorSchemeChange && !hadColorNeutralChange) {
+        const cfg = vscode.workspace.getConfiguration("marketlens");
+        if (cfg.get<boolean>("colorNeutral")) {
+          void cfg.update("colorNeutral", false, vscode.ConfigurationTarget.Global);
+          config.colorNeutral = false;
+        }
       }
-    }
 
-    const isBossActive = statusBar.isBossKeyActive();
-    treeProvider.setBossKey(isBossActive);
-    treeProvider.setMaskMode(config.maskMode);
-    treeProvider.setColorNeutral(config.colorNeutral);
-    treeProvider.setColorScheme(config.colorScheme);
-    treeProvider.setAlerts(config.alerts || {});
-    treeProvider.setAutoCollapseClosedGroups(config.autoCollapseClosedGroups ?? true);
-    statusBar.setMaskMode(config.maskMode);
-    statusBar.setColorNeutral(config.colorNeutral);
-    statusBar.setColorScheme(config.colorScheme);
+      const isBossActive = statusBar.isBossKeyActive();
+      treeProvider.setBossKey(isBossActive);
+      treeProvider.setMaskMode(config.maskMode);
+      treeProvider.setColorNeutral(config.colorNeutral);
+      treeProvider.setColorScheme(config.colorScheme);
+      treeProvider.setAlerts(config.alerts || {});
+      treeProvider.setAutoCollapseClosedGroups(config.autoCollapseClosedGroups ?? true);
+      statusBar.setMaskMode(config.maskMode);
+      statusBar.setColorNeutral(config.colorNeutral);
+      statusBar.setColorScheme(config.colorScheme);
 
-    const isFromRecentWebview = Date.now() - lastWebviewUpdateTimestamp < 400;
-    const watchlistContentChanged = oldFingerprint !== getWatchlistFingerprint(config.watchlist);
+      const isFromRecentWebview = Date.now() - lastWebviewUpdateTimestamp < 400;
+      const watchlistContentChanged = oldFingerprint !== getWatchlistFingerprint(config.watchlist);
 
-    scheduler.updateStatusBar(config);
-    // 若变更由 Webview 面板发起且自选内容未变动，onDidUpdateSetting 已执行即时内存重排，跳过落盘二次重复 rebuild
-    if (!isFromRecentWebview || watchlistContentChanged) {
-      scheduler.rebuildTree(undefined, config);
-    }
-    SettingsWebviewPanel.syncSettings();
+      scheduler.updateStatusBar(config);
+      // 若变更由 Webview 面板发起且自选内容未变动，onDidUpdateSetting 已执行即时内存重排，跳过落盘二次重复 rebuild
+      if (!isFromRecentWebview || watchlistContentChanged) {
+        scheduler.rebuildTree(undefined, config);
+      }
+      SettingsWebviewPanel.syncSettings();
 
-    // 仅在网络/轮询周期/板块开关变动，或自选列表发生实际标的增删时才重启定时器并触发网络拉取
-    // 纯 UI 配置（如 maskMode, colorNeutral, statusBar）或同组拖拽、跨组移动完全不重复打全量网络（标的报价已在内存缓存中）
-    if (hadNetworkChange || watchlistContentChanged) {
-      resetProxyCache();
-      marketManager.clearInvalidCache();
-      scheduler.start();
+      // 仅在网络/轮询周期/板块开关变动，或自选列表发生实际标的增删时才重启定时器并触发网络拉取
+      // 纯 UI 配置（如 maskMode, colorNeutral, statusBar）或同组拖拽、跨组移动完全不重复打全量网络（标的报价已在内存缓存中）
+      if (hadNetworkChange || watchlistContentChanged) {
+        resetProxyCache();
+        marketManager.clearInvalidCache();
+        scheduler.start();
+      }
+    } catch (err) {
+      logger.error("flushConfigChange 处理配置变更时异常，防止脏数据阻塞后续轮询", err);
     }
   };
 

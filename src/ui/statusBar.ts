@@ -307,7 +307,8 @@ export class StatusBar implements vscode.Disposable {
    * 临时高亮展示预警信息，并在指定时长后恢复日常轮播
    */
   flashAlert(text: string, durationMs: number = 15000): void {
-    if (this.bossKeyActive) {
+    // 简洁展示模式 / 老板键激活期间：预警闪光会顶掉伪装文本并暴露真实行情，必须静默拒绝。
+    if (this.bossKeyActive || this.maskMode) {
       return;
     }
     if (this.flashAlertTimer !== undefined) {

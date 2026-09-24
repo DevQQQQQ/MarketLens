@@ -240,9 +240,13 @@ export function normalizeAShareCode(raw: string): string {
  * 5. 【纯中立空组】既无有效代码，分组名又无任何市场特征（如 "自选"、"默认分组"），返回 undefined，由调用方单独中立处理。
  */
 export function resolveItemAssetType(
-  item: { symbol?: string; type?: string },
+  item: { symbol?: string; type?: string } | null | undefined,
   groupName: string = ""
 ): AssetType | undefined {
+  if (!item || typeof item !== "object") {
+    return undefined;
+  }
+
   // ── Level 1: 显式 type 拥有绝对优先裁决权 ──
   const type = item.type;
   if (type === "ALPHA_TOKEN" || type === "BSC_TOKEN") return "ALPHA_TOKEN";
@@ -251,7 +255,8 @@ export function resolveItemAssetType(
   if (type === "US_STOCK") return "US_STOCK";
   if (type === "A_SHARE") return "A_SHARE";
 
-  const sym = item.symbol?.trim() || "";
+  const rawSym = item.symbol;
+  const sym = typeof rawSym === "string" ? rawSym.trim() : "";
   const lowerGroup = groupName.toLowerCase();
 
   // ── Level 2: 代码绝对强特征（物理属性强确定，完全免疫组名） ──
@@ -364,7 +369,11 @@ export function getWatchlistFingerprint(watchlist: Record<string, any[]>): strin
   const allSymbols = new Set<string>();
   for (const items of Object.values(watchlist || {})) {
     for (const it of items || []) {
-      const s = (it?.symbol || "").toLowerCase().trim();
+      const rawSym = typeof it === "string" ? it : it?.symbol;
+      if (typeof rawSym !== "string") {
+        continue;
+      }
+      const s = rawSym.toLowerCase().trim();
       if (s) {
         allSymbols.add(s);
       }

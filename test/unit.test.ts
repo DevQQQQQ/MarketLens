@@ -11,7 +11,7 @@ import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange,
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling, MAX_COVERED_HOLIDAY_YEAR, checkHolidayCoverage, US_HOLIDAYS, HK_HOLIDAYS } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache, getSystemProxyUrl } from "../src/services/network.ts";
-import { isDisplayMasked, shouldAutoExitBossKey, canEmitUserFeedback, resolveMaskToggle, MASKED_TOOLTIP_TEXT, resolveStockTooltip } from "../src/utils/maskState.ts";
+import { isDisplayMasked, shouldAutoExitBossKey, canEmitUserFeedback, resolveMaskToggle, shouldBlockNodeCommand, MASKED_TOOLTIP_TEXT, resolveStockTooltip } from "../src/utils/maskState.ts";
 import { AlertManager } from "../src/services/alertManager.ts";
 import { DexScreenerService } from "../src/services/dexScreenerService.ts";
 import { BinanceService } from "../src/services/binanceService.ts";
@@ -399,6 +399,26 @@ test("resolveStockTooltip - 自选列表脱敏态 Tooltip 安全收敛与惰性�
   }
 });
 
+test("shouldBlockNodeCommand - 命令面板入口（pinToTop / removeItem / setAlert）脱敏态拦截守卫", () => {
+  // 命令面板触发的这三个入口在无 node 分支时会展示含真实名称/代码/现价的 QuickPick。
+  // 防御策略：只要老板键激活，或在无 node 时 maskMode 开启，即静默拒绝防自曝；有 node 传入（右键菜单）在 maskMode 下正常放行。
+  const scenarios = [
+    { bossKeyActive: true,  maskMode: false, hasNode: false, shouldBlock: true,  desc: "老板键激活（无 node）" },
+    { bossKeyActive: true,  maskMode: false, hasNode: true,  shouldBlock: true,  desc: "老板键激活（有 node）" },
+    { bossKeyActive: false, maskMode: true,  hasNode: false, shouldBlock: true,  desc: "简洁展示模式开启（无 node，命令面板入口）" },
+    { bossKeyActive: false, maskMode: true,  hasNode: true,  shouldBlock: false, desc: "简洁展示模式开启（有 node，自选树右键入口）" },
+    { bossKeyActive: true,  maskMode: true,  hasNode: false, shouldBlock: true,  desc: "老板键 + 简洁模式同时激活（无 node）" },
+    { bossKeyActive: true,  maskMode: true,  hasNode: true,  shouldBlock: true,  desc: "老板键 + 简洁模式同时激活（有 node）" },
+    { bossKeyActive: false, maskMode: false, hasNode: false, shouldBlock: false, desc: "常规未脱敏态（无 node）" },
+    { bossKeyActive: false, maskMode: false, hasNode: true,  shouldBlock: false, desc: "常规未脱敏态（有 node）" },
+  ];
+
+  for (const s of scenarios) {
+    const blocked = shouldBlockNodeCommand(s.bossKeyActive, s.maskMode, s.hasNode);
+    assert.strictEqual(blocked, s.shouldBlock, `${s.desc} 时入口应${s.shouldBlock ? "被拦截" : "放行"}`);
+  }
+});
+
 test("proxyUrl - 代理地址规范化与协议纠偏", () => {
   // 1. https 纠偏为 http（杜绝 EPROTO）
   assert.strictEqual(validateAndNormalizeProxyUrl("https://127.0.0.1:7890"), "http://127.0.0.1:7890");
@@ -565,6 +585,11 @@ test("resolveItemAssetType & 分组板块判定策略（先看 item.type，彻�
   assert.strictEqual(resolveItemAssetType({ symbol: "usAAPL" }, "临时组"), "US_STOCK");
   assert.strictEqual(resolveItemAssetType({ symbol: "usAMD" }, "临时组"), "US_STOCK");
   assert.strictEqual(resolveItemAssetType({ symbol: "us.NVDA" }, "临时组"), "US_STOCK");
+
+  // 7. 非法 item 入口防御（null / undefined / 非字符串 symbol 不抛错）
+  assert.strictEqual(resolveItemAssetType(null, "A股主板"), undefined);
+  assert.strictEqual(resolveItemAssetType(undefined, "A股主板"), undefined);
+  assert.strictEqual(resolveItemAssetType({ symbol: 123 as any }, "临时组"), undefined);
 });
 
 test("getWatchlistFingerprint - 自选指纹与防重复全量网络请求校验", () => {
@@ -662,6 +687,18 @@ test("getWatchlistFingerprint - 自选指纹与防重复全量网络请求校验
   // 8. 边界条件容错：空对象、空分组、空 symbol
   assert.strictEqual(getWatchlistFingerprint({}), "");
   assert.strictEqual(getWatchlistFingerprint({ "空组": [], "另一组": [{ symbol: "" }] }), "");
+
+  // 9. 脏数据防御：null 元素、非字符串 symbol 不抛错，仍能提取合法标的
+  assert.strictEqual(
+    getWatchlistFingerprint({ "A股": [null, { symbol: 123 }, { symbol: "sh600030" }] }),
+    "sh600030"
+  );
+
+  // 10. 纯字符串标的兼容：纯字符串数组与对象混合配置均可提取指纹
+  assert.strictEqual(
+    getWatchlistFingerprint({ "A股": ["sh600030", { symbol: "sz000001" }], "美股": ["AAPL"] }),
+    "aapl,sh600030,sz000001"
+  );
 });
 
 test("reorderWatchlist - 自选标的同组重排与跨组位移测试", () => {
@@ -1444,16 +1481,16 @@ test("AlertManager - 状态栏与通知通道联动分发", () => {
   manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", type: "A_SHARE", price: 1850, changePercent: 1.0 }], configStatusBarOnly);
   assert.ok(flashedText.includes("突破预警") && flashedText.includes("贵州茅台"), "statusBarOnly 模式下必须调用 flashAlert");
 
-  // 3. 模态脱敏模式 (maskMode)
+  // 3. 简洁展示模式 (maskMode)：状态栏闪光必须被静默拦截，避免顶掉伪装文本
   manager.resetCooldown();
   flashedText = "";
   const configMasked: any = {
     ...configNotification,
-    alertNotificationMode: "statusBarOnly",
+    alertNotificationMode: "both",
     maskMode: true,
   };
   manager.checkQuotes([{ id: "sh600519", symbol: "sh600519", name: "贵州茅台", type: "A_SHARE", price: 1850, changePercent: 1.0 }], configMasked);
-  assert.ok(flashedText.includes("****"), "maskMode 开启时标的名称必须脱敏");
+  assert.strictEqual(flashedText, "", "简洁展示模式下状态栏闪光必须完全静默，避免顶掉伪装文本");
 });
 
 test("AlertManager - 禁用开关与空配置容错保护", () => {
@@ -2806,6 +2843,41 @@ test("backupHelper - 配置导出与导入校验契约", () => {
   assert.strictEqual(validateBackupData({ watchlist: "not an object" }).valid, false);
   assert.strictEqual(validateBackupData({ watchlist: { "A股": "not an array" } }).valid, false);
   assert.strictEqual(validateBackupData({ alerts: "not an object" }).valid, false);
+
+  // 5. 平铺结构缺失 watchlist/alerts 时不回填空对象（避免导入时清空现有自选和预警）
+  const noWatchlist = validateBackupData({ autoRefresh: false });
+  assert.strictEqual(noWatchlist.valid, true);
+  assert.strictEqual(noWatchlist.data?.settings.watchlist, undefined);
+  assert.strictEqual(noWatchlist.data?.settings.alerts, undefined);
+
+  // 6. 脏数组元素清洗：只保留有效 string symbol 或带合法 symbol 的对象
+  const dirtyWatchlist = validateBackupData({
+    watchlist: {
+      "A股": ["sh600030", null, { symbol: 123 }, { symbol: "sz000001", type: "A_SHARE" }],
+      "美股": [{ symbol: "  AAPL  ", name: 123 as any, type: "US_STOCK" }, null, "非法保留"],
+    },
+    alerts: {
+      "sh600030": { symbol: "sh600030", above: 100, enabled: true },
+      bad: null,
+      bad2: { symbol: 456 },
+    },
+  });
+  assert.strictEqual(dirtyWatchlist.valid, true);
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["A股"]?.length, 2);
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["A股"]?.[0]?.symbol, "sh600030");
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["A股"]?.[0]?.type, "A_SHARE");
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["A股"]?.[1]?.symbol, "sz000001");
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["A股"]?.[1]?.type, "A_SHARE");
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["美股"]?.length, 2);
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["美股"]?.[0]?.symbol, "AAPL");
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["美股"]?.[0]?.name, undefined);
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["美股"]?.[0]?.type, "US_STOCK");
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["美股"]?.[1]?.symbol, "非法保留");
+  assert.strictEqual(dirtyWatchlist.data?.settings.watchlist?.["美股"]?.[1]?.type, "US_STOCK");
+  assert.strictEqual(dirtyWatchlist.data?.settings.alerts?.["sh600030"]?.above, 100);
+  assert.strictEqual(dirtyWatchlist.data?.settings.alerts?.["sh600030"]?.enabled, true);
+  assert.strictEqual(dirtyWatchlist.data?.settings.alerts?.["bad"], undefined);
+  assert.strictEqual(dirtyWatchlist.data?.settings.alerts?.["bad2"], undefined);
 });
 
 

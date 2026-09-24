@@ -3,6 +3,7 @@ import type * as vscodeTypes from "vscode";
 import type { MarketLensConfig, GroupSortMode, WatchConfigItem, PriceAlertItem } from "../types/index.ts";
 import { MARKET_SECTIONS } from "./config.ts";
 import { logger } from "./logger.ts";
+import { resolveItemAssetType } from "./symbolHelper.ts";
 
 let vscodeModule: typeof vscodeTypes | undefined;
 try {
@@ -122,7 +123,7 @@ export function validateBackupData(raw: any): ValidationResult {
   // 校验 watchlist 结构（若提供，必须是 key -> array 的对象）
   let totalSymbols = 0;
   let groupCount = 0;
-  const normalizedWatchlist: Record<string, WatchConfigItem[]> = {};
+  let normalizedWatchlist: Record<string, WatchConfigItem[]> | undefined;
 
   if (settingsCandidate.watchlist !== undefined) {
     if (
@@ -133,24 +134,55 @@ export function validateBackupData(raw: any): ValidationResult {
       return { valid: false, error: "watchlist 字段结构非法，必须为分组对象" };
     }
 
+    normalizedWatchlist = {};
     for (const [group, items] of Object.entries(settingsCandidate.watchlist)) {
       if (!Array.isArray(items)) {
         return { valid: false, error: `分组【${group}】的标的列表必须为数组` };
       }
       groupCount += 1;
-      totalSymbols += items.length;
-      normalizedWatchlist[group] = items.map((it: any) => {
+      const validItems: WatchConfigItem[] = [];
+      for (const it of items) {
         if (typeof it === "string") {
-          return { symbol: it, type: "A_SHARE" as const };
+          const sym = it.trim();
+          if (sym) {
+            const inferredType = resolveItemAssetType({ symbol: sym }, group) || "A_SHARE";
+            validItems.push({ symbol: sym, type: inferredType });
+          }
+        } else if (it && typeof it === "object" && typeof it.symbol === "string" && it.symbol.trim() !== "") {
+          const sym = it.symbol.trim();
+          const rawType = it.type;
+          const validAssetType =
+            rawType === "ALPHA_TOKEN" || rawType === "BSC_TOKEN"
+              ? "ALPHA_TOKEN"
+              : rawType === "CRYPTO"
+                ? "CRYPTO"
+                : rawType === "HK_STOCK"
+                  ? "HK_STOCK"
+                  : rawType === "US_STOCK"
+                    ? "US_STOCK"
+                    : rawType === "A_SHARE"
+                      ? "A_SHARE"
+                      : undefined;
+
+          const item: WatchConfigItem = {
+            symbol: sym,
+            type: validAssetType || resolveItemAssetType({ symbol: sym }, group) || "A_SHARE",
+          };
+          if (typeof it.name === "string" && it.name.trim() !== "") {
+            item.name = it.name.trim();
+          }
+          validItems.push(item);
         }
-        return it;
-      });
+        // 其他非法元素（null、number、{symbol:123} 等）直接丢弃
+      }
+      normalizedWatchlist[group] = validItems;
+      totalSymbols += validItems.length;
     }
   }
 
   // 校验 alerts 结构（若提供，必须是 key -> object 的对象）
   let alertCount = 0;
-  const normalizedAlerts: Record<string, PriceAlertItem> = {};
+  let normalizedAlerts: Record<string, PriceAlertItem> | undefined;
 
   if (settingsCandidate.alerts !== undefined) {
     if (
@@ -161,11 +193,21 @@ export function validateBackupData(raw: any): ValidationResult {
       return { valid: false, error: "alerts 字段结构非法，必须为预警字典对象" };
     }
 
-    for (const [key, rule] of Object.entries(settingsCandidate.alerts)) {
-      if (rule && typeof rule === "object") {
+    normalizedAlerts = {};
+    const rawAlerts = settingsCandidate.alerts as Record<string, any>;
+    for (const [key, rule] of Object.entries(rawAlerts)) {
+      if (rule && typeof rule === "object" && typeof rule.symbol === "string" && rule.symbol.trim() !== "") {
         alertCount += 1;
-        normalizedAlerts[key] = rule as PriceAlertItem;
+        normalizedAlerts[key] = {
+          symbol: rule.symbol.trim(),
+          name: typeof rule.name === "string" ? rule.name.trim() : undefined,
+          above: typeof rule.above === "number" ? rule.above : undefined,
+          below: typeof rule.below === "number" ? rule.below : undefined,
+          changePercent: typeof rule.changePercent === "number" ? rule.changePercent : undefined,
+          enabled: typeof rule.enabled === "boolean" ? rule.enabled : true,
+        };
       }
+      // 缺少有效 symbol 的预警规则直接丢弃
     }
   }
 
@@ -396,9 +438,18 @@ export async function importSettingsFromFile(options: {
       await options.globalState.update("marketlens.groupSortModes", data.groupSortModes);
     }
 
-    // 5. 触发成功回调
+    // 5. 触发成功回调（界面刷新等）
+    // 写盘已完成，此阶段失败不应误导用户认为配置未导入
     if (options.onSuccess) {
-      await options.onSuccess(data);
+      try {
+        await options.onSuccess(data);
+      } catch (refreshErr: any) {
+        logger.error("配置已导入，但界面刷新阶段异常", refreshErr);
+        vscode.window.showWarningMessage(
+          `配置已导入成功，但界面刷新失败：${refreshErr?.message || refreshErr}。请尝试执行 MarketLens: Refresh 命令手动刷新。`
+        );
+        return true;
+      }
     }
 
     vscode.window.showInformationMessage(

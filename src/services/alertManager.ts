@@ -2,6 +2,7 @@
 import type * as vscodeTypes from "vscode";
 import type { MarketItem, MarketLensConfig, PriceAlertItem } from "../types";
 import { normalizeSymbolKey } from "../utils/symbolHelper.ts";
+import { isDisplayMasked } from "../utils/maskState.ts";
 import type { StatusBar } from "../ui/statusBar";
 
 let vscodeModule: typeof vscodeTypes | undefined;
@@ -172,30 +173,38 @@ export class AlertManager {
   }
 
   private dispatchAlert(evt: AlertTriggerEvent, config: Partial<MarketLensConfig>): void {
-    const isMasked = config.maskMode;
-    const displayName = isMasked ? "****" : (evt.item.name || evt.item.symbol);
-    const displaySymbol = isMasked ? "**" : evt.item.symbol;
-    const currency = evt.item.currency ? ` ${evt.item.currency}` : "";
+    // 老板键 + 简洁展示模式统一判定：只要任一处于激活/开启状态，预警 UI 就必须彻底脱敏，
+    // 杜绝状态栏伪装文本被顶掉、以及右下角通知泄露真实价格/阈值。
+    const masked = isDisplayMasked(this.statusBar?.isBossKeyActive() ?? false, config.maskMode ?? false);
+    const displayName = masked ? "****" : (evt.item.name || evt.item.symbol);
+    const displaySymbol = masked ? "**" : evt.item.symbol;
+    const currency = !masked && evt.item.currency ? ` ${evt.item.currency}` : "";
 
     let alertMessage = "";
     let statusText = "";
 
     if (evt.type === "above") {
-      alertMessage = `🔔 [MarketLens 预警] ${displayName} (${displaySymbol}) 现价已突破上限：${evt.currentValue}${currency}（设定阈值 ≥ ${evt.thresholdValue}）`;
-      statusText = `$(bell) [突破预警] ${displayName} ${evt.currentValue}`;
+      const currentStr = masked ? "****" : String(evt.currentValue);
+      const thresholdStr = masked ? "****" : String(evt.thresholdValue);
+      alertMessage = `🔔 [MarketLens 预警] ${displayName} (${displaySymbol}) 现价已突破上限：${currentStr}${currency}（设定阈值 ≥ ${thresholdStr}）`;
+      statusText = masked ? "$(bell) [突破预警]" : `$(bell) [突破预警] ${displayName} ${evt.currentValue}`;
     } else if (evt.type === "below") {
-      alertMessage = `⚠️ [MarketLens 预警] ${displayName} (${displaySymbol}) 现价已跌破下限：${evt.currentValue}${currency}（设定阈值 ≤ ${evt.thresholdValue}）`;
-      statusText = `$(warning) [跌破预警] ${displayName} ${evt.currentValue}`;
+      const currentStr = masked ? "****" : String(evt.currentValue);
+      const thresholdStr = masked ? "****" : String(evt.thresholdValue);
+      alertMessage = `⚠️ [MarketLens 预警] ${displayName} (${displaySymbol}) 现价已跌破下限：${currentStr}${currency}（设定阈值 ≤ ${thresholdStr}）`;
+      statusText = masked ? "$(warning) [跌破预警]" : `$(warning) [跌破预警] ${displayName} ${evt.currentValue}`;
     } else {
       const sign = evt.currentValue >= 0 ? "+" : "";
-      alertMessage = `⚡ [MarketLens 波动] ${displayName} (${displaySymbol}) 今日涨跌幅达到 ${sign}${evt.currentValue.toFixed(2)}%（阈值 ±${evt.thresholdValue}%）`;
-      statusText = `$(pulse) [剧烈波动] ${displayName} ${sign}${evt.currentValue.toFixed(2)}%`;
+      const currentStr = masked ? "****" : `${sign}${evt.currentValue.toFixed(2)}%`;
+      const thresholdStr = masked ? "****" : `${evt.thresholdValue}%`;
+      alertMessage = `⚡ [MarketLens 波动] ${displayName} (${displaySymbol}) 今日涨跌幅达到 ${currentStr}（阈值 ±${thresholdStr}）`;
+      statusText = masked ? "$(pulse) [剧烈波动]" : `$(pulse) [剧烈波动] ${displayName} ${sign}${evt.currentValue.toFixed(2)}%`;
     }
 
     const mode = config.alertNotificationMode || "notification";
 
-    // 状态栏静默提醒通道
-    if ((mode === "statusBarOnly" || mode === "both") && this.statusBar) {
+    // 状态栏静默提醒通道：脱敏态下禁止一切可能顶掉伪装文本的预警闪光
+    if (!masked && (mode === "statusBarOnly" || mode === "both") && this.statusBar) {
       this.statusBar.flashAlert(statusText, 15000);
     }
 
@@ -211,7 +220,9 @@ export class AlertManager {
         void notifyFn(alertMessage, muteAction, settingsAction).then((action?: string) => {
           if (action === muteAction) {
             this.mute(evt.symbolKey, config.alertCooldownMinutes || 15);
-            vscodeModule?.window?.setStatusBarMessage(`$(bell-slash) 已静音 ${displayName} 预警 ${config.alertCooldownMinutes || 15} 分钟`, 3000);
+            if (!masked) {
+              vscodeModule?.window?.setStatusBarMessage(`$(bell-slash) 已静音 ${displayName} 预警 ${config.alertCooldownMinutes || 15} 分钟`, 3000);
+            }
           } else if (action === settingsAction) {
             void vscodeModule?.commands?.executeCommand("marketlens.openSettings");
           }
