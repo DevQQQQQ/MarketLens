@@ -27,5 +27,6 @@ ml_*.txt
 .workbuddy
 .workbuddy-ai
 docs
+site
 AGENTS.md
 scripts/.readme-hash

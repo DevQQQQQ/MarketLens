@@ -1,27 +1,19 @@
 // src/utils/config.ts
-import type * as vscodeTypes from "vscode";
+import * as vscode from "vscode";
 import type { MarketLensConfig } from "../types/index.ts";
-import { computeStatusBarEnabled } from "./symbolHelper.ts";
+import { computeStatusBarEnabled, sanitizeWatchlist } from "./symbolHelper.ts";
 import { getSystemProxyUrl, DEFAULT_PROXY_PORT } from "../services/network.ts";
 
-let vscodeModule: typeof vscodeTypes | undefined;
-try {
-  vscodeModule = require("vscode");
-} catch (_) {}
-
-function getConfiguration(section?: string): vscodeTypes.WorkspaceConfiguration {
-  if (vscodeModule?.workspace?.getConfiguration) {
-    return vscodeModule.workspace.getConfiguration(section);
-  }
-  throw new Error("vscode.workspace is not available outside the VS Code extension host");
+function getConfiguration(section?: string): vscode.WorkspaceConfiguration {
+  return vscode.workspace.getConfiguration(section);
 }
 
-function getGlobalTarget(): vscodeTypes.ConfigurationTarget {
-  return vscodeModule?.ConfigurationTarget?.Global ?? (1 as vscodeTypes.ConfigurationTarget);
+function getGlobalTarget(): vscode.ConfigurationTarget {
+  return vscode.ConfigurationTarget.Global;
 }
 
 function getSectionConfig(
-  cfg: vscodeTypes.WorkspaceConfiguration,
+  cfg: vscode.WorkspaceConfiguration,
   section: string,
   defaults: { networkMode: "proxy" | "direct"; proxyUrl: string; stopOnMarketClosed?: boolean }
 ) {
@@ -95,14 +87,14 @@ export function readConfig(): MarketLensConfig {
     binance,
     alpha,
 
-    watchlist: cfg.get("watchlist", {}),
+    watchlist: sanitizeWatchlist(cfg.get("watchlist", {})),
     alerts: cfg.get("alerts", {}),
     alertNotificationMode: cfg.get<"notification" | "statusBarOnly" | "both">("alertNotificationMode", "notification"),
     alertCooldownMinutes: cfg.get<number>("alertCooldownMinutes", 15),
   };
 }
 
-export { getWatchlistFingerprint, computeStatusBarEnabled } from "./symbolHelper.ts";
+export { getWatchlistFingerprint, computeStatusBarEnabled, sanitizeWatchlist } from "./symbolHelper.ts";
 
 export const MARKET_SECTIONS = ["fund", "aShare", "hkStock", "usStock", "binance", "alpha"] as const;
 export type MarketSection = typeof MARKET_SECTIONS[number];
@@ -147,7 +139,7 @@ export function recomputeStatusBarEnabled(cfg: MarketLensConfig): boolean {
  * 磁盘持久化：将代理端口与地址全量扇出写入 VS Code 全局配置（包括所有板块，彻底杜绝遗漏）
  */
 export async function persistProxyToAllSections(
-  cfg: vscodeTypes.WorkspaceConfiguration,
+  cfg: vscode.WorkspaceConfiguration,
   proxyUrl: string,
   port?: number
 ): Promise<void> {
@@ -168,7 +160,7 @@ export async function persistProxyToAllSections(
  * 磁盘持久化：将状态栏总控与各板块状态栏全量扇出写入 VS Code 全局配置
  */
 export async function persistStatusBarToAllSections(
-  cfg: vscodeTypes.WorkspaceConfiguration,
+  cfg: vscode.WorkspaceConfiguration,
   enabled: boolean
 ): Promise<void> {
   const target = getGlobalTarget();
@@ -185,7 +177,7 @@ export async function persistStatusBarToAllSections(
  * 磁盘持久化：写入单个板块状态栏开关并联动聚合计算 statusBar.enabled
  */
 export async function persistSectionStatusBarAndRecompute(
-  cfg: vscodeTypes.WorkspaceConfiguration,
+  cfg: vscode.WorkspaceConfiguration,
   sectionKey: string,
   value: boolean
 ): Promise<boolean> {

@@ -1,9 +1,9 @@
 // src/services/alertManager.ts
 import type * as vscodeTypes from "vscode";
-import type { MarketItem, MarketLensConfig, PriceAlertItem } from "../types";
+import type { MarketItem, MarketLensConfig, PriceAlertItem } from "../types/index.ts";
 import { normalizeSymbolKey } from "../utils/symbolHelper.ts";
 import { isDisplayMasked } from "../utils/maskState.ts";
-import type { StatusBar } from "../ui/statusBar";
+import type { StatusBar } from "../ui/statusBar.ts";
 
 let vscodeModule: typeof vscodeTypes | undefined;
 try {

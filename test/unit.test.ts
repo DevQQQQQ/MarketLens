@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT, isItemMarketClosed, isGroupMarketClosed, buildGroupNodeId } from "../src/utils/symbolHelper.ts";
+import { isSameSymbol, normalizeSymbolKey, normalizeUSCode, inferAShareExchange, normalizeAShareCode, resolveItemAssetType, resolveItemDisplayName, getWatchlistFingerprint, reorderWatchlist, batchReorderWatchlist, pruneQuoteCache, extractTargetsFromWatchlist, extractStatusBarQuotes, computeStatusBarEnabled, resolveTrendColors, chunkArray, decodeGbk, escapeHtml, ASSET_TYPE_TO_SECTION_MAP, NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT, isItemMarketClosed, isGroupMarketClosed, buildGroupNodeId, sanitizeWatchlist } from "../src/utils/symbolHelper.ts";
 import { validateAndParseInput, isContractAddress, extractContractAddressFromUrl } from "../src/utils/inputValidator.ts";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, isAShareHoliday, isHKHoliday, isUSHoliday, evaluateAdaptiveThrottle, getZonedTimeParts, beijingFormatter, newYorkFormatter, shouldSkipMarketPolling, MAX_COVERED_HOLIDAY_YEAR, checkHolidayCoverage, US_HOLIDAYS, HK_HOLIDAYS } from "../src/utils/marketHours.ts";
 import { validateAndNormalizeProxyUrl, parseProxy, resetProxyCache, getSystemProxyUrl } from "../src/services/network.ts";
@@ -2879,6 +2879,92 @@ test("backupHelper - 配置导出与导入校验契约", () => {
   assert.strictEqual(dirtyWatchlist.data?.settings.alerts?.["bad"], undefined);
   assert.strictEqual(dirtyWatchlist.data?.settings.alerts?.["bad2"], undefined);
 });
+
+test("sanitizeWatchlist - 容错清洗、null过滤与裸字符串规整", () => {
+  // 1. 根级别非法数据兜底
+  assert.deepStrictEqual(sanitizeWatchlist(null), {});
+  assert.deepStrictEqual(sanitizeWatchlist(undefined), {});
+  assert.deepStrictEqual(sanitizeWatchlist("string"), {});
+  assert.deepStrictEqual(sanitizeWatchlist(123), {});
+  assert.deepStrictEqual(sanitizeWatchlist([]), {});
+
+  // 2. 分组为 null / 非数组时规整为空数组
+  const nonArrayGroup = sanitizeWatchlist({
+    "A股": null,
+    "港股": "not-an-array",
+    "美股": { symbol: "AAPL" },
+  });
+  assert.deepStrictEqual(nonArrayGroup, {
+    "A股": [],
+    "港股": [],
+    "美股": [],
+  });
+
+  // 3. 裸字符串自动包装为合规 WatchConfigItem 并正确推导板块
+  const rawStringWatchlist = sanitizeWatchlist({
+    "自选A股": ["sh600519", "000001", "  601318  "],
+    "港股": ["00700", "hk09988"],
+    "美股": ["AAPL", "TSLA"],
+    "Crypto": ["BTCUSDT", "ETHUSDT"],
+  });
+  assert.strictEqual(rawStringWatchlist["自选A股"].length, 3);
+  assert.strictEqual(rawStringWatchlist["自选A股"][0].symbol, "sh600519");
+  assert.strictEqual(rawStringWatchlist["自选A股"][0].type, "A_SHARE");
+  assert.strictEqual(rawStringWatchlist["自选A股"][2].symbol, "601318");
+
+  assert.strictEqual(rawStringWatchlist["港股"][0].symbol, "00700");
+  assert.strictEqual(rawStringWatchlist["港股"][0].type, "HK_STOCK");
+
+  assert.strictEqual(rawStringWatchlist["美股"][0].symbol, "AAPL");
+  assert.strictEqual(rawStringWatchlist["美股"][0].type, "US_STOCK");
+
+  assert.strictEqual(rawStringWatchlist["Crypto"][0].symbol, "BTCUSDT");
+  assert.strictEqual(rawStringWatchlist["Crypto"][0].type, "CRYPTO");
+
+  // 4. 脏元素过滤（null, undefined, 数字, 无 symbol, symbol 为空）
+  const dirtyItems = sanitizeWatchlist({
+    "A股": [
+      null,
+      undefined,
+      123,
+      {},
+      { name: "只有名称没有代码" },
+      { symbol: "   " },
+      { symbol: 456 },
+      { symbol: "sh600030", name: "  中信证券  ", type: "A_SHARE" },
+      { symbol: "sz000001", name: "", type: "UNKNOWN_TYPE" as any },
+    ],
+  });
+  assert.strictEqual(dirtyItems["A股"].length, 2);
+  assert.strictEqual(dirtyItems["A股"][0].symbol, "sh600030");
+  assert.strictEqual(dirtyItems["A股"][0].name, "中信证券");
+  assert.strictEqual(dirtyItems["A股"][0].type, "A_SHARE");
+  assert.strictEqual(dirtyItems["A股"][1].symbol, "sz000001");
+  assert.strictEqual(dirtyItems["A股"][1].name, undefined);
+  assert.strictEqual(dirtyItems["A股"][1].type, "A_SHARE");
+});
+
+test("batchReorderWatchlist - 脏元素（含 null/空对象）防御与同组拖拽安全性", () => {
+  const dirtyWatchlist: Record<string, any[]> = {
+    "A股": [
+      null,
+      { symbol: "sh600519", type: "A_SHARE" },
+      undefined,
+      { symbol: "sz000001", type: "A_SHARE" },
+      {},
+    ],
+  };
+
+  // 尝试将 sz000001 移动到 sh600519 前面，即使组内含有 null/undefined 也绝不抛出 TypeError
+  const reordered = batchReorderWatchlist(dirtyWatchlist, [
+    { sourceGroup: "A股", sourceSymbol: "sz000001" },
+  ], "A股", "sh600519");
+
+  assert.notStrictEqual(reordered, null);
+  const symbols = reordered!["A股"].map((x) => x?.symbol).filter(Boolean);
+  assert.deepStrictEqual(symbols, ["sz000001", "sh600519"]);
+});
+
 
 
 

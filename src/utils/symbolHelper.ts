@@ -1,7 +1,7 @@
 // src/utils/symbolHelper.ts
-import type { AssetType, MarketSection } from "../types";
+import type { AssetType, MarketSection, WatchConfigItem } from "../types";
 import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen } from "./marketHours.ts";
-export type { AssetType, MarketSection };
+export type { AssetType, MarketSection, WatchConfigItem };
 
 /**
  * 资产底层类型 (AssetType) 到市场业务板块 (MarketSection) 的全局唯一映射字典
@@ -358,6 +358,76 @@ export function resolveItemAssetType(
 
   // ── Level 5: 既无代码，组名又无任何市场特征（如中立空组 "自选"、"我的关注"），返回 undefined ──
   return undefined;
+}
+
+/**
+ * 纯算法函数：深度清洗与规整 watchlist 配置
+ * 1. 过滤非对象、null、数组等非法根结构，兜底为空字典 {}；
+ * 2. 对每个分组，若其值为非数组（如 null、undefined、非数组对象）则规整为空数组 []；
+ * 3. 兼容字符串简写（如 ["sh600519"]），自动规整为合规的 WatchConfigItem；
+ * 4. 彻底剔除 null、undefined、非对象以及 symbol 为空/非法的脏元素；
+ * 5. 校验并补齐合规的 AssetType，未知时使用 resolveItemAssetType 依据代码与组名推导；
+ * 6. 清理 name 字段的空白字符串（忽略非 string 或空串）。
+ */
+export function sanitizeWatchlist(raw: unknown): Record<string, WatchConfigItem[]> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+
+  const result: Record<string, WatchConfigItem[]> = {};
+
+  for (const [group, items] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(items)) {
+      result[group] = [];
+      continue;
+    }
+
+    const cleanItems: WatchConfigItem[] = [];
+    for (const it of items) {
+      if (typeof it === "string") {
+        const sym = it.trim();
+        if (sym) {
+          const inferredType = resolveItemAssetType({ symbol: sym }, group) || "A_SHARE";
+          cleanItems.push({ symbol: sym, type: inferredType });
+        }
+      } else if (it && typeof it === "object" && !Array.isArray(it)) {
+        const candidate = it as Record<string, unknown>;
+        if (typeof candidate.symbol === "string") {
+          const sym = candidate.symbol.trim();
+          if (sym) {
+            const rawType = candidate.type;
+            const validAssetType: AssetType | undefined =
+              rawType === "ALPHA_TOKEN" || rawType === "BSC_TOKEN"
+                ? "ALPHA_TOKEN"
+                : rawType === "CRYPTO"
+                  ? "CRYPTO"
+                  : rawType === "HK_STOCK"
+                    ? "HK_STOCK"
+                    : rawType === "US_STOCK"
+                      ? "US_STOCK"
+                      : rawType === "A_SHARE"
+                        ? "A_SHARE"
+                        : undefined;
+
+            const item: WatchConfigItem = {
+              symbol: sym,
+              type: validAssetType || resolveItemAssetType({ symbol: sym }, group) || "A_SHARE",
+            };
+
+            if (typeof candidate.name === "string" && candidate.name.trim() !== "") {
+              item.name = candidate.name.trim();
+            }
+
+            cleanItems.push(item);
+          }
+        }
+      }
+    }
+
+    result[group] = cleanItems;
+  }
+
+  return result;
 }
 
 /**
@@ -776,13 +846,13 @@ export function batchReorderWatchlist(
   if (targetSymbol) {
     const origTargetIndex = targetGroupItemsBefore.findIndex(
       (it) =>
-        isSameSymbol(it.symbol, targetSymbol) ||
-        it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
+        isSameSymbol(it?.symbol, targetSymbol) ||
+        it?.symbol?.toLowerCase() === targetSymbol.toLowerCase()
     );
     const firstSourceIndex = targetGroupItemsBefore.findIndex(
       (it) =>
-        isSameSymbol(it.symbol, itemsToMove[0].sourceSymbol) ||
-        it.symbol?.toLowerCase() === itemsToMove[0].sourceSymbol.toLowerCase()
+        isSameSymbol(it?.symbol, itemsToMove[0].sourceSymbol) ||
+        it?.symbol?.toLowerCase() === itemsToMove[0].sourceSymbol.toLowerCase()
     );
     if (origTargetIndex !== -1 && firstSourceIndex !== -1 && firstSourceIndex < origTargetIndex) {
       isDownward = true;
@@ -798,8 +868,8 @@ export function batchReorderWatchlist(
 
     const idx = groupList.findIndex(
       (it) =>
-        isSameSymbol(it.symbol, sourceSymbol) ||
-        it.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
+        isSameSymbol(it?.symbol, sourceSymbol) ||
+        it?.symbol?.toLowerCase() === sourceSymbol.toLowerCase()
     );
     if (idx !== -1) {
       const [removed] = groupList.splice(idx, 1);
@@ -820,8 +890,8 @@ export function batchReorderWatchlist(
   if (targetSymbol) {
     const newTargetIndex = targetList.findIndex(
       (it) =>
-        isSameSymbol(it.symbol, targetSymbol) ||
-        it.symbol?.toLowerCase() === targetSymbol.toLowerCase()
+        isSameSymbol(it?.symbol, targetSymbol) ||
+        it?.symbol?.toLowerCase() === targetSymbol.toLowerCase()
     );
 
     if (newTargetIndex !== -1) {

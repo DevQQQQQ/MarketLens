@@ -2,8 +2,8 @@
 // 极致摸鱼状态栏：伪装模式 / 老板键 / 颜色脱敏 / 轮播展示
 
 import * as vscode from "vscode";
-import { MarketItem } from "../types";
-import { getProxyStatus } from "../services/network";
+import type { MarketItem } from "../types/index.ts";
+import { getProxyStatus } from "../services/network.ts";
 
 // ────────────────────────────────────────────────────────────────
 //  常量与工具函数
@@ -253,7 +253,7 @@ export class StatusBar implements vscode.Disposable {
     if (proxyStatus.inCooldown) {
       tip += `\n⚠️ 代理不可达 (冷却中 ${proxyStatus.cooldownRemainingSeconds}s)`;
     } else if (proxyStatus.activePort) {
-      tip += `\n🌐 本地代理: 127.0.0.1:${proxyStatus.activePort}`;
+      tip += `\n🌐 本地代理: 已连接 (127.0.0.1)`;
     }
     this.barItem.tooltip = tip;
     this.applyColor(visible[0]);

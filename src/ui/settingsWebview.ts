@@ -1,17 +1,18 @@
+import * as crypto from "node:crypto";
 import * as vscode from "vscode";
-import { detectAvailablePort, getCachedWorkingPort, resetProxyCache, DEFAULT_PROXY_PORT, DEFAULT_PROXY_URL } from "../services/network";
-import { getSettingsWebviewHtml } from "./settingsHtml";
-import { logger } from "../utils/logger";
-import { MarketItem } from "../types";
-import { normalizeSymbolKey, resolveItemDisplayName } from "../utils/symbolHelper";
+import { detectAvailablePort, getCachedWorkingPort, resetProxyCache, DEFAULT_PROXY_PORT, DEFAULT_PROXY_URL } from "../services/network.ts";
+import { getSettingsWebviewHtml } from "./settingsHtml.ts";
+import { logger } from "../utils/logger.ts";
+import type { MarketItem } from "../types/index.ts";
+import { normalizeSymbolKey, resolveItemDisplayName } from "../utils/symbolHelper.ts";
 import {
   readConfig,
   persistProxyToAllSections,
   persistStatusBarToAllSections,
   persistSectionStatusBarAndRecompute,
   MARKET_SECTIONS,
-} from "../utils/config";
-import { exportSettingsToFile, importSettingsFromFile } from "../utils/backupHelper";
+} from "../utils/config.ts";
+import { exportSettingsToFile, importSettingsFromFile } from "../utils/backupHelper.ts";
 
 const GLOBAL_CONFIG_KEYS = [
   "proxyPort",
@@ -96,12 +97,7 @@ export class SettingsWebviewPanel {
   }
 
   private static _generateNonce(): string {
-    let text = "";
-    const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    for (let i = 0; i < 32; i++) {
-      text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
+    return crypto.randomBytes(16).toString("base64");
   }
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, version: string = "") {
@@ -221,6 +217,10 @@ export class SettingsWebviewPanel {
             await SettingsWebviewPanel.restoreDefaults();
             break;
           case "showLogs":
+            if (readConfig().maskMode) {
+              logger.info("简洁展示模式激活期间拒绝打开运行日志（打码守卫已生效）");
+              break;
+            }
             logger.show();
             break;
           case "clearWatchlist":

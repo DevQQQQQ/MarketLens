@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig, GroupSortMode } from "../types";
-import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, ColorScheme, ASSET_TYPE_TO_SECTION_MAP, isGroupMarketClosed, buildGroupNodeId } from "../utils/symbolHelper";
-import { isDisplayMasked, resolveStockTooltip } from "../utils/maskState";
+import type { MarketItem, WatchlistConfig, WatchConfigItem, PriceAlertItem, AlertsConfig, GroupSortMode } from "../types/index.ts";
+import { normalizeSymbolKey, resolveItemAssetType, resolveItemDisplayName, resolveTrendColors, type ColorScheme, ASSET_TYPE_TO_SECTION_MAP, isGroupMarketClosed, buildGroupNodeId } from "../utils/symbolHelper.ts";
+import { isDisplayMasked, resolveStockTooltip } from "../utils/maskState.ts";
 
 /**
  * 智能格式化价格
@@ -63,16 +63,27 @@ const ACTIVATION_TAG = Date.now().toString(36);
 
 /** 分组节点（基金 / A股 / 港股 / 美股 / Binance / Alpha） */
 export class GroupItem extends vscode.TreeItem {
+  public readonly groupName: string;
+  public readonly children: StockItem[];
+  public sortMode: GroupSortMode;
+  public isClosed: boolean;
+  public autoCollapse: boolean;
+
   constructor(
-    public readonly groupName: string,
-    public readonly children: StockItem[],
-    public sortMode: GroupSortMode = "default",
-    public isClosed: boolean = false,
-    public autoCollapse: boolean = false,
+    groupName: string,
+    children: StockItem[],
+    sortMode: GroupSortMode = "default",
+    isClosed: boolean = false,
+    autoCollapse: boolean = false,
     collapseSessionTag: string = "",
     forceExpanded: boolean = false
   ) {
     super(groupName, vscode.TreeItemCollapsibleState.Expanded);
+    this.groupName = groupName;
+    this.children = children;
+    this.sortMode = sortMode;
+    this.isClosed = isClosed;
+    this.autoCollapse = autoCollapse;
     this.contextValue = "groupItem";
     this.iconPath = new vscode.ThemeIcon("folder");
     this.applyCollapseState(autoCollapse, collapseSessionTag, forceExpanded);
@@ -131,18 +142,28 @@ export class StockItem extends vscode.TreeItem {
   public alertRule?: PriceAlertItem;
   public confName?: string;
   public colorScheme: ColorScheme;
+  public item: MarketItem;
+  public groupName: string;
+  public readonly confSymbol: string;
+  private maskMode: boolean;
+  private colorNeutral: boolean;
 
   constructor(
-    public item: MarketItem,
-    public groupName: string,
-    public readonly confSymbol: string,
-    private maskMode: boolean,
-    private colorNeutral: boolean = false,
+    item: MarketItem,
+    groupName: string,
+    confSymbol: string,
+    maskMode: boolean,
+    colorNeutral: boolean = false,
     alertRule?: PriceAlertItem,
     confName?: string,
     colorScheme: ColorScheme = "greenUpRedDown"
   ) {
     super(resolveItemDisplayName(confName, confSymbol, item), vscode.TreeItemCollapsibleState.None);
+    this.item = item;
+    this.groupName = groupName;
+    this.confSymbol = confSymbol;
+    this.maskMode = maskMode;
+    this.colorNeutral = colorNeutral;
     this.confName = confName;
     this.colorScheme = colorScheme;
     this.id = `${groupName}_${confSymbol}`;
@@ -352,11 +373,19 @@ export class WatchlistProvider
     mode: GroupSortMode
   ) => void | Promise<void>;
 
+  private maskMode: boolean;
+  private colorNeutral: boolean;
+  private colorScheme: ColorScheme;
+
   constructor(
-    private maskMode: boolean,
-    private colorNeutral: boolean = false,
-    private colorScheme: ColorScheme = "greenUpRedDown"
-  ) {}
+    maskMode: boolean,
+    colorNeutral: boolean = false,
+    colorScheme: ColorScheme = "greenUpRedDown"
+  ) {
+    this.maskMode = maskMode;
+    this.colorNeutral = colorNeutral;
+    this.colorScheme = colorScheme;
+  }
 
   public setAutoCollapseClosedGroups(enabled: boolean): void {
     const next = !!enabled;
@@ -717,7 +746,7 @@ export class WatchlistProvider
       }
       if (items && items.length > 0) {
         // 先看组内 item 的真实 type：只要组内至少存在一个处于启用板块的标的，该组即保持展示
-        return items.some((item) => isSectionEnabled(resolveItemAssetType(item, groupName)));
+        return items.some((item) => item && item.symbol && isSectionEnabled(resolveItemAssetType(item, groupName)));
       }
       // 组内为空时，按组名关键词推导所属板块进行兜底；若为中立组（如 "自选"）推导为 undefined，返回 true 保持展示
       const inferredType = resolveItemAssetType({ symbol: "" }, groupName);
@@ -735,8 +764,9 @@ export class WatchlistProvider
       }
       // 组权重优先看组内标的主流类型，空组或无标的时按组名关键词兜底
       let dominantType: string | undefined;
-      if (items && items.length > 0) {
-        dominantType = resolveItemAssetType(items[0], name);
+      const firstValid = items?.find((it) => it && typeof it.symbol === "string" && it.symbol.trim() !== "");
+      if (firstValid) {
+        dominantType = resolveItemAssetType(firstValid, name);
       } else {
         dominantType = resolveItemAssetType({ symbol: "" }, name);
       }
@@ -755,6 +785,7 @@ export class WatchlistProvider
 
     this.groups = filteredEntries.map(([groupName, items]) => {
       const activeItems = (items || []).filter((conf) =>
+        conf && typeof conf.symbol === "string" && conf.symbol.trim() !== "" &&
         isSectionEnabled(resolveItemAssetType(conf, groupName))
       );
       const children = activeItems.map((conf) => {

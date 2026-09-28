@@ -1,11 +1,11 @@
 // src/extension.ts
 import * as vscode from "vscode";
-import { MarketManager } from "./services/marketManager";
-import { WatchlistProvider } from "./ui/watchlistProvider";
-import { StatusBar } from "./ui/statusBar";
-import { logger } from "./utils/logger";
-import { shouldAutoExitBossKey } from "./utils/maskState";
-import { resetProxyCache, DEFAULT_PROXY_PORT, DEFAULT_PROXY_URL } from "./services/network";
+import { MarketManager } from "./services/marketManager.ts";
+import { WatchlistProvider } from "./ui/watchlistProvider.ts";
+import { StatusBar } from "./ui/statusBar.ts";
+import { logger } from "./utils/logger.ts";
+import { shouldAutoExitBossKey } from "./utils/maskState.ts";
+import { resetProxyCache, DEFAULT_PROXY_PORT, DEFAULT_PROXY_URL } from "./services/network.ts";
 import {
   readConfig,
   getWatchlistFingerprint,
@@ -14,11 +14,11 @@ import {
   recomputeStatusBarEnabled,
   affectsNetworkConfig,
   MARKET_SECTIONS,
-} from "./utils/config";
-import { RefreshScheduler } from "./scheduler";
-import { WatchlistOps } from "./watchlistOps";
-import { registerCommands } from "./commands";
-import { SettingsWebviewPanel } from "./ui/settingsWebview";
+} from "./utils/config.ts";
+import { RefreshScheduler } from "./scheduler.ts";
+import { WatchlistOps } from "./watchlistOps.ts";
+import { registerCommands } from "./commands/index.ts";
+import { SettingsWebviewPanel } from "./ui/settingsWebview.ts";
 
 // ── 模块级句柄：让 deactivate() 可以显式清理，防止热重载内存泄漏 ──
 let _scheduler: RefreshScheduler | undefined;

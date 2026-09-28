@@ -1,21 +1,9 @@
 // src/utils/backupHelper.ts
-import type * as vscodeTypes from "vscode";
+import * as vscode from "vscode";
 import type { MarketLensConfig, GroupSortMode, WatchConfigItem, PriceAlertItem } from "../types/index.ts";
 import { MARKET_SECTIONS } from "./config.ts";
 import { logger } from "./logger.ts";
-import { resolveItemAssetType } from "./symbolHelper.ts";
-
-let vscodeModule: typeof vscodeTypes | undefined;
-try {
-  vscodeModule = require("vscode");
-} catch (_) {}
-
-function getVsCode(): typeof vscodeTypes {
-  if (vscodeModule) {
-    return vscodeModule;
-  }
-  throw new Error("vscode module is not available outside the VS Code extension host");
-}
+import { sanitizeWatchlist } from "./symbolHelper.ts";
 
 /** MarketLens 标准备份数据结构 */
 export interface MarketLensBackupData {
@@ -134,49 +122,15 @@ export function validateBackupData(raw: any): ValidationResult {
       return { valid: false, error: "watchlist 字段结构非法，必须为分组对象" };
     }
 
-    normalizedWatchlist = {};
     for (const [group, items] of Object.entries(settingsCandidate.watchlist)) {
       if (!Array.isArray(items)) {
         return { valid: false, error: `分组【${group}】的标的列表必须为数组` };
       }
       groupCount += 1;
-      const validItems: WatchConfigItem[] = [];
-      for (const it of items) {
-        if (typeof it === "string") {
-          const sym = it.trim();
-          if (sym) {
-            const inferredType = resolveItemAssetType({ symbol: sym }, group) || "A_SHARE";
-            validItems.push({ symbol: sym, type: inferredType });
-          }
-        } else if (it && typeof it === "object" && typeof it.symbol === "string" && it.symbol.trim() !== "") {
-          const sym = it.symbol.trim();
-          const rawType = it.type;
-          const validAssetType =
-            rawType === "ALPHA_TOKEN" || rawType === "BSC_TOKEN"
-              ? "ALPHA_TOKEN"
-              : rawType === "CRYPTO"
-                ? "CRYPTO"
-                : rawType === "HK_STOCK"
-                  ? "HK_STOCK"
-                  : rawType === "US_STOCK"
-                    ? "US_STOCK"
-                    : rawType === "A_SHARE"
-                      ? "A_SHARE"
-                      : undefined;
-
-          const item: WatchConfigItem = {
-            symbol: sym,
-            type: validAssetType || resolveItemAssetType({ symbol: sym }, group) || "A_SHARE",
-          };
-          if (typeof it.name === "string" && it.name.trim() !== "") {
-            item.name = it.name.trim();
-          }
-          validItems.push(item);
-        }
-        // 其他非法元素（null、number、{symbol:123} 等）直接丢弃
-      }
-      normalizedWatchlist[group] = validItems;
-      totalSymbols += validItems.length;
+    }
+    normalizedWatchlist = sanitizeWatchlist(settingsCandidate.watchlist);
+    for (const items of Object.values(normalizedWatchlist)) {
+      totalSymbols += items.length;
     }
   }
 
@@ -270,7 +224,6 @@ export async function exportSettingsToFile(
   groupSortModes?: Record<string, GroupSortMode>,
   version?: string
 ): Promise<boolean> {
-  const vscode = getVsCode();
   try {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const defaultFileName = `marketlens-backup-${dateStr}.json`;
@@ -315,9 +268,8 @@ export async function exportSettingsToFile(
  */
 export async function importSettingsFromFile(options: {
   onSuccess?: (backupData: MarketLensBackupData) => Promise<void> | void;
-  globalState?: vscodeTypes.Memento;
+  globalState?: vscode.Memento;
 }): Promise<boolean> {
-  const vscode = getVsCode();
   try {
     const fileUris = await vscode.window.showOpenDialog({
       canSelectMany: false,
@@ -409,6 +361,12 @@ export async function importSettingsFromFile(options: {
     }
     if (data.settings.alertCooldownMinutes !== undefined) {
       await cfg.update("alertCooldownMinutes", data.settings.alertCooldownMinutes, target);
+    }
+    if (data.settings.proxyPort !== undefined) {
+      await cfg.update("proxyPort", data.settings.proxyPort, target);
+    }
+    if (data.settings.proxyUrl !== undefined) {
+      await cfg.update("proxyUrl", data.settings.proxyUrl, target);
     }
 
     // 3. 各市场板块独立配置

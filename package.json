@@ -2,7 +2,7 @@
 	"name": "marketlens",
 	"displayName": "%displayName%",
 	"description": "%description%",
-	"version": "1.2.1",
+	"version": "1.2.2",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
@@ -776,6 +776,8 @@
 		"package": "vsce package --allow-missing-repository --no-dependencies",
 		"lint": "eslint src test --ext ts",
 		"typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+		"pretest": "node scripts/setup-mock-vscode.js",
+		"pretest:coverage": "node scripts/setup-mock-vscode.js",
 		"test": "node --experimental-strip-types --no-warnings --test \"test/**/*.test.ts\"",
 		"test:coverage": "node --experimental-strip-types --no-warnings --test --experimental-test-coverage \"test/**/*.test.ts\""
 	},

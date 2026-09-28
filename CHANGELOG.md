@@ -5,9 +5,31 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-28
+
+<details open>
+<summary><b>🛡️ 稳定性加固、防窥脱敏与工程全链路质量守卫 (Hardening & Quality Assurance)</b></summary>
+
+- **🛡️ 脏自选标的全局清洗与空指针防御 (P1-A)**：
+    - 在 `readConfig()` 唯一读取出口挂载 `sanitizeWatchlist` 抽象，全量清洗非法 `null`、空对象及无效代码结构，阻断手工编辑 `settings.json`、旧版本残留与第三方同步导致的 5 处 `TypeError` 树视图白屏隐患；
+    - 纵深加固 `watchlistProvider`、`symbolHelper` 与 `watchlistOps`，消除跨分组与拖拽重排边界空指针。
+- **🌐 备份导入代理持久化修复 (P2-B)**：
+    - 修复从备份 JSON 恢复配置时漏写 `proxyPort` 与全局 `proxyUrl` 导致静默读取系统代理环境变量的问题，补齐写盘与单元测试断言。
+- **🕶️ 防肩窥脱敏与命令守卫闭环 (P2-C / P3)**：
+    - 在 `addItem`（添加标的）与 `sortGroup`（分组排序）无上下文节点入口增加 `shouldBlockNodeCommand` 守卫，杜绝从命令面板呼出 QuickPick 导致自选代码被近身偷窥；
+    - 在 `showLogs` 命令中增加 `maskMode` 拦截；设置面板价格预警表格增加 `maskMode` 实时遮罩渲染；
+    - 状态栏连接 Tooltip 移除明文端口展示；Webview Nonce 改用加密强随机数生成（CWE-338 防御）。
+- **🧪 架构接线层测试网与 CI 质量门禁加固**：
+    - 引入零外部依赖轻量 mock 环境（`scripts/setup-mock-vscode.js`），全仓统一规范化显式 `.ts` 扩展名，使 `config`、`backupHelper`、`statusBar`、`watchlistOps`、`watchlistProvider`、`scheduler` 等全部接线模块接入原生回归测试网；
+    - 单元测试增至 78 项，核心工具覆盖率超 92%，项目总行覆盖率稳步跃升至 **83%+**；
+    - CI 流水线接入依赖安全审计门禁并补齐 `pretest:coverage` 自动化守卫。
+</details>
+
 ## [1.2.1] - 2026-09-24
+
 <details>
 <summary><b>🐛 缺陷修复与交互安全 (Bug Fixes & UX Hardening)</b></summary>
+
 - **🛡️ 简洁展示模式（摸鱼模式）右键命令交互解阻**：
     - 修复此前开启简洁展示模式（`Alt + K`）后，在自选树视图上右键点击“置顶标的”、“删除自选”或“设置预警”时被守卫误拦截、导致右键菜单失灵的问题；
     - 新增 `shouldBlockNodeCommand` 守卫判定（`src/utils/maskState.ts`）：精准区分老板键（一票否决全量操作）与简洁模式（仅在从 VS Code 命令面板唤起无 node 节点时拦截 QuickPick 弹窗以防标的自曝，右键传入 node 时放行）。

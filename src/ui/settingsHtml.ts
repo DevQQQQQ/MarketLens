@@ -1,6 +1,6 @@
 // src/ui/settingsHtml.ts
-import { MARKET_SECTIONS } from "../utils/config";
-import { NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT } from "../utils/symbolHelper";
+import { MARKET_SECTIONS } from "../utils/config.ts";
+import { NORMALIZE_SYMBOL_KEY_CLIENT_SCRIPT } from "../utils/symbolHelper.ts";
 
 export interface SettingsFormData {
 	autoRefresh?: boolean;
@@ -1053,6 +1053,8 @@ export function getSettingsWebviewHtml(
       window.switchTab = switchTab;
 
       // ── 到价预警监控数据管理 ──
+      // 设计契约规范：Webview 设置面板内的 maskMode 属于视觉防肩窥遮罩（Anti-shoulder-surfing Visual Masking），
+      // 核心威胁模型为防御近身肉眼偷窥；底层保留完整配置镜像以支持面板双向绑定交互与修改后的原子化回写落盘。
       var currentAlerts = ${JSON.stringify(d.alerts).replace(/</g, '\\u003c')};
       var currentWatchlist = ${JSON.stringify(d.watchlist).replace(/</g, '\\u003c')};
       var alertSaveTimer = null;
@@ -1075,6 +1077,9 @@ export function getSettingsWebviewHtml(
         watchlist = watchlist || {};
         alerts = alerts || {};
 
+        var maskEl = document.getElementById('maskMode');
+        var isMasked = maskEl ? maskEl.checked : ${Boolean(d.maskMode)};
+
         var html = '';
         var totalCount = 0;
 
@@ -1083,7 +1088,7 @@ export function getSettingsWebviewHtml(
           var grpName = groupKeys[i];
           var list = watchlist[grpName];
           if (Array.isArray(list) && list.length > 0) {
-            html += '<tr class="alert-grp-row"><td colspan="5">分组: ' + escapeHtml(grpName) + ' (' + list.length + ' 个标的)</td></tr>';
+            html += '<tr class="alert-grp-row"><td colspan="5">分组: ' + escapeHtml(grpName) + ' (' + list.length + ' 个标的)' + (isMasked ? ' <span style="font-size: 11px; opacity: 0.7;">[已脱敏]</span>' : '') + '</td></tr>';
             for (var j = 0; j < list.length; j++) {
               var item = list[j];
               var sym = (typeof item === 'string') ? item : (item.symbol || item.code || '');
@@ -1101,10 +1106,13 @@ export function getSettingsWebviewHtml(
               var symEsc = escapeHtml(sym);
               var nameEsc = escapeHtml(name);
 
+              var displayName = isMasked ? '***' : nameEsc;
+              var displaySym = isMasked ? (symEsc.length > 3 ? symEsc[0] + '***' + symEsc.slice(-1) : '***') : symEsc;
+
               html += '<tr data-key="' + keyEsc + '" data-symbol="' + symEsc + '" data-name="' + nameEsc + '">'
                 + '<td>'
-                + '<div style="font-weight: 500; font-size: 13px;">' + nameEsc + '</div>'
-                + '<div style="font-size: 11px; color: var(--desc-fg); font-family: monospace;">' + symEsc + '</div>'
+                + '<div style="font-weight: 500; font-size: 13px;">' + displayName + '</div>'
+                + '<div style="font-size: 11px; color: var(--desc-fg); font-family: monospace;">' + displaySym + '</div>'
                 + '</td>'
                 + '<td><input type="number" step="any" class="alert-input alert-above" placeholder="未设置" value="' + escapeHtml(aboveVal) + '"></td>'
                 + '<td><input type="number" step="any" class="alert-input alert-below" placeholder="未设置" value="' + escapeHtml(belowVal) + '"></td>'
@@ -1269,6 +1277,10 @@ export function getSettingsWebviewHtml(
 
       // 1. 通用设置事件
       on('btnRestoreDefaults', 'click', function() {
+        var tbody = document.getElementById('alertTableBody');
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--desc-fg); padding: 24px;">🔄 正在恢复出厂默认设置并重构标的列表，请稍候...</td></tr>';
+        }
         postCmd('restoreDefaults');
         showToast('🔄 正在请求恢复出厂默认设置...');
       });
@@ -1321,6 +1333,7 @@ export function getSettingsWebviewHtml(
       on('maskMode', 'change', function() {
         sendUpdate('maskMode', this.checked);
         showToast(this.checked ? '🕶️ 伪装摸鱼模式已开启' : '👁️ 伪装摸鱼模式已关闭');
+        renderAlertTable(currentWatchlist, currentAlerts);
       });
       on('colorNeutral', 'change', function() {
         sendUpdate('colorNeutral', this.checked);

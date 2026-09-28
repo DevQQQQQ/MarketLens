@@ -1,13 +1,13 @@
 // src/commands/index.ts
 import * as vscode from "vscode";
-import { RefreshScheduler } from "../scheduler";
-import { WatchlistOps } from "../watchlistOps";
-import { StatusBar } from "../ui/statusBar";
-import { WatchlistProvider, GroupItem, StockItem } from "../ui/watchlistProvider";
-import { SettingsWebviewPanel } from "../ui/settingsWebview";
-import { readConfig } from "../utils/config";
-import { logger } from "../utils/logger";
-import { canEmitUserFeedback, resolveMaskToggle, shouldBlockNodeCommand } from "../utils/maskState";
+import { RefreshScheduler } from "../scheduler.ts";
+import { WatchlistOps } from "../watchlistOps.ts";
+import { StatusBar } from "../ui/statusBar.ts";
+import { WatchlistProvider, GroupItem, StockItem } from "../ui/watchlistProvider.ts";
+import { SettingsWebviewPanel } from "../ui/settingsWebview.ts";
+import { readConfig } from "../utils/config.ts";
+import { logger } from "../utils/logger.ts";
+import { canEmitUserFeedback, resolveMaskToggle, shouldBlockNodeCommand } from "../utils/maskState.ts";
 
 export interface CommandServices {
   scheduler: RefreshScheduler;
@@ -96,6 +96,10 @@ export function registerCommands(
       async (group?: GroupItem) => {
         let targetGroup = group?.groupName;
         if (!targetGroup) {
+          if (shouldBlockNodeCommand(statusBar.isBossKeyActive(), readConfig().maskMode, Boolean(group))) {
+            logger.info("专注/简洁展示模式激活期间拒绝设置分组排序（老板键/打码守卫已生效）");
+            return;
+          }
           const groups = treeProvider.getGroups();
           if (groups.length === 0) {
             vscode.window.showInformationMessage("当前没有可排序的自选分组");
@@ -256,6 +260,10 @@ export function registerCommands(
 
     // 添加自选（带实时严格校验）
     vscode.commands.registerCommand("marketlens.addItem", async () => {
+      if (shouldBlockNodeCommand(statusBar.isBossKeyActive(), readConfig().maskMode, false)) {
+        logger.info("专注/简洁展示模式激活期间拒绝添加自选标的（老板键/打码守卫已生效）");
+        return;
+      }
       await watchlistOps.addItem();
     }),
 

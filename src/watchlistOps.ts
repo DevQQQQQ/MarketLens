@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import { StockItem, WatchlistProvider } from "./ui/watchlistProvider";
-import { MarketItem, PriceAlertItem } from "./types";
-import { isSameSymbol, normalizeSymbolKey, resolveItemDisplayName, batchReorderWatchlist, ReorderItemDescriptor } from "./utils/symbolHelper";
-import { validateAndParseInput } from "./utils/inputValidator";
-import { readConfig } from "./utils/config";
-import { SettingsWebviewPanel } from "./ui/settingsWebview";
+import { StockItem, WatchlistProvider } from "./ui/watchlistProvider.ts";
+import type { MarketItem, PriceAlertItem } from "./types/index.ts";
+import { isSameSymbol, normalizeSymbolKey, resolveItemDisplayName, batchReorderWatchlist, type ReorderItemDescriptor } from "./utils/symbolHelper.ts";
+import { validateAndParseInput } from "./utils/inputValidator.ts";
+import { readConfig } from "./utils/config.ts";
+import { SettingsWebviewPanel } from "./ui/settingsWebview.ts";
 
 export interface WatchlistOpsContext {
   quoteCache: Map<string, MarketItem>;
@@ -113,7 +113,7 @@ export class WatchlistOps {
     // ── Step 3: 检查是否已存在（去重）───────────────────────────
     const groupItems: any[] = watchlist[targetGroup] ?? [];
     const alreadyExists = groupItems.some(
-      (item) => isSameSymbol(item.symbol, sym) || item.symbol?.toLowerCase() === sym.toLowerCase()
+      (item) => isSameSymbol(item?.symbol, sym) || item?.symbol?.toLowerCase() === sym.toLowerCase()
     );
     if (alreadyExists) {
       vscode.window.showWarningMessage(
@@ -192,6 +192,7 @@ export class WatchlistOps {
       const allItems: { label: string; description: string; group: string; symbol: string }[] = [];
       for (const [grp, items] of Object.entries(watchlist)) {
         for (const it of items ?? []) {
+          if (!it?.symbol) continue;
           allItems.push({
             label: it.name || it.symbol,
             description: `分组: ${grp} · 代码: ${it.symbol}`,
@@ -220,7 +221,7 @@ export class WatchlistOps {
 
     if (!targetGroup) {
       for (const [grp, items] of Object.entries(watchlist)) {
-        if (items?.some((it) => isSameSymbol(it.symbol, targetSymbol))) {
+        if (items?.some((it) => isSameSymbol(it?.symbol, targetSymbol))) {
           targetGroup = grp;
           break;
         }
@@ -232,10 +233,10 @@ export class WatchlistOps {
     const items = [...watchlist[targetGroup]];
     const index = items.findIndex(
       (it) =>
-        isSameSymbol(it.symbol, targetSymbol) ||
-        it.symbol?.toLowerCase() === targetSymbol!.toLowerCase() ||
-        (node?.item?.id && isSameSymbol(it.symbol, node.item.id)) ||
-        (node?.item?.symbol && isSameSymbol(it.symbol, node.item.symbol))
+        isSameSymbol(it?.symbol, targetSymbol) ||
+        it?.symbol?.toLowerCase() === targetSymbol!.toLowerCase() ||
+        (node?.item?.id && isSameSymbol(it?.symbol, node.item.id)) ||
+        (node?.item?.symbol && isSameSymbol(it?.symbol, node.item.symbol))
     );
 
     if (index === -1) {
@@ -286,6 +287,7 @@ export class WatchlistOps {
       const allItems: { label: string; description: string; group: string; symbol: string }[] = [];
       for (const [grp, items] of Object.entries(watchlist)) {
         for (const it of items ?? []) {
+          if (!it?.symbol) continue;
           allItems.push({
             label: it.name || it.symbol,
             description: `分组: ${grp} · 代码: ${it.symbol}`,
@@ -321,30 +323,22 @@ export class WatchlistOps {
     );
     if (confirm !== "删除") { return; }
 
-    const matchItem = (it: { symbol?: string; name?: string }): boolean => {
-      if (!targetSymbol) return false;
-      if (it.symbol && isSameSymbol(it.symbol, targetSymbol)) return true;
+    const matchItem = (it?: { symbol?: string; name?: string } | null): boolean => {
+      if (!it || !it.symbol || !targetSymbol) return false;
+      if (isSameSymbol(it.symbol, targetSymbol)) return true;
       if (it.name && targetName && it.name.toLowerCase() === targetName.toLowerCase()) return true;
-      if (node?.item?.id && it.symbol && isSameSymbol(it.symbol, node.item.id)) return true;
-      if (node?.item?.symbol && it.symbol && isSameSymbol(it.symbol, node.item.symbol)) return true;
+      if (node?.item?.id && isSameSymbol(it.symbol, node.item.id)) return true;
+      if (node?.item?.symbol && isSameSymbol(it.symbol, node.item.symbol)) return true;
       return false;
     };
 
-    // 从分组中移除该项
-    let removed = false;
-    for (const [grp, items] of Object.entries(watchlist)) {
-      if (targetGroup && grp !== targetGroup) { continue; }
-      const beforeLen = items.length;
-      const filtered = items.filter((it) => !matchItem(it));
-      if (filtered.length !== beforeLen) {
-        watchlist[grp] = filtered;
-        removed = true;
-      }
-    }
-
-    // 若特定分组未匹配，进行全局清理兜底
-    if (!removed) {
+    // 保存更新到全局配置
+    try {
+      // 从分组中移除该项
+      let removed = false;
       for (const [grp, items] of Object.entries(watchlist)) {
+        if (targetGroup && grp !== targetGroup) { continue; }
+        if (!Array.isArray(items)) { continue; }
         const beforeLen = items.length;
         const filtered = items.filter((it) => !matchItem(it));
         if (filtered.length !== beforeLen) {
@@ -352,10 +346,20 @@ export class WatchlistOps {
           removed = true;
         }
       }
-    }
 
-    // 保存更新到全局配置
-    try {
+      // 若特定分组未匹配，进行全局清理兜底
+      if (!removed) {
+        for (const [grp, items] of Object.entries(watchlist)) {
+          if (!Array.isArray(items)) { continue; }
+          const beforeLen = items.length;
+          const filtered = items.filter((it) => !matchItem(it));
+          if (filtered.length !== beforeLen) {
+            watchlist[grp] = filtered;
+            removed = true;
+          }
+        }
+      }
+
       await vscode.workspace
         .getConfiguration("marketlens")
         .update("watchlist", watchlist, vscode.ConfigurationTarget.Global);
@@ -452,7 +456,8 @@ export class WatchlistOps {
       const cfg = readConfig();
       const allItems: Array<{ label: string; description: string; symbol: string; currentPrice?: number }> = [];
       for (const [grp, items] of Object.entries(cfg.watchlist)) {
-        for (const item of items) {
+        for (const item of items ?? []) {
+          if (!item?.symbol) continue;
           const normKey = normalizeSymbolKey(item.symbol);
           const cached = this.quoteCache.get(normKey) || this.quoteCache.get(item.symbol);
           const finalName = resolveItemDisplayName(item.name, item.symbol, cached);

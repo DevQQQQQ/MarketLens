@@ -30,6 +30,10 @@ jobs:
       - name: Type check (TypeScript)
         run: npm run typecheck
 
+      - name: Security audit (npm audit)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: Run unit tests & coverage report
         run: npm run test:coverage
 

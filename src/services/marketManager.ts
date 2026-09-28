@@ -1,12 +1,12 @@
 // src/services/marketManager.ts
-import { MarketItem } from "../types";
-import { AShareService } from "./aShareService";
-import { HKStockService } from "./hkStockService";
-import { USStockService } from "./usStockService";
-import { BinanceService } from "./binanceService";
-import { DexScreenerService } from "./dexScreenerService";
-import { CryptoNetworkOptions } from "./network";
-import { logger } from "../utils/logger";
+import type { MarketItem } from "../types/index.ts";
+import { AShareService } from "./aShareService.ts";
+import { HKStockService } from "./hkStockService.ts";
+import { USStockService } from "./usStockService.ts";
+import { BinanceService } from "./binanceService.ts";
+import { DexScreenerService } from "./dexScreenerService.ts";
+import type { CryptoNetworkOptions } from "./network.ts";
+import { logger } from "../utils/logger.ts";
 
 export interface PollTargets {
   funds?: string[];

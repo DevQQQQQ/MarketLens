@@ -1,16 +1,16 @@
 // src/scheduler.ts
 import * as vscode from "vscode";
-import { MarketManager } from "./services/marketManager";
-import { WatchlistProvider, GroupItem } from "./ui/watchlistProvider";
-import { StatusBar } from "./ui/statusBar";
-import { MarketLensConfig, MarketItem } from "./types";
-import { normalizeSymbolKey } from "./utils/symbolHelper";
-import { logger } from "./utils/logger";
-import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, evaluateAdaptiveThrottle, shouldSkipMarketPolling } from "./utils/marketHours";
-import { readConfig } from "./utils/config";
+import { MarketManager } from "./services/marketManager.ts";
+import { WatchlistProvider, GroupItem } from "./ui/watchlistProvider.ts";
+import { StatusBar } from "./ui/statusBar.ts";
+import type { MarketLensConfig, MarketItem } from "./types/index.ts";
+import { normalizeSymbolKey } from "./utils/symbolHelper.ts";
+import { logger } from "./utils/logger.ts";
+import { isAShareMarketOpen, isHKMarketOpen, isUSMarketOpen, evaluateAdaptiveThrottle, shouldSkipMarketPolling } from "./utils/marketHours.ts";
+import { readConfig } from "./utils/config.ts";
 
-import { extractTargetsFromWatchlist, extractStatusBarQuotes, pruneQuoteCache } from "./utils/symbolHelper";
-import { AlertManager } from "./services/alertManager";
+import { extractTargetsFromWatchlist, extractStatusBarQuotes, pruneQuoteCache } from "./utils/symbolHelper.ts";
+import { AlertManager } from "./services/alertManager.ts";
 
 export interface SchedulerContext {
   marketManager: MarketManager;
