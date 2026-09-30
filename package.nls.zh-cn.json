@@ -19,6 +19,7 @@
   "command.importSettings": "导入配置恢复 (JSON)...",
   "command.restoreDefaults": "恢复出厂默认设置",
   "command.showLogs": "查看运行日志",
+  "command.copyCode": "复制标的代码 / 合约地址",
   "viewsContainers.title": "MarketLens",
   "views.watchlist.name": "MarketLens",
   "configuration.autoRefresh.description": "【全局】是否开启定时自动刷新（取消勾选则不自动刷新，仅在手动点击刷新按钮时更新）",

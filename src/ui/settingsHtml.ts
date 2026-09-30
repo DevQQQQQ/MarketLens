@@ -1382,7 +1382,7 @@ export function getSettingsWebviewHtml(
 
       // 3. 关于与交流事件
       on('btnOpenIssues', 'click', function() {
-        postCmd('openExternal', { url: 'https://github.com/DevQQQQQ/MarketLens/issues' });
+        postCmd('openExternal', { url: 'https://github.com/DevQQQQQ/marketLens/issues' });
       });
       on('btnJoinTelegram', 'click', function() {
         postCmd('openExternal', { url: 'https://t.me/+-eZR0R--jyUwN2Nl' });
@@ -1391,7 +1391,7 @@ export function getSettingsWebviewHtml(
         postCmd('openExternal', { url: 'https://t.me/Dev_QQQQQ' });
       });
       on('btnOpenRepo', 'click', function() {
-        postCmd('openExternal', { url: 'https://github.com/DevQQQQQ/MarketLens' });
+        postCmd('openExternal', { url: 'https://github.com/DevQQQQQ/marketLens' });
       });
 
       // 基金市场事件

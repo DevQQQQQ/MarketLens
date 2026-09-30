@@ -20,7 +20,28 @@ const F = {
   HIGH:         33,  // 今日最高
   LOW:          34,  // 今日最低
   TURNOVER:     37,  // 成交额（万元）
+  TURNOVER_RATE: 38, // 换手率 %
+  PE_TTM:       39,  // 市盈率 (TTM)
+  AMPLITUDE:    43,  // 振幅 %
+  CIRC_MV:      44,  // 流通市值（亿元）
+  TOTAL_MV:     45,  // 总市值（亿元）
+  PB:           46,  // 市净率
+  LIMIT_UP:     47,  // 涨停价
+  LIMIT_DOWN:   48,  // 跌停价
+  VOLUME_RATIO: 49,  // 量比
+  AVG_PRICE:    51,  // 日内均价
 } as const;
+
+/**
+ * 安全解析可选浮点数：空串、"-"、"-1" 或非有限数值统一返回 undefined
+ */
+function parseOptionalFloat(val: string | undefined): number | undefined {
+  if (!val || val === "" || val === "-" || val === "-1") {
+    return undefined;
+  }
+  const n = parseFloat(val);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 export class AShareService extends TencentBaseService {
   public readonly serviceName = "AShareService";
@@ -63,6 +84,33 @@ export class AShareService extends TencentBaseService {
       // 成交额：腾讯接口 A 股单位为“万元”，转换为“元”
       const turnover  = (parseFloat(f[F.TURNOVER])    || 0) * 10000;
 
+      // ── 深度量价与估值指标解析（具备防越界与无效数据防御） ──
+      const turnoverRate = parseOptionalFloat(f[F.TURNOVER_RATE]);
+      const peTtm        = parseOptionalFloat(f[F.PE_TTM]);
+      const amplitude    = parseOptionalFloat(f[F.AMPLITUDE]);
+
+      const rawCircMv    = parseOptionalFloat(f[F.CIRC_MV]);
+      // 腾讯返回单位为亿元，转换为基准货币“元”
+      const circulationMarketValue = (rawCircMv !== undefined && rawCircMv > 0) ? rawCircMv * 1e8 : undefined;
+
+      const rawTotalMv   = parseOptionalFloat(f[F.TOTAL_MV]);
+      const totalMarketValue = (rawTotalMv !== undefined && rawTotalMv > 0) ? rawTotalMv * 1e8 : undefined;
+
+      const rawPb        = parseOptionalFloat(f[F.PB]);
+      // 指数无 PB 或返回 0.00 时过滤
+      const pb           = (rawPb !== undefined && rawPb > 0) ? rawPb : undefined;
+
+      const rawLimitUp   = parseOptionalFloat(f[F.LIMIT_UP]);
+      const limitUp      = (rawLimitUp !== undefined && rawLimitUp > 0) ? rawLimitUp : undefined;
+
+      const rawLimitDown = parseOptionalFloat(f[F.LIMIT_DOWN]);
+      const limitDown    = (rawLimitDown !== undefined && rawLimitDown > 0) ? rawLimitDown : undefined;
+
+      const volumeRatio  = parseOptionalFloat(f[F.VOLUME_RATIO]);
+
+      const rawAvgPrice  = parseOptionalFloat(f[F.AVG_PRICE]);
+      const avgPrice     = (rawAvgPrice !== undefined && rawAvgPrice > 0) ? rawAvgPrice : undefined;
+
       items.push({
         id:           fullCode,
         name:         f[F.NAME] || f[F.CODE],
@@ -78,6 +126,16 @@ export class AShareService extends TencentBaseService {
         volume,
         turnover,
         currency: this.currency,
+        turnoverRate,
+        peTtm,
+        pb,
+        amplitude,
+        circulationMarketValue,
+        totalMarketValue,
+        limitUp,
+        limitDown,
+        volumeRatio,
+        avgPrice,
       });
     }
 

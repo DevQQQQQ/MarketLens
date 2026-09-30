@@ -19,6 +19,7 @@
 	"command.importSettings": "MarketLens: Import Settings (Restore JSON)...",
 	"command.restoreDefaults": "MarketLens: Restore Default Settings",
 	"command.showLogs": "MarketLens: View Diagnostic Logs",
+	"command.copyCode": "MarketLens: Copy Symbol / Contract Address",
 	"viewsContainers.title": "MarketLens",
 	"views.watchlist.name": "Watchlist",
 	"configuration.autoRefresh.description": "Whether to refresh quotes on a timer. When unchecked, quotes update only when you refresh manually.",

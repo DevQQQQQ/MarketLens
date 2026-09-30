@@ -1960,6 +1960,36 @@ test("Tencent行情解析 - A股/港股/美股 Golden Sample 契约测试与三�
   assert.strictEqual(a0.volume, 2500000); // 25000 手 × 100
   assert.strictEqual(a0.turnover, 450000000); // 45000 万元 × 10000
   assert.strictEqual(a0.currency, "CNY");
+  // 深度量价指标断言
+  assert.strictEqual(a0.turnoverRate, 0.85);
+  assert.strictEqual(a0.peTtm, 32.50);
+  assert.strictEqual(a0.amplitude, 1.69);
+  assert.strictEqual(a0.circulationMarketValue, 2261000000000);
+  assert.strictEqual(a0.totalMarketValue, 2261000000000);
+  assert.strictEqual(a0.pb, 11.50);
+  assert.strictEqual(a0.limitUp, 1958.00);
+  assert.strictEqual(a0.limitDown, 1602.00);
+  assert.strictEqual(a0.volumeRatio, 0.55);
+  assert.strictEqual(a0.avgPrice, undefined);
+
+  // 模拟含均价及大盘指数 edge case（涨跌停为 -1，PB 为 0.00，均价正常）
+  const indexRaw =
+    'v_sh000001="1~上证指数~000001~3836.53~3830.45~3839.25~12326636~0~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~~20260930093018~6.08~0.16~3839.97~3836.48~3836.53/12326636/17742917639~12326636~1774292~0.02~16.75~~3839.97~3836.48~0.09~601531.73~682529.57~0.00~-1~-1~6.54~0~3837.41";';
+  const indexItems = aService.parseResponse(indexRaw);
+  assert.strictEqual(indexItems.length, 1);
+  const idx0 = indexItems[0];
+  assert.strictEqual(idx0.symbol, "000001");
+  assert.strictEqual(idx0.turnoverRate, 0.02);
+  assert.strictEqual(idx0.peTtm, 16.75);
+  assert.strictEqual(idx0.amplitude, 0.09);
+  assert.strictEqual(idx0.circulationMarketValue, 601531.73 * 1e8);
+  assert.strictEqual(idx0.totalMarketValue, 682529.57 * 1e8);
+  // 指数的 -1 与 0.00 必须被过滤为 undefined，均价 3837.41 正常解析
+  assert.strictEqual(idx0.pb, undefined);
+  assert.strictEqual(idx0.limitUp, undefined);
+  assert.strictEqual(idx0.limitDown, undefined);
+  assert.strictEqual(idx0.volumeRatio, 6.54);
+  assert.strictEqual(idx0.avgPrice, 3837.41);
 
   // 模拟 A 股字段位移（F.CHANGE_AMT 变为 99999.00 离奇错值），验证三角数学自愈机制
   const aShareShifted =
@@ -2575,13 +2605,13 @@ test("scripts/sync-readme-en - Markdown 语法隔离保护与专有名词映射�
     "```typescript",
     "const a = 1;",
     "```",
-    "Visit [GitHub](https://github.com/DevQQQQQ/MarketLens).",
+    "Visit [GitHub](https://github.com/DevQQQQQ/marketLens).",
     "![Badge](https://img.shields.io/badge/1-2)",
   ].join("\n");
 
   const { processed, tokens } = protectMarkdown(sampleMarkdown);
   assert.strictEqual(tokens.length >= 5, true, "应识别并提取至少 5 个受保护的 Markdown 占位符");
-  assert.strictEqual(processed.includes("https://github.com/DevQQQQQ/MarketLens"), false, "URL应被占位符替换保护");
+  assert.strictEqual(processed.includes("https://github.com/DevQQQQQ/marketLens"), false, "URL应被占位符替换保护");
   assert.strictEqual(processed.includes("const a = 1;"), false, "代码块内容应被占位符替换保护");
 
   const restored = restoreMarkdown(processed, tokens);

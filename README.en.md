@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/VS_Code-^1.85.0-007ACC?logo=visualstudiocode" alt="VS Code Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Release-v1.2.2-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.2.3-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platform">
 </p>
 
@@ -225,12 +225,14 @@ Click the **`+`** icon at the top of the sidebar. The input box intelligently pa
 - **Sidebar Quick Setup**: Click the **`🔔`** icon on any asset to open the step-by-step wizard;
 - **Matrix Management**: Open Settings, switch to the "⚡ Price Alerts" tab, and adjust multiple thresholds simultaneously.
 
-### 4. Rich Hover Tooltip Details
+### 4. Rich Hover Tooltip Details & One-Click Copy
 
-Hover over any asset to view professional market metrics:
-- Open, Previous Close, High, Low;
-- Volume, Turnover (stocks & indices);
-- On-chain DEX liquidity pool depth.
+Hover over any asset to view professional market metrics with one-click copy support:
+
+- **A-Share Depth Metrics**: Turnover rate, P/E (TTM), P/B ratio, intraday amplitude, circulating market cap, total market cap, price limits (limit up/down), volume ratio, and VWAP;
+- **Basic Quotes**: Open, Previous Close, High, Low; Volume, Turnover (stocks & indices);
+- **On-chain DEX Metrics**: DEX liquidity pool depth, 24H volume, and FDV;
+- **One-Click Code & Contract Copy**: Click `[📋 Copy]` directly within the hover tooltip card or right-click to choose "Copy Ticker / Contract Code".
 
 ---
 
@@ -238,8 +240,8 @@ Hover over any asset to view professional market metrics:
 
 MarketLens is completely open source! If you encounter bugs, parsing anomalies, or have new feature ideas:
 
-- **🐛 Report Issues & Suggestions**: [GitHub Issues](https://github.com/DevQQQQQ/MarketLens/issues)
-- **🌟 GitHub Repository**: [DevQQQQQ/MarketLens](https://github.com/DevQQQQQ/MarketLens)
+- **🐛 Report Issues & Suggestions**: [GitHub Issues](https://github.com/DevQQQQQ/marketLens/issues)
+- **🌟 GitHub Repository**: [DevQQQQQ/marketLens](https://github.com/DevQQQQQ/marketLens)
 - **✈️ Official Telegram Group**: [Join the MarketLens Telegram Group](https://t.me/+-eZR0R--jyUwN2Nl)
 - **💬 Contact Author**: [Author Telegram (@Dev_QQQQQ)](https://t.me/Dev_QQQQQ)
 

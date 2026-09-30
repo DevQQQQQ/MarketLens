@@ -8,7 +8,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/VS_Code-^1.85.0-007ACC?logo=visualstudiocode" alt="VS Code Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Release-v1.2.2-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.2.3-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-orange" alt="Platform">
 </p>
 
@@ -228,13 +228,14 @@
 - **侧边栏快捷配置**：鼠标悬停在标的上，点击 **`🔔`** 按钮，按照向导输入目标价或涨跌幅；设置完成后标的行将常驻显示 `🔔` 标志；
 - **集中管理预警矩阵**：点击看板顶部 **`⚙️`** 打开设置中心，切换至「⚡ 到价预警」标签页，批量统一微调目标价与启用开关。
 
-### 4. 查看丰富详情悬停气泡
+### 4. 查看丰富详情悬停气泡与一键复制
 
-将鼠标悬停在任意自选标的上，即可弹出专业详情气泡：
+将鼠标悬停在任意自选标的上，即可弹出专业详情气泡并支持一键快捷复制：
 
-- 今开、昨收、当日最高价、最低价；
-- 成交量、成交额（股票/指数）；
-- 链上全网流动性池深度（DEX 资产）。
+- **深度盘口指标 (A股)**：换手率、市盈率 (TTM)、市净率 (PB)、当日振幅、流通市值、总市值、涨跌停限制价、量比与分时均价；
+- **基础行情**：今开、昨收、当日最高价、最低价；成交量、成交额（股票/指数）；
+- **链上指标**：全网流动性池深度、24H成交额与市值 FDV（DEX 资产）；
+- **一键复制标的代码 / 合约地址**：悬停卡片内置 `[📋 复制]` 交互链接，或在标的右键上下文菜单中选择「复制标的代码」，告别手工抄写。
 
 ---
 
@@ -242,8 +243,8 @@
 
 MarketLens 现已完全开源！如果您在使用过程中遇到任何 Bug、行情解析异常，或者有新的交易看板与摸鱼功能想法，欢迎与我们交流：
 
-- **🐛 提交 Bug 与建议 (推荐)**：[GitHub Issues](https://github.com/DevQQQQQ/MarketLens/issues)
-- **🌟 GitHub 开源仓库**：[DevQQQQQ/MarketLens](https://github.com/DevQQQQQ/MarketLens)
+- **🐛 提交 Bug 与建议 (推荐)**：[GitHub Issues](https://github.com/DevQQQQQ/marketLens/issues)
+- **🌟 GitHub 开源仓库**：[DevQQQQQ/marketLens](https://github.com/DevQQQQQ/marketLens)
 - **✈️ 官方 Telegram 交流群**：[点击加入 MarketLens 官方交流群](https://t.me/+-eZR0R--jyUwN2Nl)
 - **💬 作者个人 Telegram**：[联系作者个人 TG (@Dev_QQQQQ)](https://t.me/Dev_QQQQQ)
 

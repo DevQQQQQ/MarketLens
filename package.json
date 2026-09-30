@@ -2,16 +2,16 @@
 	"name": "marketlens",
 	"displayName": "%displayName%",
 	"description": "%description%",
-	"version": "1.2.2",
+	"version": "1.2.3",
 	"publisher": "devqqqqq",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/DevQQQQQ/MarketLens"
+		"url": "https://github.com/DevQQQQQ/marketLens"
 	},
 	"bugs": {
-		"url": "https://github.com/DevQQQQQ/MarketLens/issues"
+		"url": "https://github.com/DevQQQQQ/marketLens/issues"
 	},
-	"homepage": "https://github.com/DevQQQQQ/MarketLens",
+	"homepage": "https://github.com/DevQQQQQ/marketLens",
 	"license": "MIT",
 	"engines": {
 		"vscode": "^1.85.0"
@@ -168,6 +168,11 @@
 				"command": "marketlens.showLogs",
 				"title": "%command.showLogs%",
 				"icon": "$(output)"
+			},
+			{
+				"command": "marketlens.copyCode",
+				"title": "%command.copyCode%",
+				"icon": "$(clippy)"
 			}
 		],
 		"keybindings": [
@@ -276,6 +281,11 @@
 					"command": "marketlens.pinToTop",
 					"when": "view == marketlens.watchlist && viewItem == stockItem",
 					"group": "2_manage@1"
+				},
+				{
+					"command": "marketlens.copyCode",
+					"when": "view == marketlens.watchlist && viewItem == stockItem",
+					"group": "2_manage@2"
 				}
 			]
 		},

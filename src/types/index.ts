@@ -24,6 +24,18 @@ export interface MarketItem {
   turnover?: number;   // 成交额 (USD / CNY / HKD)
   currency?: "CNY" | "USD" | "HKD"; // 计价货币
 
+  // ── 深度量价与估值指标（A股等板块） ──
+  turnoverRate?: number;           // 换手率 %
+  peTtm?: number;                  // 市盈率 (TTM)
+  pb?: number;                     // 市净率
+  amplitude?: number;              // 振幅 %
+  circulationMarketValue?: number; // 流通市值 (基准货币单位：元)
+  totalMarketValue?: number;       // 总市值 (基准货币单位：元)
+  limitUp?: number;                // 涨停价
+  limitDown?: number;              // 跌停价
+  volumeRatio?: number;            // 量比
+  avgPrice?: number;               // 日内成交均价
+
   // ── Alpha 链上代币专属字段 ──
   chain?: string;      // 公链标识，如 "bsc", "solana", "base", "ethereum"
   dex?: string;        // 所在 DEX，如 "pancakeswap", "raydium", "uniswap", "pumpfun"

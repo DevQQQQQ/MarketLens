@@ -163,8 +163,9 @@ export class WatchlistOps {
       SettingsWebviewPanel.syncSettings();
 
       const displayDesc = finalName !== sym ? `${finalName} (${sym})` : sym;
-      vscode.window.showInformationMessage(
-        `✅ 已添加 "${displayDesc}" 到 ${targetGroup}`
+      vscode.window.setStatusBarMessage(
+        `$(check) 已添加 "${displayDesc}" 到 ${targetGroup}`,
+        3000
       );
     } catch (err: any) {
       vscode.window.showErrorMessage(
@@ -243,7 +244,7 @@ export class WatchlistOps {
       return;
     }
     if (index === 0) {
-      vscode.window.showInformationMessage(`MarketLens: "${targetName || targetSymbol}" 已在最顶部`);
+      vscode.window.setStatusBarMessage(`$(info) "${targetName || targetSymbol}" 已在最顶部`, 2500);
       return;
     }
 
@@ -259,7 +260,7 @@ export class WatchlistOps {
       this.rebuildTree(watchlist);
       SettingsWebviewPanel.syncSettings();
 
-      vscode.window.showInformationMessage(`📌 已将 "${targetName || targetSymbol}" 置顶`);
+      vscode.window.setStatusBarMessage(`$(pin) 已将 "${targetName || targetSymbol}" 置顶`, 3000);
     } catch (err: any) {
       vscode.window.showErrorMessage(
         `无法更新设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
@@ -431,7 +432,7 @@ export class WatchlistOps {
       this.rebuildTree(watchlist);
       SettingsWebviewPanel.syncSettings();
 
-      vscode.window.showInformationMessage(`✅ 已删除 "${targetName || targetSymbol}"`);
+      vscode.window.setStatusBarMessage(`$(trash) 已删除 "${targetName || targetSymbol}"`, 3000);
     } catch (err: any) {
       vscode.window.showErrorMessage(
         `无法更新设置：${err?.message || err}。请检查 VS Code 的 settings.json 文件是否包含语法错误。`
@@ -534,7 +535,7 @@ export class WatchlistOps {
         .update("alerts", existingAlerts, vscode.ConfigurationTarget.Global);
       this.rebuildTree();
       SettingsWebviewPanel.syncSettings();
-      vscode.window.showInformationMessage(`✅ 已清除【${targetName || targetSymbol}】的所有预警`);
+      vscode.window.setStatusBarMessage(`$(bell-slash) 已清除【${targetName || targetSymbol}】的所有预警`, 3000);
       return;
     }
 
@@ -590,8 +591,9 @@ export class WatchlistOps {
         .update("alerts", existingAlerts, vscode.ConfigurationTarget.Global);
       this.rebuildTree();
       SettingsWebviewPanel.syncSettings();
-      vscode.window.showInformationMessage(
-        `✅ 已成功为【${targetName || targetSymbol}】设置预警！`
+      vscode.window.setStatusBarMessage(
+        `$(bell) 已设置【${targetName || targetSymbol}】预警规则`,
+        3000
       );
     } catch (err: any) {
       vscode.window.showErrorMessage(`保存预警失败: ${err?.message || err}`);

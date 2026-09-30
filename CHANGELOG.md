@@ -5,9 +5,30 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 
 ## [Unreleased]
 
-## [1.2.2] - 2026-09-28
+## [1.2.3] - 2026-09-30
 
 <details open>
+<summary><b>📊 深度行情指标扩展、一键复制与轻量交互体验升级 (Depth Metrics & UX Polish)</b></summary>
+
+- **📊 A 股深度量价与估值指标扩展**：
+    - 深度映射腾讯行情接口潜能，新增换手率、量比、振幅、日内均价、涨跌停价、市盈率 (TTM)、市净率 (PB)、流通市值与总市值 10 项核心维度；
+    - 悬停卡片采用“成对紧凑排版”布局（最高/最低、今开/昨收、均价/振幅、换手/量比、涨停/跌停、市盈/市净、流通/总市值），在信息密度翻倍的同时卡片高度缩减近 50%；
+    - 大数值格式化全面支持万亿（`1e12`）阶梯呈现；对大盘指数自动过滤 `-1` 与 `0.00` 脏数据。
+- **📋 标的代码与合约地址一键复制交互**：
+    - 悬停卡片内嵌小巧安全的 `[📋 复制]` 交互链接（受 `md.isTrusted` 精准白名单保护）；
+    - 点击复制时触发树视图轻量更新，立即销毁收起当前 Hover 浮层，彻底根除浏览器/VS Code 原生 `:focus` 蓝色边框残留；
+    - 侧边栏标的节点同步挂载右键菜单项 `📋 复制标的代码 / 合约地址`，提供双通道零边框复制保障；
+    - 标的代码与合约地址保持标准反引号代码块包裹，鼠标移入卡片后双击文本按 `Ctrl+C` 亦可原生复制。
+- **🔕 自选管理轻量无感反馈**：
+    - 添加标的、删除标的、置顶标的与清除/设置预警成功提示统一由系统级 Toast 弹窗升级为 VS Code 原生状态栏提示（`setStatusBarMessage`）；
+    - 操作完成后于状态栏轻量提示，3 秒后自动平滑淡出，彻底告别左下角/右下角常驻弹窗遮挡代码的问题。
+- **🌐 仓库重命名与全局链接一致性**：
+    - 全仓统一 GitHub 仓库名为 `https://github.com/DevQQQQQ/marketLens`。
+</details>
+
+## [1.2.2] - 2026-09-28
+
+<details>
 <summary><b>🛡️ 稳定性加固、防窥脱敏与工程全链路质量守卫 (Hardening & Quality Assurance)</b></summary>
 
 - **🛡️ 脏自选标的全局清洗与空指针防御 (P1-A)**：
@@ -65,7 +86,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 <summary><b>🚀 优化改进与文档对齐 (Improvements & Documentation)</b></summary>
 
 - **Open VSX 网页展示优化**：
-    - 国际化默认语言包采用“核心中文在前 + 简明英文在后”双拼策略，解决 Open VSX 网页端无法动态切换语言的问题，国内开发者在 Open VSX 官网检索可直接清晰展示中文卡片；
+    - 国际化默认语言包采用“核心中文在前 + 简明英文在后”双拼策略，解决 VSX 网页端无法动态切换语言的问题，国内开发者在 VSX 官网检索可直接清晰展示中文卡片；
     - `package.json` 保持严格的 `%displayName%` / `%description%` 占位符契约，保障海外用户多语言分发与单元测试自洽。
 - **调度逻辑与 JSDoc 注释对齐**：
     - 更新 `extractStatusBarQuotes` JSDoc，如实对齐休市管理（`autoCollapseClosedGroups`）下已闭市标的动态剔除与全休市静默隐藏的真实业务契约。
@@ -75,6 +96,9 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 </details>
 
 ## [1.1.11] - 2026-09-22
+
+<details>
+<summary><b>🛡️ 防泄露加固、休市日历校准与国际化优化</b></summary>
 
 - **🛡️ 简洁展示模式（摸鱼打码）侧边栏悬停信息防泄露**：
     - 修复此前开启简洁展示模式（`Alt + K`）后，列表项虽显示 `****` 打码，但鼠标悬停在自选标的上仍会弹出包含真实标的名称、代码、开高低收、涨跌额、成交量额与预警阈值的 Markdown 详情卡片问题；
@@ -92,7 +116,12 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 对齐中英文主标题与描述文案，强化 A股/港股/美股/基金/加密货币/DEX 资产覆盖与摸鱼盯盘核心效率特性；
     - 保持双语 NLS 占位符契约完全自洽，CI 质量门禁 100% 绿灯。
 
+</details>
+
 ## [1.1.10] - 2026-09-21
+
+<details>
+<summary><b>🕶️ 老板键守卫、入口语义统一与国际化补齐</b></summary>
 
 - **🕶️ 老板键（专注模式）自动解除**：
     - 新增 `shouldAutoExitBossKey(viewVisible, bossKeyActive)` 语义判定（`src/utils/maskState.ts`）：专注模式激活期间，用户重新打开自选看板（点击活动栏 MarketLens 图标，或任何使视图由隐藏转为可见的操作）即自动退出专注模式并恢复真实行情；
@@ -129,7 +158,12 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 新增「`package.json` 占位符与语言包契约一致性」防回归用例（校验双语言包键集合一致、占位符全部可解析、无孤儿死键、配置描述与命令标题必须走 NLS）；
     - 核心单测扩充至 **65 例**，全部 100% PASS。
 
+</details>
+
 ## [1.1.9] - 2026-09-20
+
+<details>
+<summary><b>🚀 视图操作优化、休市折叠记忆与状态自愈</b></summary>
 
 - **🚀 视图操作优化（全部展开）**：自选列表标题栏新增「全部展开」按钮（`marketlens.expandAllGroups`），与 VS Code 内置的「全部折叠」成对配对，支持一键展开全部分类看板；
 - **🛡️ 休市折叠记忆隔离机制**：重构分组节点 ID 生成逻辑（`buildGroupNodeId`），引入基于激活标识与视图显示递增的会话标识（`collapseSessionTag`），彻底规避 VS Code 优先恢复用户上次手动展开状态导致的「休市默认折叠」失效问题；
@@ -137,14 +171,24 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **🔧 设置面板字符转义修复**：加固 `src/ui/settingsHtml.ts` 中 `activeKey` 针对反斜杠字符的正则表达式转义，提升包含特殊字符代码时的 DOM 节点选择健壮性；
 - **🧪 单元测试体系扩充**：新增针对 `buildGroupNodeId` 会话隔离机制与展开覆盖的专项单测，核心测试用例扩充至 **61 例**，全部 100% PASS。
 
+</details>
+
 ## [1.1.8] - 2026-09-18
+
+<details>
+<summary><b>🧪 测试扩充、国际化加固与代理容错</b></summary>
 
 - **🧪 单元测试体系扩充**：新增 Markdown 翻译隔离与休市自动折叠单测，全项目核心单测扩充至 **60 例**，全部 100% PASS；
 - **🌐 国际化与本地化加固**：全面规范 `package.json` 的 NLS 占位符引用，补齐 `package.nls.zh-cn.json` 与 `package.nls.json`，纯离线重构 `README.en.md` 同步脚本；
 - **🛡️ 代理与网络配置容错**：修复设置面板端口失焦导致自定义非本地代理 host 丢失的问题，加固端口探测与直连兜底逻辑；
 - **🔔 预警管理器孤儿规则清理**：自选标的删除后自动关联清理预警规则，消除配置与内存冗余。
 
+</details>
+
 ## [1.1.7] - 2026-09-17
+
+<details>
+<summary><b>🏛️ 架构重构、配置扇出与测试覆盖率升级</b></summary>
 
 ### 🚀 架构重构与核心优化 (Architecture & Improvements)
 
@@ -158,9 +202,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 新增 `test/config.test.ts` 专项测试，全项目核心单测扩充至 **58 例**，全部 100% PASS；
     - CI 流水线引入 `npm run test:coverage`，核心业务模块测试覆盖率达 **87.57%**。
 
+</details>
+
 ---
 
 ## [1.1.6] - 2026-09-16
+
+<details>
+<summary><b>📈 基金独立配置、分组排序与代码解析加固</b></summary>
 
 ### 🚀 新增特性与核心优化 (New Features & Improvements)
 
@@ -174,9 +223,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **🛡️ 标的代码解析与 ETF 交易所前缀推断加固**：
     - 增强 A 股与场内 ETF 代码前缀推断算法，彻底杜绝特定 ETF / 债券代码被误判为北交所的前缀偏差。
 
+</details>
+
 ---
 
 ## [1.1.5] - 2026-09-12
+
+<details>
+<summary><b>🎨 配色切换、节假日日历与全链路缺陷修复</b></summary>
 
 ### 🚀 新增特性与核心优化 (New Features & Improvements)
 
@@ -187,7 +241,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 内置 2024~2027 年 A股、港股、美股法定节假日离线日历，彻底杜绝假日期间误判开盘；
     - 休市自适应降频：在法定节假日、闭市或长时间无行情变动时，轮询间隔自适应降频至 60s~120s，显著降低网络与 CPU 消耗。
 - **🌐 操作系统环境变量代理自适应回退**：
-    - 自适应探测读取 `process.env.HTTPS_PROXY / HTTP_PROXY / ALL_PROXY`，解决局域网软路由（如 OpenClash）或环境变量代理免配置即开即用。
+    - 自适应探测读取 `process.env.HTTPS_PROXY / HTTP_PROXY / ALL_PROXY`，解决局域网软路由（如Clash）或环境变量代理免配置即开即用。
 - **🛡️ 大批量自选请求切片保护**：
     - 引入 `chunkArray` 切片并发机制，针对 A股、港股、美股按 40 只/批、Binance 按 50 只/批安全分片，彻底杜绝 HTTP 414 URI Too Long 风险。
 - **🔤 原生 0 依赖 GBK 解码三级防御与容错**：
@@ -227,7 +281,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 修复 `settingsHtml.ts` 中 `renderAlertTable` 客户端动态拼接 `tbody.innerHTML` 时未转义 `grpName`、`sym`、`name` 及数值字段，可能被不可控的上游链上代币名（DexScreener `baseToken.name`）利用双引号逃逸 `data-*` 属性并注入内联遮罩样式与 HTML 标签的漏洞隐患；
     - 内置标准 `escapeHtml` 实体转义机制，原生防御属性突破与标签注入；单测用例由 37 例扩充至 38 例。
 - **🚀 双平台自动化发布与受限工作区信任 (Dual-Platform CI & Workspace Trust)**：
-    - CI 流水线（`.github/workflows/release.yml`）补充 Open VSX Registry 自动化发布（`ovsx publish`），严格践行双平台发布铁律；
+    - CI 流水线（`.github/workflows/release.yml`）补充 VSX Registry 自动化发布（`ovsx publish`），严格践行双平台发布铁律；
     - `package.json` 补充 `capabilities.untrustedWorkspaces: { supported: true }`，在受限制工作区模式下免警告流畅运行；
     - 补充 `package.nls.json` 英文元数据与 `README.en.md` 英文技术文档，提升海外生态曝光。
 - **🧹 仓库卫生与打包排除规范 (Packaging Hygiene Guard)**：
@@ -258,7 +312,12 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 补充 `Active-Set Prune` 循环堆内存基准测试（Subtest 41），验证高频自选变动与缓存回收下的内存稳定性（Heap Used 增量稳定 < 15MB~25MB）；
     - 修订中英文文档关于内存占用的措辞，使工程描述更加科学严谨。
 
+</details>
+
 ## [1.1.4] - 2026-09-11
+
+<details>
+<summary><b>⚡ 价格预警、批量拖拽与内存回收</b></summary>
 
 ### 🚀 新增特性与核心优化 (New Features & Improvements)
 
@@ -283,7 +342,12 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **📖 开源社区与反馈渠道强化**：
     - 项目现已全面开源，README 与关于页面新增 GitHub Issues 与 GitHub 开源仓库入口。
 
+</details>
+
 ## [1.1.3] - 2026-09-10
+
+<details>
+<summary><b>🛡️ 稳定性与体验修复</b></summary>
 
 ### 🚀 稳定性与体验修复 (Fixes & Usability)
 
@@ -299,7 +363,12 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 修复快捷键表格 `Alt + M`、`Alt + K`、`Alt + L` 与 package.json 声明不一致的问题；
     - 设置面板切换 Tab 状态精准保留，代理端口修改后即时生效无需重启。
 
+</details>
+
 ## [1.1.1] - 2026-09-07
+
+<details>
+<summary><b>🚀 功能增强与交互体验升级 (1.1.1)</b></summary>
 
 ### 🚀 Comprehensive Enhancements & Usability Upgrades / 功能增强与交互体验升级
 
@@ -316,7 +385,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - Added "Clear Watchlist" in General Settings to wipe all preset symbols across all markets with safe confirmation dialog, allowing users to start from scratch.
     - Added "Restore Factory Defaults" to reset all symbols and configs back to fresh installation state anytime.
 - **Official Telegram Community & Support**:
-    - Added official Telegram community group link (`https://t.me/+-eZR0R--jyUwN2Nl`) and author direct Telegram link (`https://t.me/Dev_QQQQQ`) with one-click open and copy buttons in the About panel.
+    - Added official Telegram community group link (`https://t.me/+-eZR0R--jyUwN2Nl`) and author direct Telegram link (`https://t.me/Dev_QQQQQ`) with one-click and copy buttons in the About panel.
 - **Documentation & Packaging Restructure**:
     - Separated developer packaging instructions into dedicated `RELEASE.md`.
     - Comprehensive rewrite of `README.md` showcasing all features and quick-start guides.
@@ -344,9 +413,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 设置中心动态读取运行时包元数据展示版本号（`MarketLens v1.1.1`）。
     - 规范化激活事件为 `onStartupFinished`，彻底消除性能警告。
 
+</details>
+
 ---
 
 ## [1.1.0] - 2026-09-07
+
+<details>
+<summary><b>🚀 重磅新增：港股与美股市场支持</b></summary>
 
 ### 🚀 Major Feature Release: HK & US Stocks / 重磅新增：港股与美股市场支持
 
@@ -386,9 +460,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 扩充出厂默认自选库：Binance 新增 SOL、BNB、DOGE、ARB、OP、APT、ORDI、ASTER 等主流与热门币种；Alpha 板块新增 11 个经过链上去重并智能解析出代币简称（翻身币、quq、人生K线、PALU、恶俗企鹅、我踏马来了、DONKEY、4、客服小何、哈基米、币安人生等）的链上标的；美股预设包含 Cloudflare 及热门芯片龙头股。
     - 首次启动秒级展示：启动时立即展示标的骨架，无需空白等待；首次刷新强制穿透拉取最新收盘价，彻底解决“安装后首次打开无价格”问题。
 
+</details>
+
 ---
 
 ## [1.0.0] - 2026-09-06
+
+<details>
+<summary><b>🚀 正式发布 (Major Release)</b></summary>
 
 ### 🚀 Major Release / 正式发布
 
@@ -411,7 +490,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - Interactive graphical Settings Webview panel with real-time toggle switches.
     - Asset deletion with confirmation prompts and treeview synchronization.
     - Instant input validation for symbol search and contract address parsing.
-    - Guaranteed initial quote fetch upon opening, even during market closure.
+    - Guaranteed initial quote fetch uponing, even during market closure.
 
 #### 中文
 
@@ -434,9 +513,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
     - 完善的输入校验：支持代码/代币/合约地址自动识别与非法输入拦截。
     - 首次打开插件即刻抓取最新收盘行情，即使周末闭市也能一览无余。
 
+</details>
+
 ---
 
 ## [0.2.0]
+
+<details>
+<summary><b>🔗 链上追踪、代理探测与悬停卡片</b></summary>
 
 ### Added / 新增
 
@@ -444,7 +528,7 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **ZH**: 接入 DexScreener 链上行情接口（Alpha 分组），支持粘贴合约地址一键添加全链新币。
 - **EN**: Added network proxy settings with auto-detect proxy port for enhanced privacy.
 - **ZH**: 新增网络代理配置面板与本机代理端口一键自动探测功能。
-- **EN**: Added hover tooltip detail cards showing open, high, low, volume, and liquidity depth.
+- **EN**: Added hover tooltip detail cards showing, high, low, volume, and liquidity depth.
 - **ZH**: 新增自选条目悬停详情卡片，可查看今开、昨收、最高、最低、成交额及链上流动性池深度。
 
 ### Improved / 优化
@@ -452,9 +536,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **EN**: Optimized polling timers to reduce CPU and network usage during market non-trading hours.
 - **ZH**: 优化轮询调度器，在非交易时间段大幅降低网络与 CPU 资源占用。
 
+</details>
+
 ---
 
 ## [0.1.2]
+
+<details>
+<summary><b>✨ 极简模式、颜色脱敏与事件修复</b></summary>
 
 ### Added / 新增
 
@@ -468,9 +557,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **EN**: Fixed tab switching and Webview message communication event handlers.
 - **ZH**: 修复设置面板 Tab 切换以及 Webview 消息通信监听机制。
 
+</details>
+
 ---
 
 ## [0.1.1]
+
+<details>
+<summary><b>🎯 专注模式与状态栏轮播</b></summary>
 
 ### Added / 新增
 
@@ -484,9 +578,14 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **EN**: Resolved ticker update delay under unstable network conditions.
 - **ZH**: 优化弱网环境下的重试逻辑，解决行情刷新偶发延迟的问题。
 
+</details>
+
 ---
 
 ## [0.1.0]
+
+<details>
+<summary><b>🎉 初始版本发布</b></summary>
 
 ### Added / 新增
 
@@ -498,3 +597,5 @@ All notable changes to the "MarketLens" extension will be documented in this fil
 - **ZH**: 支持币安主流加密货币行情（BTC / ETH 等 USDT 币对）。
 - **EN**: Left sidebar watchlist treeview to manage and view favorite assets.
 - **ZH**: 左侧侧边栏自选列表，支持资产展示与基础自选管理。
+
+</details>

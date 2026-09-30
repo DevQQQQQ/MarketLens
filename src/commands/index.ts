@@ -335,7 +335,53 @@ export function registerCommands(
         return;
       }
       logger.show();
-    })
+    }),
+
+    // 复制标的代码 / 合约地址（支持 Tooltip 卡片一键复制链接与右键菜单统一复用）
+    vscode.commands.registerCommand(
+      "marketlens.copyCode",
+      async (target?: string | StockItem) => {
+        let textToCopy = "";
+        let label = "标的代码";
+
+        if (typeof target === "string") {
+          textToCopy = target.trim();
+          if (textToCopy.startsWith("0x") || textToCopy.length > 30) {
+            label = "合约地址";
+          }
+        } else if (target && typeof target === "object") {
+          // 右键菜单传入 StockItem
+          const isAlpha =
+            target.item?.type === "ALPHA_TOKEN" ||
+            target.item?.type === "BSC_TOKEN" ||
+            target.item?.chain !== undefined;
+          if (isAlpha) {
+            textToCopy = target.item?.id || target.confSymbol || "";
+            label = "合约地址";
+          } else {
+            textToCopy = target.item?.symbol || target.confSymbol || "";
+            label = "标的代码";
+          }
+        }
+
+        if (!textToCopy) {
+          return;
+        }
+
+        await vscode.env.clipboard.writeText(textToCopy);
+        emitStatusMessage(statusBar, `$(clippy) 已复制${label}: ${textToCopy}`, 2500);
+
+        // 1. 立即触发树视图轻量变更，使 VS Code 主动销毁/收起当前的 Hover 浮层，彻底根除停留的蓝色 focus 边框
+        try {
+          treeProvider.notifyChange();
+        } catch (_) {}
+
+        // 2. 转移焦点至自选侧边栏，确保焦点回归正常上下文
+        try {
+          await vscode.commands.executeCommand("marketlens.watchlist.focus");
+        } catch (_) {}
+      }
+    )
   );
 }
 

@@ -33,14 +33,20 @@ function formatLargeNumber(num: number | undefined, isVolume: boolean, currency:
   const unit = isVolume ? (currency === "CNY" || currency === "HKD" ? "股" : "") : "";
 
   if (currency === "CNY" || currency === "HKD") {
+    if (num >= 1e12) {
+      return `${prefix}${(num / 1e12).toFixed(2)} 万亿${unit}`.trim();
+    }
     if (num >= 1e8) {
-      return `${prefix}${(num / 1e8).toFixed(2)} 亿${unit}`;
+      return `${prefix}${(num / 1e8).toFixed(2)} 亿${unit}`.trim();
     }
     if (num >= 1e4) {
-      return `${prefix}${(num / 1e4).toFixed(2)} 万${unit}`;
+      return `${prefix}${(num / 1e4).toFixed(2)} 万${unit}`.trim();
     }
-    return `${prefix}${num.toLocaleString()}${unit}`;
+    return `${prefix}${num.toLocaleString()}${unit}`.trim();
   } else {
+    if (num >= 1e12) {
+      return `${prefix}${(num / 1e12).toFixed(2)}T ${unit}`.trim();
+    }
     if (num >= 1e9) {
       return `${prefix}${(num / 1e9).toFixed(2)}B ${unit}`.trim();
     }
@@ -237,8 +243,11 @@ export class StockItem extends vscode.TreeItem {
           changeAmtStr = `${cSign}$${Math.abs(approxChange).toFixed(item.price < 1 ? 6 : 2)}`;
         }
 
+        const copyTokenUri = `command:marketlens.copyCode?${encodeURIComponent(JSON.stringify(item.symbol))}`;
+        const copyContractUri = `command:marketlens.copyCode?${encodeURIComponent(JSON.stringify(item.id))}`;
+
         mdText =
-          `### ${item.name} (\`${item.symbol}\`)\n` +
+          `### ${item.name} (\`${item.symbol}\`) [📋 复制](${copyTokenUri})\n` +
           `公链网络：${chainBadge} &nbsp;|&nbsp; 交易池：${dexBadge}\n\n` +
           `| 核心指标 | 实时行情 |\n` +
           `| :--- | :--- |\n` +
@@ -248,7 +257,7 @@ export class StockItem extends vscode.TreeItem {
           `| **开盘参考价** | ${openStr} |\n` +
           `| **流动性池 (Liquidity)** | **${liqStr}** |\n` +
           `| **24h 成交额** | **${turnoverStr}** |\n` +
-          `| **合约地址** | \`${item.id}\` |\n\n` +
+          `| **合约地址** | \`${item.id}\` &nbsp;[📋 复制合约](${copyContractUri}) |\n\n` +
           `_数据源: DexScreener · ${new Date().toLocaleTimeString()}_`;
       } else {
         // A 股与 Binance 传统金融卡片
@@ -271,20 +280,58 @@ export class StockItem extends vscode.TreeItem {
         const turnoverStr = formatLargeNumber(item.turnover, false, currency);
         const currencyLabel = currency === "CNY" ? "人民币 (¥ CNY)" : (currency === "HKD" ? "港币 (HK$ HKD)" : "美元 ($ USD)");
 
+        const tableRows: string[] = [
+          `| **最新价格** | ${colorHint} **${priceStr}** |`,
+          `| **涨跌百分比** | **${pctStr}** |`,
+          `| **涨跌额** | **${changeAmtStr}** |`,
+          `| **最高 / 最低** | ${highStr} / ${lowStr} |`,
+          `| **今开 / 昨收** | ${openStr} / ${prevCloseStr} |`,
+          `| **成交量 / 额** | ${volStr} / ${turnoverStr} |`,
+        ];
+
+        // 均价与振幅
+        if (item.avgPrice !== undefined || item.amplitude !== undefined) {
+          const avgStr = item.avgPrice !== undefined ? formatPrice(item.avgPrice, currency) : "--";
+          const ampStr = item.amplitude !== undefined ? `${item.amplitude.toFixed(2)}%` : "--";
+          tableRows.push(`| **均价 / 振幅** | ${avgStr} / ${ampStr} |`);
+        }
+
+        // 换手率与量比
+        if (item.turnoverRate !== undefined || item.volumeRatio !== undefined) {
+          const toStr = item.turnoverRate !== undefined ? `${item.turnoverRate.toFixed(2)}%` : "--";
+          const vrStr = item.volumeRatio !== undefined ? item.volumeRatio.toFixed(2) : "--";
+          tableRows.push(`| **换手 / 量比** | ${toStr} / ${vrStr} |`);
+        }
+
+        // 涨跌停价（打板关键线）
+        if (item.limitUp !== undefined || item.limitDown !== undefined) {
+          const upStr = item.limitUp !== undefined ? formatPrice(item.limitUp, currency) : "--";
+          const downStr = item.limitDown !== undefined ? formatPrice(item.limitDown, currency) : "--";
+          tableRows.push(`| **涨停 / 跌停** | ${upStr} / ${downStr} |`);
+        }
+
+        // 估值（市盈率 TTM / 市净率 PB）
+        if (item.peTtm !== undefined || item.pb !== undefined) {
+          const peStr = item.peTtm !== undefined ? `${item.peTtm.toFixed(2)}` : "--";
+          const pbStr = item.pb !== undefined ? item.pb.toFixed(2) : "--";
+          tableRows.push(`| **市盈 / 市净** | ${peStr} / ${pbStr} |`);
+        }
+
+        // 体量（流通市值 / 总市值）
+        if (item.circulationMarketValue !== undefined || item.totalMarketValue !== undefined) {
+          const circStr = formatLargeNumber(item.circulationMarketValue, false, currency);
+          const totStr = formatLargeNumber(item.totalMarketValue, false, currency);
+          tableRows.push(`| **流通 / 总市值** | ${circStr} / ${totStr} |`);
+        }
+
+        const copyCmdUri = `command:marketlens.copyCode?${encodeURIComponent(JSON.stringify(item.symbol))}`;
+
         mdText =
-          `### ${item.name} (\`${item.symbol}\`)\n` +
+          `### ${item.name} (\`${item.symbol}\`) [📋 复制](${copyCmdUri})\n` +
           `计价货币：**${currencyLabel}**\n\n` +
           `| 核心指标 | 实时行情 |\n` +
           `| :--- | :--- |\n` +
-          `| **最新价格** | ${colorHint} **${priceStr}** |\n` +
-          `| **涨跌百分比** | **${pctStr}** |\n` +
-          `| **涨跌额** | **${changeAmtStr}** |\n` +
-          `| **今日开盘** | ${openStr} |\n` +
-          `| **昨日收盘** | ${prevCloseStr} |\n` +
-          `| **今日最高** | ${highStr} |\n` +
-          `| **今日最低** | ${lowStr} |\n` +
-          `| **成交量** | ${volStr} |\n` +
-          `| **成交额** | ${turnoverStr} |\n\n` +
+          `${tableRows.join("\n")}\n\n` +
           `_更新时间: ${new Date().toLocaleTimeString()}_`;
       }
 
@@ -307,10 +354,9 @@ export class StockItem extends vscode.TreeItem {
       }
 
       const md = new vscode.MarkdownString(mdText);
-      // 允许渲染 Markdown 表格，但显式禁用全部命令链接：
-      // mdText 内嵌了 DexScreener 等第三方接口返回的代币名称（外部可控），
-      // 若直接置为 true，恶意名称中的 `[x](command:...)` 将可被点击执行。
-      md.isTrusted = { enabledCommands: [] };
+      md.supportHtml = true;
+      // 精准白名单授权：仅允许执行安全无害的 copyCode 命令，一票拦截任意未知系统命令
+      md.isTrusted = { enabledCommands: ["marketlens.copyCode"] };
       return md;
     });
 
@@ -401,6 +447,13 @@ export class WatchlistProvider
   /** 当前折叠会话标识（激活标识 + 会话序号），语义见 buildGroupNodeId */
   private get collapseSessionTag(): string {
     return `${ACTIVATION_TAG}-${this.collapseSessionSeq}`;
+  }
+
+  /**
+   * 触发树视图轻量变更通知（用于操作完成后快速关闭已激活的 Hover 浮层，消除焦点残留）
+   */
+  public notifyChange(): void {
+    this._onDidChangeTreeData.fire();
   }
 
   /**

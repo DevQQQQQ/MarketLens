@@ -158,7 +158,14 @@ test("WatchlistProvider - 树节点构建、空组过滤与脏数据防御", asy
 
   const children = await provider.getChildren(aGroup);
   assert.strictEqual(children!.length, 1);
-  assert.strictEqual((children![0] as StockItem).confSymbol, "sh600519");
+  const stockNode = children![0] as StockItem;
+  assert.strictEqual(stockNode.confSymbol, "sh600519");
+
+  // 验证 Tooltip 包含 marketlens.copyCode 命令链接与白名单授权
+  assert.ok(stockNode.tooltip instanceof vscode.MarkdownString);
+  const md = stockNode.tooltip as vscode.MarkdownString;
+  assert.ok(md.value.includes("command:marketlens.copyCode"));
+  assert.deepStrictEqual((md as any).isTrusted?.enabledCommands, ["marketlens.copyCode"]);
 });
 
 test("WatchlistOps - 基础操作与安全防护", async () => {
@@ -349,6 +356,10 @@ test("extension 与 commands - 扩展完整生命周期与命令分发集成", a
   await vscode.commands.executeCommand("marketlens.addItem");
   await vscode.commands.executeCommand("marketlens.sortGroup");
 
-  // 4. 测试生命周期注销
+  // 4. 测试复制标的代码 / 合约地址命令
+  await vscode.commands.executeCommand("marketlens.copyCode", "600519");
+  await vscode.commands.executeCommand("marketlens.copyCode", "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c");
+
+  // 5. 测试生命周期注销
   deactivate();
 });
